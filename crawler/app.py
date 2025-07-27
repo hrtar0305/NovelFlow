@@ -3,6 +3,7 @@ import logging
 import json
 import os
 import requests
+import time
 from datetime import datetime
 from pytz import timezone
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -24,14 +25,15 @@ class Config:
     BROWSER_ARGS = ['--disable-gpu', '--no-sandbox', '--single-process', '--disable-dev-shm-usage']
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
     VIEWPORT_SIZE = {"width": 1920, "height": 1080}
-    DEFAULT_NAVIGATION_TIMEOUT = 120000  # 120 seconds
-    DEFAULT_ACTION_TIMEOUT = 120000      # 120 seconds
+    DEFAULT_NAVIGATION_TIMEOUT = 30000  # 30 seconds
+    DEFAULT_ACTION_TIMEOUT = 30000      # 30 seconds
 
     # Novelpia URLs & Settings
     BASE_URL = "https://novelpia.com"
     RANKING_URL_TEMPLATE = "https://novelpia.com/top100/all/weekly/view/all/all/#more{}"
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
-    MAX_INTERNAL_RETRIES = 10
+    RANKING_LOAD_TIMEOUT = 30000  # 30 seconds
+    MAX_INTERNAL_RETRIES = 5
     SEOUL_TIMEZONE = timezone('Asia/Seoul')
 
     # CSS Selectors
@@ -42,9 +44,8 @@ class Config:
         LOGIN_EMAIL = "#login_box input[name='email']"
         LOGIN_PASSWORD = "#login_box input[name='wd']"
         LOGIN_SUBMIT = "#login_box button[type='submit']"
+        RANKING_CONTAINER = "#top100_page"
         NOVEL_BOX = ".novelbox"
-        NOVEL_ONCLICK_DIV = "> div[onclick]"
-        NOVEL_SCORE_FONT = "font.thumb_s4"
         ALERT_MODAL = "#alert_modal"
         TITLE = "div.epnew-novel-title"
         AUTHOR_LINK = "a.writer-name"
@@ -84,10 +85,18 @@ def get_credentials(execution_id):
 def _perform_login(page, username, password, execution_id):
     """Handles the login process on Novelpia."""
     _log(logging.INFO, execution_id, "Performing login...")
-    page.goto(Config.BASE_URL, wait_until="domcontentloaded")
-    if page.locator(Config.Selectors.BANNER_CLOSE).is_visible():
-        page.locator(Config.Selectors.BANNER_CLOSE).click()
+    page.goto(Config.BASE_URL, wait_until="commit")
+    
+    # Check for and close any banner that might obstruct the login process
+    try:
+        banner_locator = page.locator(Config.Selectors.BANNER_CLOSE)
+        banner_locator.wait_for(state='visible', timeout=1000) # 1 second timeout
+        banner_locator.click()
         _log(logging.INFO, execution_id, "Banner closed.")
+    except PlaywrightTimeoutError:
+        _log(logging.INFO, execution_id, "No banner found, proceeding with login.")
+        pass
+    
     page.locator(Config.Selectors.TOGGLE_MENU).click()
     page.locator(Config.Selectors.ADULT_SWITCH).click()
     page.locator(Config.Selectors.LOGIN_EMAIL).fill(username)
@@ -100,11 +109,14 @@ def _ensure_adult_mode(page, execution_id):
     """Checks and enables adult mode if it's off."""
     alt_text = page.locator(Config.Selectors.ADULT_SWITCH).get_attribute('alt')
     if alt_text == '일반':
-        _log(logging.INFO, execution_id, "Adult mode is OFF. Turning it ON...")
         page.locator(Config.Selectors.TOGGLE_MENU).click()
-        page.locator(Config.Selectors.ADULT_SWITCH).wait_for(state='visible')
-        page.locator(Config.Selectors.ADULT_SWITCH).click()
-        page.wait_for_timeout(2000)
+        switch_locator = page.locator(Config.Selectors.ADULT_SWITCH)
+        switch_locator.wait_for(state='visible')
+        switch_locator.click()
+        page.wait_for_load_state("domcontentloaded")
+        _log(logging.INFO, execution_id, "Adult mode enabled.")
+    else:
+        _log(logging.INFO, execution_id, "Adult mode is already ON.")
 
 def _parse_score(score_text):
     """Converts score text to an integer."""
@@ -116,29 +128,53 @@ def _parse_score(score_text):
 
 def _fetch_and_parse_ranking_page(page, ranking_url, target_novel_count, today, execution_id):
     """Navigates to the ranking page and parses the novel list."""
+    expected_api_calls = (target_novel_count - 1) // 100
+    _log(logging.INFO, execution_id, f"Expecting {expected_api_calls} 'rank_more' API calls.")
+    
+    api_responses = []
+    def response_handler(response):
+        if "proc/rank_more" in response.url and response.request.method == "POST" and response.ok:
+            _log(logging.INFO, execution_id, f"Captured SUCCESSFUL 'rank_more' API response #{len(api_responses) + 1}.")
+            api_responses.append(response)
+    
+    page.on("response", response_handler)
     page.goto(ranking_url, wait_until="domcontentloaded")
-    _ensure_adult_mode(page, execution_id)
-    _log(logging.INFO, execution_id, "Navigated to ranking page.", url=ranking_url, target_count=target_novel_count)
-
-    url_request_count = ((target_novel_count - 1) // 100 + 1) * 100
-    page.wait_for_function(f"() => document.querySelectorAll('{Config.Selectors.NOVEL_BOX}').length === {url_request_count}", timeout=120000)
-    page.wait_for_timeout(2000)
-
-    boxes = page.locator(Config.Selectors.NOVEL_BOX).all()
+    
+    try:
+        timeout_seconds = Config.RANKING_LOAD_TIMEOUT / 1000
+        start_time = time.time()
+        while len(api_responses) < expected_api_calls:
+            if time.time() - start_time > timeout_seconds:
+                raise PlaywrightTimeoutError(f"Timeout: Only captured {len(api_responses)}/{expected_api_calls} API responses.")
+            time.sleep(0.1)
+        _log(logging.INFO, execution_id, "All expected API responses have been captured.")
+    finally:
+        page.remove_listener("response", response_handler)
+        
+    _log(logging.INFO, execution_id, "Fetching the entire page content...")
+    page_html = page.content()
+    soup = BeautifulSoup(page_html, 'html.parser')
+    boxes = soup.select(f"{Config.Selectors.NOVEL_BOX}")
+    
     novels = []
     seen_novel_ids = set()
     for idx, box in enumerate(boxes[:target_novel_count]):
-        raw_onclick = box.locator(Config.Selectors.NOVEL_ONCLICK_DIV).get_attribute("onclick")
-        novel_id = int(raw_onclick.split("/")[-1].strip("';"))
+        onclick_div = box.select_one("div[onclick]")
+        raw_onclick = onclick_div['onclick']
+        novel_id = int(raw_onclick.split('/')[-1].strip("';"))
+        
         if novel_id in seen_novel_ids:
             raise ValueError(f"Duplicate novel ID found: {novel_id}.")
         seen_novel_ids.add(novel_id)
-        score_text = box.locator(Config.Selectors.NOVEL_SCORE_FONT).inner_text()
-        score = _parse_score(score_text)
+        
+        score_element = box.select_one("font.thumb_s4")
+        score = _parse_score(score_element.get_text(strip=True))
+        
         novels.append({"date": today, "ranking": idx + 1, "id": novel_id, "score": score})
 
     if len(novels) != target_novel_count:
         raise ValueError(f"Expected {target_novel_count} novels, but found {len(novels)}.")
+        
     return novels
 
 # =====================================================================================
@@ -172,17 +208,26 @@ def get_ranking_list(event, context):
         pw_context.set_default_navigation_timeout(Config.DEFAULT_NAVIGATION_TIMEOUT)
         pw_context.set_default_timeout(Config.DEFAULT_ACTION_TIMEOUT)
         page = pw_context.new_page()
+        
+        # Block unnecessary resources to speed up loading
+        def block_unnecessary_resources(route):
+            if route.request.resource_type in ["image", "font", "media"]:
+                route.abort()
+            else:
+                route.continue_()
+        page.route("**/*", block_unnecessary_resources)
+        
         try:
             _perform_login(page, username, password, execution_id)
+            _ensure_adult_mode(page, execution_id)
             for attempt in range(Config.MAX_INTERNAL_RETRIES):
                 try:
                     novels = _fetch_and_parse_ranking_page(page, ranking_url, target_novel_count, today, execution_id)
                     _log(logging.INFO, execution_id, f"Successfully fetched {len(novels)} novels.", novel_count=len(novels), date=today)
                     return {"novels": novels, "target_novel_count": target_novel_count, "date": today}
                 except (ValueError, PlaywrightTimeoutError) as e:
-                    _log(logging.WARNING, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed: {e}. Retrying...")
                     if attempt < Config.MAX_INTERNAL_RETRIES - 1:
-                        page.reload(wait_until="domcontentloaded")
+                        _log(logging.WARNING, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed: {e}. Retrying...")
                     else:
                         _log(logging.ERROR, execution_id, "All internal retry attempts failed.")
                         raise
@@ -300,4 +345,3 @@ def parse_novel_details(event, context):
         final_error_message = "Function finished without an item to send and without raising an exception."
         _log(logging.CRITICAL, execution_id, final_error_message, novel_id=novel_id)
         raise RuntimeError(final_error_message)
-

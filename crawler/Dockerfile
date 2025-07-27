@@ -29,4 +29,3 @@ RUN dnf install -y \
 RUN playwright install chromium
 
 COPY . .
-
