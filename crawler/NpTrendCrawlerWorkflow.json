@@ -1,0 +1,105 @@
+{
+  "Comment": "Crawl Novelpia daily rankings, parse details in parallel, and handle errors.",
+  "StartAt": "GetRankingAndPurgeQueue",
+  "States": {
+    "GetRankingAndPurgeQueue": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_GET_RANKING_LAMBDA_FUNCTION_NAME",
+      "Parameters": {
+        "input.$": "$",
+        "execution_id.$": "$$.Execution.Id"
+      },
+      "ResultPath": "$.getRankingOutput",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "CrawlFail"
+        }
+      ],
+      "Next": "CallExpressWorkflowForParallelProcessing"
+    },
+    "CallExpressWorkflowForParallelProcessing": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "arn:aws:states:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:stateMachine:NpTrendCrawlerExpressWorkflow",
+        "Input": {
+          "novels.$": "$.getRankingOutput.novels",
+          "date.$": "$.getRankingOutput.date",
+          "execution_id.$": "$$.Execution.Id"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "CrawlFail"
+        }
+      ],
+      "Next": "ConsolidateAndSaveData"
+    },
+    "ConsolidateAndSaveData": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_CONSOLIDATE_DATA_LAMBDA_FUNCTION_NAME",
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Id",
+        "target_novel_count.$": "$.getRankingOutput.target_novel_count",
+        "date.$": "$.getRankingOutput.date"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "CrawlFail"
+        }
+      ],
+      "Next": "CrawlSuccess"
+    },
+    "CrawlFail": {
+      "Type": "Fail",
+      "Comment": "The entire crawl process failed."
+    },
+    "CrawlSuccess": {
+      "Type": "Succeed",
+      "Comment": "The crawl process completed successfully."
+    }
+  },
+  "TimeoutSeconds": 3600
+}

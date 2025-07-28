@@ -1,0 +1,72 @@
+{
+  "Comment": "Express workflow to process novels in parallel using a Map state.",
+  "StartAt": "ProcessNovelsInParallel",
+  "States": {
+    "ProcessNovelsInParallel": {
+      "Type": "Map",
+      "ItemsPath": "$.novels",
+      "MaxConcurrency": 20,
+      "Parameters": {
+        "novel_item.$": "$$.Map.Item.Value",
+        "execution_id.$": "$.execution_id",
+        "date.$": "$.date"
+      },
+      "Iterator": {
+        "StartAt": "GetNovelData",
+        "States": {
+          "GetNovelData": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_GET_NOVEL_DATA_LAMBDA_FUNCTION_NAME",
+            "Parameters": {
+              "date.$": "$.date",
+              "novel.$": "$.novel_item",
+              "execution_id.$": "$.execution_id"
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "States.TaskFailed"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "ResultPath": "$.errorInfo",
+                "Next": "CreatePlaceholderAfterFailure"
+              }
+            ],
+            "End": true
+          },
+          "CreatePlaceholderAfterFailure": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_GET_NOVEL_DATA_LAMBDA_FUNCTION_NAME",
+            "Parameters": {
+              "date.$": "$.date",
+              "novel.$": "$.novel_item",
+              "execution_id.$": "$.execution_id",
+              "is_placeholder": true
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "States.TaskFailed"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "End": true
+    }
+  }
+}
