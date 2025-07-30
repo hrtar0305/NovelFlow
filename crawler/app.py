@@ -228,6 +228,7 @@ def get_ranking_list(event, context):
                 except (ValueError, PlaywrightTimeoutError) as e:
                     if attempt < Config.MAX_INTERNAL_RETRIES - 1:
                         _log(logging.WARNING, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed: {e}. Retrying...")
+                        page.goto("about:blank") # Reset the page to clear state
                     else:
                         _log(logging.ERROR, execution_id, "All internal retry attempts failed.")
                         raise
