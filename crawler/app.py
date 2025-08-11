@@ -161,7 +161,7 @@ def _fetch_and_parse_ranking_page(page, ranking_url, target_novel_count, today, 
     for idx, box in enumerate(boxes[:target_novel_count]):
         onclick_div = box.select_one("div[onclick]")
         raw_onclick = onclick_div['onclick']
-        novel_id = int(raw_onclick.split('/')[-1].strip("';"))
+        novel_id = str(raw_onclick.split('/')[-1].strip("';"))
         
         if novel_id in seen_novel_ids:
             raise ValueError(f"Duplicate novel ID found: {novel_id}.")
@@ -246,7 +246,7 @@ def _create_placeholder_item(novel_info, reason="N/A"):
     return {
         "Date": novel_info['date'], "Ranking": novel_info['ranking'], "ID": novel_info['id'],
         "Score": novel_info['score'], "Title": f"N/A ({reason})", "AuthorName": "N/A",
-        "AuthorID": 0, "View": 0, "Like": 0, "Fav": 0, "Alr": 0, "Eps": 0,
+        "AuthorID": "0", "View": 0, "Like": 0, "Fav": 0, "Alr": 0, "Eps": 0,
         "Tags": [], "Synopsis": ""
     }
 
@@ -254,8 +254,8 @@ def _validate_item(item, novel_id):
     """Validates the structure and types of the parsed item."""
     non_empty_fields = {"Date", "Ranking", "ID", "Score", "AuthorID", "View", "Like", "Fav", "Alr", "Eps"}
     expected_types = {
-        "Date": str, "Ranking": int, "ID": int, "Score": int, "Title": str, "AuthorName": str,
-        "AuthorID": int, "View": int, "Like": int, "Fav": int, "Alr": int, "Eps": int,
+        "Date": str, "Ranking": int, "ID": str, "Score": int, "Title": str, "AuthorName": str,
+        "AuthorID": str, "View": int, "Like": int, "Fav": int, "Alr": int, "Eps": int,
         "Tags": list, "Synopsis": str,
     }
     for field, expected_type in expected_types.items():
@@ -309,7 +309,7 @@ def parse_novel_details(event, context):
                     "Date": today, "Ranking": novel_info['ranking'], "ID": novel_id, "Score": novel_info['score'],
                     "Title": soup.select_one(Config.Selectors.TITLE).get_text(strip=True),
                     "AuthorName": soup.select_one(Config.Selectors.AUTHOR_LINK).get_text(strip=True),
-                    "AuthorID": int(soup.select_one(Config.Selectors.AUTHOR_LINK)['href'].split("/")[-1]),
+                    "AuthorID": str(soup.select_one(Config.Selectors.AUTHOR_LINK)['href'].split("/")[-1]),
                     "View": _parse_int_from_raw_text(counter_line_a[0].get_text(strip=True)),
                     "Like": _parse_int_from_raw_text(counter_line_a[1].get_text(strip=True)),
                     "Fav": _parse_int_from_raw_text(info_count2[0].get_text(strip=True)),
