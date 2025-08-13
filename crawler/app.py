@@ -33,7 +33,7 @@ class Config:
     RANKING_URL_TEMPLATE = "https://novelpia.com/top100/all/weekly/view/all/all/#more{}"
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
     RANKING_LOAD_TIMEOUT = 30000  # 30 seconds
-    MAX_INTERNAL_RETRIES = 5
+    MAX_INTERNAL_RETRIES = 10
     SEOUL_TIMEZONE = timezone('Asia/Seoul')
 
     # CSS Selectors
@@ -204,38 +204,55 @@ def get_ranking_list(event, context):
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=Config.BROWSER_ARGS)
-        pw_context = browser.new_context(user_agent=Config.USER_AGENT, viewport=Config.VIEWPORT_SIZE)
-        pw_context.set_default_navigation_timeout(Config.DEFAULT_NAVIGATION_TIMEOUT)
-        pw_context.set_default_timeout(Config.DEFAULT_ACTION_TIMEOUT)
-        page = pw_context.new_page()
-        
-        # Block unnecessary resources to speed up loading
-        def block_unnecessary_resources(route):
-            if route.request.resource_type in ["image", "font", "media"]:
-                route.abort()
-            else:
-                route.continue_()
-        page.route("**/*", block_unnecessary_resources)
-        
+        pw_context = None
         try:
-            _perform_login(page, username, password, execution_id)
-            _ensure_adult_mode(page, execution_id)
+            # Create context once to maintain login session across retries
+            pw_context = browser.new_context(user_agent=Config.USER_AGENT, viewport=Config.VIEWPORT_SIZE)
+            pw_context.set_default_navigation_timeout(Config.DEFAULT_NAVIGATION_TIMEOUT)
+            pw_context.set_default_timeout(Config.DEFAULT_ACTION_TIMEOUT)
+
+            # --- Perform login and setup only once ---
+            setup_page = pw_context.new_page()
+            try:
+                def block_unnecessary_resources(route):
+                    if route.request.resource_type in ["image", "font", "media"]:
+                        route.abort()
+                    else:
+                        route.continue_()
+                setup_page.route("**/*", block_unnecessary_resources)
+                _perform_login(setup_page, username, password, execution_id)
+                _ensure_adult_mode(setup_page, execution_id)
+            finally:
+                setup_page.close() # Close the setup page immediately after use
+
+            # --- Retry loop for fetching data, using a new page for each attempt ---
             for attempt in range(Config.MAX_INTERNAL_RETRIES):
+                page = None  # Ensure page is defined in the loop's scope
                 try:
+                    page = pw_context.new_page()
+                    page.route("**/*", block_unnecessary_resources)
+                    
                     novels = _fetch_and_parse_ranking_page(page, ranking_url, target_novel_count, today, execution_id)
+                    
                     _log(logging.INFO, execution_id, f"Successfully fetched {len(novels)} novels.", novel_count=len(novels), date=today)
                     return {"novels": novels, "target_novel_count": target_novel_count, "date": today}
+
                 except (ValueError, PlaywrightTimeoutError) as e:
                     if attempt < Config.MAX_INTERNAL_RETRIES - 1:
                         _log(logging.WARNING, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed: {e}. Retrying...")
-                        page.goto("about:blank") # Reset the page to clear state
                     else:
-                        _log(logging.ERROR, execution_id, "All internal retry attempts failed.")
+                        _log(logging.ERROR, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed. All internal retry attempts failed.")
                         raise
+                finally:
+                    if page:
+                        page.close()
+
         except Exception as e:
             _log(logging.ERROR, execution_id, f"A non-recoverable error occurred in get_ranking_list: {e}", exc_info=True)
             raise
         finally:
+            if pw_context:
+                pw_context.close()
             browser.close()
 
 # =====================================================================================
