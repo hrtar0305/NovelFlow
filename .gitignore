@@ -11,3 +11,6 @@ __pycache__/
 
 ### Gemini context
 GEMINI.md
+
+### Data files
+data/

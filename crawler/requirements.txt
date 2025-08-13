@@ -1,5 +1,5 @@
-playwright
-boto3
-pytz
-requests
-beautifulsoup4
+playwright==1.54.0
+boto3==1.38.36
+pytz==2025.2
+requests==2.32.4
+beautifulsoup4==4.13.4
