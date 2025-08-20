@@ -58,6 +58,12 @@ def lambda_handler(event, context):
         # Analyze and store tag trends using the successfully processed items
         calculate_and_store_tag_trends(processed_items)
 
+        # Extract date from file_key (e.g., '2025-08-19.csv' -> '2025-08-19')
+        date_from_file = file_key.split('/')[-1].replace('.csv', '')
+
+        # Update AVAILABLE_DATES item in DynamoDB
+        update_available_dates(date_from_file)
+
         return {
             'statusCode': 200,
             'body': json.dumps(f'Successfully processed {file_key} and stored {len(items)} items.')
@@ -167,3 +173,36 @@ def calculate_and_store_tag_trends(items):
         logger.info(f"Successfully calculated and stored tag trends for {date}.")
     except Exception as e:
         logger.error(f"Failed to store tag trends for {date}. Error: {e}")
+
+def update_available_dates(date_from_file):
+    """
+    Updates the AVAILABLE_DATES item in DynamoDB with the new date.
+    """
+    try:
+        # Get the current list of dates to avoid duplicates
+        response = table.get_item(
+            Key={'ID': 'AVAILABLE_DATES', 'Date': 'ALL_DATES'},
+            ProjectionExpression="dates"
+        )
+        
+        # Safely get the list of dates, default to an empty list if not found
+        current_dates_set = set(response.get('Item', {}).get('dates', []))
+
+        # Add the new date. A set automatically handles duplicates.
+        current_dates_set.add(date_from_file)
+
+        # Convert back to a list and sort it for consistent ordering
+        sorted_dates = sorted(list(current_dates_set), reverse=True)
+
+        # Update the entire item with the new list of dates
+        table.put_item(
+            Item={
+                'ID': 'AVAILABLE_DATES',
+                'Date': 'ALL_DATES',
+                'dates': sorted_dates
+            }
+        )
+        logger.info(f"Successfully updated AVAILABLE_DATES with {date_from_file}.")
+
+    except Exception as e:
+        logger.error(f"Failed to update AVAILABLE_DATES with {date_from_file}. Error: {e}")
