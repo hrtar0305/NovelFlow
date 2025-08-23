@@ -1,0 +1,2 @@
+algoliasearch==4.24.0
+urllib3==1.26.18

@@ -1,19 +1,71 @@
-### Environments
-venv/
+# =============================================================================
+# Python
+# =============================================================================
 
-### Python cache
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-### IDE settings
+# Virtual Environments - Common names
+venv/
+.venv/
+env/
+.env/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+
+# =============================================================================
+# Project-specific
+# =============================================================================
+
+# AWS Lambda dependency packages
+data-pipeline/package/
+
+# Local data files
+data/
+
+# Deployment artifacts
+*.zip
+
+# Gemini context file
+GEMINI.md
+
+
+# =============================================================================
+# Web Frontend (Node.js / Vite / React)
+# =============================================================================
+
+# Dependencies
+webapp/frontend/node_modules/
+
+# Environment variables - IMPORTANT: Never commit secrets
+webapp/frontend/.env
+webapp/frontend/.env.*
+!webapp/frontend/.env.example
+
+# Build output
+webapp/frontend/dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# =============================================================================
+# General
+# =============================================================================
+
+# IDE / Editor configuration
 .vscode/
 .idea/
 
-### Gemini context
-GEMINI.md
-
-### Data files
-data/
-
-### Zip files
-*.zip
+# OS-generated files
+.DS_Store
+Thumbs.db
