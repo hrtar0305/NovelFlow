@@ -1,0 +1,421 @@
+/* Custom styles for NP-Trend, inspired by the reference design */
+
+body {
+  background-color: #f9fafb; /* Light gray background */
+  color: #111827; /* Dark gray text */
+}
+
+/* Header Styles */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: rgba(17, 24, 39, 0.9);
+  color: white;
+  padding: 0.5rem 1rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.search-container {
+  position: relative;
+  width: 100%;
+  min-width: 500px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  padding-left: 2.5rem; /* Space for the icon */
+  border-radius: 9999px; /* pill-shaped */
+  border: 1px solid #4b5563; /* gray-600 */
+  background-color: #374151; /* gray-700 */
+  color: white;
+  font-size: 0.875rem;
+}
+
+.search-input::placeholder {
+  color: #9ca3af; /* gray-400 */
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #3b82f6; /* blue-500 */
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af; /* gray-400 */
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.5rem;
+  background-color: white;
+  border: 1px solid #e5e7eb; /* gray-200 */
+  border-radius: 0.5rem; /* rounded-lg */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.search-result-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  color: #111827; /* gray-900 */
+}
+
+.search-result-item:hover {
+  background-color: #f3f4f6; /* gray-100 */
+}
+
+.search-result-item a {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.search-result-item small {
+  color: #6b7280; /* gray-500 */
+}
+
+.app-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  flex-wrap: nowrap; /* Force items to stay on one line */
+}
+
+.app-header-left {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.app-header-center {
+  flex-grow: 1;
+  display: flex;
+  padding: 0 1rem;
+}
+
+.app-header-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.app-header-brand {
+  font-size: 1.25rem; /* text-xl */
+  font-weight: 700; /* font-bold */
+  color: white;
+  text-decoration: none;
+}
+
+.app-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem; /* space-x-2 */
+}
+
+.app-header-link {
+  color: #d1d5db; /* gray-300 */
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem; /* rounded-md */
+  text-decoration: none;
+  font-size: 0.875rem; /* text-sm */
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.app-header-link:hover {
+  background-color: #374151; /* gray-700 */
+  color: white;
+}
+
+
+/* Custom Table Styles */
+.custom-table-wrapper {
+  border: 1px solid #d1d5db; /* gray-300 */
+  border-radius: 0.5rem; /* rounded-lg */
+  overflow: auto; /* Enable both vertical and horizontal scrolling */
+  background-color: #ffffff;
+  position: relative;
+  max-height: 70vh; /* Set a max-height relative to the viewport height */
+  min-height: 400px; /* Set a fixed minimum height */
+}
+
+.custom-table thead {
+  background-color: #f9fafb; /* gray-50 */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.custom-table th {
+  padding: 0.8rem 1rem; /* A bit more vertical padding */
+  font-size: 0.95rem;
+  font-weight: 500; /* Regular weight for headers */
+  white-space: nowrap; /* Prevent header text from wrapping */
+  vertical-align: middle;
+}
+
+.cursor-pointer.sortable-header:hover {
+  background-color: #f0f0f0; /* A slightly darker grey for hover */
+}
+
+.custom-table td {
+  padding: 0.8rem 1rem; /* A bit more vertical padding */
+  font-size: 0.9rem;   /* Larger base font size */
+  color: #374151; /* gray-700 */
+  border-bottom: 1px solid #e5e7eb; /* Standard border for rows */
+  white-space: nowrap;
+  vertical-align: middle;
+  font-weight: normal; /* Remove all default bolding */
+}
+
+
+
+.custom-table tbody tr:hover {
+  background-color: #f9fafb; /* gray-50 */
+}
+
+/* Custom Form Styles */
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.form-control {
+  border: 1px solid #d1d5db; /* gray-300 */
+}
+
+/* Ensure react-datepicker input has enough width */
+.react-datepicker__input-container .react-datepicker__input {
+  min-width: 120px; /* Adjust as needed */
+}
+
+.custom-button {
+    width: 100%;
+    background-color: #4f46e5; /* indigo-600 */
+    color: white;
+    padding: 0.6em 1.2em;
+    border-radius: 0.375rem;
+    border: none;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.custom-button:hover {
+    background-color: #4338ca; /* indigo-700 */
+}
+
+/* Ensure selected and today's date is always highlighted */
+.react-datepicker__day--selected.react-datepicker__day--today,
+.react-datepicker__day--selected.react-datepicker__day--today:hover {
+  background-color: #216ba5 !important; /* A standard blue for selected/today */
+  color: white !important;
+}
+
+/* Disable react-datepicker today highlight only if not selected */
+.react-datepicker__day--today:not(.react-datepicker__day--selected) {
+  background-color: transparent !important;
+  font-weight: normal;
+}
+
+.react-datepicker__day--keyboard-selected {
+    background-color: transparent;
+    color: black;
+}
+
+/* --- Novel Detail Page DatePicker Fixes --- */
+
+/* Hide the 'in-selecting-range' preview to prevent user confusion */
+.react-datepicker__day--in-selecting-range {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+/* Ensure selected range is clearly visible */
+.react-datepicker__day--in-range {
+    background-color: #bfdbfe; /* A light blue for the range */
+    color: #1e3a8a;
+}
+
+.react-datepicker__day--range-start,
+.react-datepicker__day--range-end,
+.react-datepicker__day--highlighted {
+    background-color: #3b82f6; /* A darker blue for start/end points */
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.react-datepicker-popper {
+  z-index: 9999 !important; /* Ensure it's always on top */
+}
+
+/* --- RankChangeIndicator Styles (1-1, v2) --- */
+.rank-change-badge {
+  display: inline-flex; /* Change to inline-flex for better vertical alignment with items */
+  align-items: center; /* Center items vertically */
+  justify-content: center; /* Center items horizontally */
+  width: 45px; /* Fixed width as requested */
+  height: 25px; /* Fixed height as requested */
+  padding: 0; /* Remove padding as width/height are fixed */
+  font-size: 0.875em;
+  font-weight: 600;
+  line-height: 1; /* Ensure line-height doesn't affect height */
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle; /* Use middle for better alignment */
+  border-radius: 0.375rem;
+}
+
+.rank-up {
+  background-color: #e6f4ea; /* Light Pastel Green */
+  color: #1e8449; /* Darker Green */
+}
+
+.rank-down {
+  background-color: #fce8e6; /* Light Pastel Red */
+  color: #c0392b; /* Darker Red */
+}
+
+.rank-same {
+  background-color: #f1f3f5; /* Light Pastel Gray */
+  color: #495057; /* Darker Gray */
+}
+
+/* --- DatePicker Wrapper Styles (1-2, v3) --- */
+.date-picker-wrapper {
+  display: flex;
+  align-items: center;
+  border: 1px solid #ced4da; /* Standard bootstrap border color */
+  border-radius: .375rem; /* Slightly more rounded */
+  padding: 0.3rem 0.6rem; /* Adjusted padding */
+  background-color: #fff;
+  width: auto; /* Fit content */
+  cursor: pointer; /* Make it look clickable */
+  transition: border-color .15s ease-in-out,box-shadow .15s ease-in-out;
+}
+
+.date-picker-wrapper:hover {
+  border-color: #86b7fe; /* Mimic bootstrap focus glow */
+}
+
+.date-picker-wrapper .date-picker-icon {
+  margin-right: 0.5rem;
+  color: #495057;
+}
+
+.date-picker-wrapper .form-control {
+  border: none;
+  box-shadow: none; /* Remove focus shadow */
+  padding: 0.2rem 0; /* Adjusted padding */
+  font-size: 0.9rem; /* Adjusted font size */
+  width: 90px; /* Adjusted width */
+  cursor: pointer !important; /* Unify cursor */
+  background-color: transparent; /* Ensure it doesn't have its own background */
+}
+
+/* Prevent focus glow on the input field */
+.date-picker-wrapper .form-control:focus {
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background-color: transparent !important;
+}
+
+/* --- Filter Group Styles --- */
+.filter-group-card .card-header {
+  background-color: #f8f9fa;
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.filter-group-card .card-body {
+  padding: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-height: 58px;
+}
+
+/* === Table Readability & Style Enhancements (User Request) === */
+
+/* Increase base font size and padding for all cells for better spacing */
+.custom-table th,
+.custom-table td {
+  padding: 0.8rem 1rem; /* A bit more vertical padding */
+  font-size: 0.9rem;   /* Larger base font size */
+  vertical-align: middle;
+  font-weight: normal; /* Remove all default bolding */
+}
+
+/* Style headers for clarity */
+.custom-table th {
+  font-size: 0.95rem;
+  font-weight: 500; /* Regular weight for headers */
+  white-space: nowrap; /* Prevent header text from wrapping */
+}
+
+/* Make Title column bold */
+.novel-rankings-table td:nth-child(3) {
+  font-weight: 700;
+}
+
+/* Make Ranking column slightly larger to stand out */
+.custom-table td:nth-child(1) {
+  font-size: 1.05rem;
+}
+
+/* Style for Title and AuthorName links */
+.custom-table td a {
+  color: #111827; /* Black color for links */
+  text-decoration: none;
+  transition: color 0.15s ease-in-out;
+}
+
+.custom-table td a:hover {
+  color: #3b82f6; /* A nice blue on hover */
+  text-decoration: underline;
+}
+
+/* Ensure sticky header for Tag Rankings table */
+.tag-rankings-table thead {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 100 !important; /* Very high z-index to ensure it's on top */
+  background-color: #f9fafb !important; /* Ensure background is not transparent */
+}
+
+.subtle-link {
+  color: inherit; /* Inherit color from parent paragraph */
+  text-decoration: none; /* Remove underline by default */
+  transition: text-decoration 0.2s ease-in-out; /* Smooth transition for underline */
+}
+
+.subtle-link:hover {
+  text-decoration: underline; /* Add underline on hover */
+}
+
+.trend-card {
+  transition: box-shadow 0.2s ease-in-out;
+}
+
+.trend-card:hover {
+  box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1) !important;
+}

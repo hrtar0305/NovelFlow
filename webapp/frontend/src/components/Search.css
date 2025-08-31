@@ -1,0 +1,106 @@
+/* Main container for the search component */
+.search-container {
+  position: relative;
+}
+
+.search-wrapper {
+  position: relative;
+  width: 100%; /* Ensure it takes full width of its parent */
+}
+
+/* Set a fixed height on the form to prevent resizing during IME composition */
+.ais-SearchBox-form {
+  /* height: 38px; --- This is no longer needed with structural changes */
+}
+
+/* Style for the search box itself */
+.search-box {
+  width: 400px; /* Doubled width as per request */
+}
+
+.search-box .ais-SearchBox-input {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border: 1px solid #6b7280; /* gray-500 */
+  border-radius: 20px; /* pill shape */
+  background-color: #374151; /* gray-700 */
+  color: white;
+  font-size: 0.9rem;
+}
+
+.search-box .ais-SearchBox-input::placeholder {
+  color: #d1d5db; /* gray-300 */
+}
+
+/* Hide the default search and reset buttons */
+.search-box .ais-SearchBox-submit,
+.search-box .ais-SearchBox-reset {
+  display: none;
+}
+
+/* Container for the search results dropdown */
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 400px; /* Match search box width */
+  margin-top: 8px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Hide results when there is no query */
+.ais-Hits--empty {
+  display: none;
+}
+
+.ais-Hits-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+}
+
+/* Individual hit item */
+.aa-ItemLink {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+}
+
+.aa-ItemLink:hover {
+  background-color: #f3f4f6; /* gray-100 */
+}
+
+.aa-ItemContent {
+  display: flex;
+  flex-direction: column;
+}
+
+.aa-ItemTitle {
+  font-weight: 600;
+  color: #1f2937; /* gray-800 */
+}
+
+.aa-ItemContentDescription {
+  font-size: 0.8rem;
+  color: #6b7280; /* gray-500 */
+  text-transform: uppercase;
+}
+
+/* Placeholder for when search is not configured */
+.search-placeholder {
+    color: #9ca3af; /* gray-400 */
+    font-size: 0.9rem;
+    padding: 0.5rem 0;
+}
+
+/* Force-hide the loading indicator to prevent layout shifts */
+.ais-SearchBox-loadingIndicator {
+    display: none !important;
+}

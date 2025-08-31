@@ -36,6 +36,11 @@ data/
 # Gemini context file
 GEMINI.md
 
+# User-requested ignores
+DATA_COLLECTION.md
+todo.txt
+webapp/frontend/public/DATA_COLLECTION.md
+
 
 # =============================================================================
 # Web Frontend (Node.js / Vite / React)
