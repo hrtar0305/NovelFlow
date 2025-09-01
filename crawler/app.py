@@ -38,7 +38,7 @@ class Config:
 
     # CSS Selectors
     class Selectors:
-        BANNER_CLOSE = ".layer-close-x3"
+        BANNER_CLOSE = "div.detail-modal-background.show .layer-close-x3"
         TOGGLE_MENU = "#toggle-menu"
         ADULT_SWITCH = "#pc-sidemenu img.switch-adult"
         LOGIN_EMAIL = "#login_box input[name='email']"
@@ -90,7 +90,7 @@ def _perform_login(page, username, password, execution_id):
     # Check for and close any banner that might obstruct the login process
     try:
         banner_locator = page.locator(Config.Selectors.BANNER_CLOSE)
-        banner_locator.wait_for(state='visible', timeout=1000) # 1 second timeout
+        banner_locator.wait_for(state='visible', timeout=7000) # 7 second timeout
         banner_locator.click()
         _log(logging.INFO, execution_id, "Banner closed.")
     except PlaywrightTimeoutError:
@@ -215,7 +215,22 @@ def get_ranking_list(event, context):
             setup_page = pw_context.new_page()
             try:
                 def block_unnecessary_resources(route):
-                    if route.request.resource_type in ["image", "font", "media"]:
+                    blocked_domains = [
+                        "rubiconproject.com",
+                        "google-analytics.com",
+                        "googletagmanager.com",
+                        "googleadservices.com",
+                        "doubleclick.net",
+                        "facebook.net",
+                        "facebook.com",
+                        "moloco.com",
+                        "creativecdn.com",
+                        "pangle-ads.com",
+                        "tiktok.com",
+                    ]
+                    request = route.request
+                    if (request.resource_type in ["image", "font", "media"] or 
+                            any(domain in request.url for domain in blocked_domains)):
                         route.abort()
                     else:
                         route.continue_()
