@@ -14,13 +14,13 @@ const Header = () => {
           <Search />
         </div>
         <nav className="app-header-right">
-          <NavLink to="/novels/rankings" className="app-header-link">
+          <NavLink to="/novels/rankings" className="app-header-link" style={{ fontSize: '1.05rem' }}>
             소설 랭킹
           </NavLink>
-          <NavLink to="/tags/rankings" className="app-header-link">
+          <NavLink to="/tags/rankings" className="app-header-link" style={{ fontSize: '1.05rem' }}>
             태그 랭킹
           </NavLink>
-          <NavLink to="/trends" className="app-header-link">
+          <NavLink to="/trends" className="app-header-link" style={{ fontSize: '1.05rem' }}>
             데이터 분석
           </NavLink>
         </nav>

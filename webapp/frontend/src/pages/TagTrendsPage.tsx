@@ -1,25 +1,86 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
-import CalendarPicker from '../components/CalendarPicker';
-import TagTrendAnalysisContent from '../components/trends/TagTrendAnalysisContent';
-import { getAvailableDates, getTagRankingsByDate } from '../services/api';
-import { Alert, Spinner } from 'react-bootstrap';
+import { getAvailableDates, analyzeTagTrends } from '../services/api';
+import { Alert, Spinner, Card, OverlayTrigger, Tooltip, Badge, Row, Col, ButtonGroup, Button } from 'react-bootstrap';
+import DateRangePicker from '../components/novel/DateRangePicker';
+import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 
-// Define the Tag type directly as it's not exported from api.ts
-interface Tag {
-  TagName: string;
-  ViewCount: number;
-  Rank: number;
+// API 응답 데이터 타입 정의
+interface TagAnalysisResult {
+  tag: string;
+  slope: number;
+  avg_daily_avg_score: number;
+  avg_total_score: number;
+  min_score: number;
+  max_score: number;
+  std_dev: number;
+  score_series: number[];
+  total_score_series?: number[]; // 스테디셀러/격동의 태그에만 존재
+  normalized_std_dev?: number; // 백엔드에서 추가된 필드
 }
+
+interface AnalysisReport {
+  stable_popular: TagAnalysisResult[];
+  rising_trend: TagAnalysisResult[];
+  falling_trend: TagAnalysisResult[];
+  volatile_tags: TagAnalysisResult[];
+  noteworthy: TagAnalysisResult[];
+}
+
+const TagCategoryCard: React.FC<{
+  title: string;
+  description: string;
+  tags: TagAnalysisResult[];
+  category: keyof AnalysisReport;
+  variant: string;
+  renderTooltip: (props: any, data: TagAnalysisResult, category: keyof AnalysisReport) => JSX.Element;
+}> = ({ title, description, tags, category, variant, renderTooltip }) => {
+  const [topN, setTopN] = useState(5);
+  const topNOptions = [5, 10, 20];
+
+  const displayedTags = tags.slice(0, topN);
+
+  return (
+    <Card className="h-100 shadow-sm">
+      <Card.Header className={`bg-${variant} bg-opacity-10 border-bottom-0 pt-3 pb-2`}>
+        <div className="d-flex align-items-center mb-2">
+          <h4 className="mb-0 h5 me-3">{title}</h4>
+          <ButtonGroup size="sm">
+            {topNOptions.map(n => (
+              <Button
+                key={n}
+                variant={topN === n ? variant : 'outline-secondary'}
+                onClick={() => setTopN(n)}
+                className="fw-bold"
+                style={{ minWidth: '40px' }}
+              >
+                {n}
+              </Button>
+            ))}
+          </ButtonGroup>
+        </div>
+        <p className="mb-0 text-muted small">{description}</p>
+      </Card.Header>
+      <Card.Body className="pt-2">
+        {displayedTags && displayedTags.length > 0 ? (
+          <div className="d-flex flex-wrap gap-2">
+            {displayedTags.map((tagData) => (
+              <OverlayTrigger key={tagData.tag} placement="top" delay={{ show: 250, hide: 400 }} overlay={(props) => renderTooltip(props, tagData, category)}>
+                <Badge pill bg={variant} className="p-2 px-3 fs-6 fw-bold" style={{ cursor: 'pointer' }}>{tagData.tag}</Badge>
+              </OverlayTrigger>
+            ))}
+          </div>
+        ) : (<div className="d-flex align-items-center justify-content-center h-100 text-muted"><p className="mb-0">해당 태그가 없습니다.</p></div>)}
+      </Card.Body>
+    </Card>
+  );
+};
 
 const TagTrendsPage: React.FC = () => {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [availableDates, setAvailableDates] = useState<Set<string>>(new Set());
-  
-  const [startData, setStartData] = useState<Tag[]>([]);
-  const [endData, setEndData] = useState<Tag[]>([]);
-
+  const [analysisResult, setAnalysisResult] = useState<AnalysisReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,18 +88,16 @@ const TagTrendsPage: React.FC = () => {
     const fetchAvailableDates = async () => {
       try {
         const response = await getAvailableDates();
-        const availableDatesArray: string[] = response.data.available_dates || [];
-        const dateSet = new Set(availableDatesArray);
-        setAvailableDates(dateSet);
+        const dates: string[] = response.data.available_dates || [];
+        setAvailableDates(new Set(dates));
 
-        if (availableDatesArray.length > 0) {
-          const lastDate = new Date(availableDatesArray[availableDatesArray.length - 1]);
+        if (dates.length > 0) {
+          const lastDate = new Date(dates[0]); // Assuming dates are sorted descending
           const sevenDaysAgo = subDays(lastDate, 6);
-          
-          const firstAvailable = new Date(availableDatesArray[0]);
-          
+          const firstAvailableDate = new Date(dates[dates.length - 1]);
+
           setEndDate(lastDate);
-          setStartDate(sevenDaysAgo < firstAvailable ? firstAvailable : sevenDaysAgo);
+          setStartDate(sevenDaysAgo < firstAvailableDate ? firstAvailableDate : sevenDaysAgo);
         }
       } catch (err) {
         setError('데이터 제공 날짜를 불러오는 데 실패했습니다.');
@@ -48,122 +107,257 @@ const TagTrendsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!startDate || !endDate) return;
-
-      // Date validation
-      if (startDate > endDate) {
-        setError('시작일은 종료일보다 이전 날짜여야 합니다.');
-        setStartData([]);
-        setEndData([]);
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const startTagsResponse = await getTagRankingsByDate(format(startDate, 'yyyy-MM-dd'));
-        const endTagsResponse = await getTagRankingsByDate(format(endDate, 'yyyy-MM-dd'));
-
-        const startTags = Array.isArray(startTagsResponse.data) ? startTagsResponse.data : [];
-        const endTags = Array.isArray(endTagsResponse.data) ? endTagsResponse.data : [];
-
-        setStartData(startTags);
-        setEndData(endTags);
-
-      } catch (err) {
-        setError('태그 랭킹 데이터를 불러오는 데 실패했습니다.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
+    if (startDate && endDate) {
+      handleAnalysis();
+    }
   }, [startDate, endDate]);
 
-  const { risingTags, fallingTags, newTags, droppedTags } = useMemo(() => {
-    if (!startData.length || !endData.length) {
-      return { risingTags: [], fallingTags: [], newTags: [], droppedTags: [] };
+  const handleDateRangeChange = (start: Date | null, end: Date | null) => {
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  const handleAnalysis = async () => {
+    if (!startDate || !endDate) {
+      setError('시작일과 종료일을 모두 선택해주세요.');
+      return;
+    }
+    if (startDate > endDate) {
+        setError('시작일은 종료일보다 이전 날짜여야 합니다.');
+        return;
     }
 
-    const startRankMap = new Map(startData.map((tag, i) => [tag.TagName, i + 1]));
-    const endRankMap = new Map(endData.map((tag, i) => [tag.TagName, i + 1]));
+    setIsLoading(true);
+    setError(null);
+    setAnalysisResult(null);
 
-    const allTags = new Set([...startData.map(t => t.TagName), ...endData.map(t => t.TagName)]);
+    try {
+      const response = await analyzeTagTrends(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'));
+      setAnalysisResult(response.data);
+    } catch (err: any) {
+        if (err.response && err.response.status === 404) {
+            setError('해당 기간에 분석할 데이터가 충분하지 않습니다.');
+        } else {
+            setError('태그 트렌드 분석 중 오류가 발생했습니다.');
+        }
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const changes: { name: string; startRank: number | null; endRank: number | null; change: number }[] = [];
-    const newIn: Tag[] = [];
-    const droppedOut: Tag[] = [];
+  const renderTooltip = (props: any, data: TagAnalysisResult, category: keyof AnalysisReport) => {
+    
+    interface TooltipInfo {
+        label: string;
+        value: string;
+        isKey?: boolean;
+    }
 
-    allTags.forEach(tagName => {
-      const startRank = startRankMap.get(tagName);
-      const endRank = endRankMap.get(tagName);
+    let info: TooltipInfo[] = [];
 
-      if (startRank && endRank) {
-        changes.push({ name: tagName, startRank, endRank, change: startRank - endRank });
-      } else if (!startRank && endRank) {
-        const tagData = endData.find(t => t.TagName === tagName);
-        if (tagData) newIn.push(tagData);
-      } else if (startRank && !endRank) {
-        const tagData = startData.find(t => t.TagName === tagName);
-        if (tagData) droppedOut.push(tagData);
-      }
-    });
+    switch (category) {
+        case 'rising_trend':
+        case 'falling_trend':
+            info = [
+                { label: '추세선 기울기', value: data.slope.toFixed(2), isKey: true },
+                { label: '평균 총합 점수', value: data.avg_total_score.toFixed(2) },
+                { label: '평균 일일 점수', value: data.avg_daily_avg_score.toFixed(2) },
+                { label: '평균 일일 점수 범위', value: `${data.min_score.toFixed(2)} ~ ${data.max_score.toFixed(2)}` },
+            ];
+            break;
+        case 'stable_popular':
+            info = [
+                { label: '상대 변동성', value: `${(data.normalized_std_dev ?? 0).toFixed(2)} (낮음)`, isKey: true },
+                { label: '평균 총합 점수', value: data.avg_total_score.toFixed(2) },
+                { label: '평균 일일 점수', value: data.avg_daily_avg_score.toFixed(2) },
+                { label: '평균 일일 점수 범위', value: `${data.min_score.toFixed(2)} ~ ${data.max_score.toFixed(2)}` },
+            ];
+            break;
+        case 'volatile_tags':
+            info = [
+                { label: '상대 변동성', value: `${(data.normalized_std_dev ?? 0).toFixed(2)} (높음)`, isKey: true },
+                { label: '평균 총합 점수', value: data.avg_total_score.toFixed(2) },
+                { label: '평균 일일 점수', value: data.avg_daily_avg_score.toFixed(2) },
+                { label: '평균 일일 점수 범위', value: `${data.min_score.toFixed(2)} ~ ${data.max_score.toFixed(2)}` },
+            ];
+            break;
+        case 'noteworthy':
+            info = [
+                { label: '평균 일일 점수 범위', value: `${data.min_score.toFixed(2)} ~ ${data.max_score.toFixed(2)}`, isKey: true },
+                { label: '평균 총합 점수', value: data.avg_total_score.toFixed(2) },
+                { label: '평균 일일 점수', value: data.avg_daily_avg_score.toFixed(2) },
+                { label: '상대 변동성', value: (data.normalized_std_dev ?? 0).toFixed(2) },
+            ];
+            break;
+    }
 
-    const rising = changes.filter(c => c.change > 0).sort((a, b) => b.change - a.change);
-    const falling = changes.filter(c => c.change < 0).sort((a, b) => a.change - b.change);
+    let chartDataSource: number[];
+    let chartStrokeColor = "#8884d8"; // Default color for avg score (purple)
 
-    return { risingTags: rising, fallingTags: falling, newTags: newIn, droppedTags: droppedOut };
-  }, [startData, endData]);
+    switch (category) {
+        case 'stable_popular':
+        case 'volatile_tags':
+            // 이 카테고리들은 '일일 총합 점수'의 변동성을 기준으로 하므로 해당 차트를 표시
+            chartDataSource = data.total_score_series || [];
+            chartStrokeColor = "#82ca9d"; // Green for total score based charts
+            break;
+        default: // rising_trend, falling_trend, noteworthy
+            // 이 카테고리들은 '일일 평균 점수'를 기준으로 하므로 해당 차트를 표시
+            chartDataSource = data.score_series;
+            break;
+    }
+
+    // --- Dynamic Y-Axis Domain Calculation ---
+    let yDomain: [number | 'auto', number | 'auto'] = ['auto', 'auto'];
+    const PADDING_FACTOR = 0.1; // 10% padding for min/max based charts
+
+    switch (category) {
+        case 'stable_popular':
+        case 'volatile_tags': {
+            // 사용자의 요청에 따라, 변동성 차트도 최소/최대값 기준으로 동적 범위를 사용하도록 변경합니다.
+            const scores = data.total_score_series || [];
+            if (scores.length > 0) {
+                const min = Math.min(...scores);
+                const max = Math.max(...scores);
+                if (min === max) {
+                    const padding = max > 0 ? max * PADDING_FACTOR : 1;
+                    yDomain = [max - padding, max + padding];
+                } else {
+                    const range = max - min;
+                    const padding = range * PADDING_FACTOR;
+                    yDomain = [min - padding, max + padding];
+                }
+                yDomain[0] = Math.max(0, Math.floor(yDomain[0] as number));
+                yDomain[1] = Math.ceil(yDomain[1] as number);
+            } else {
+                yDomain = [0, 100]; // 데이터가 없을 경우 기본 범위
+            }
+            break;
+        }
+        default: { // rising_trend, falling_trend, noteworthy
+            // For other charts, focus on showing the range of change.
+            const min = data.min_score;
+            const max = data.max_score;
+            if (min === max) {
+                const padding = max > 0 ? max * PADDING_FACTOR : 1;
+                yDomain = [max - padding, max + padding];
+            } else {
+                const range = max - min;
+                const padding = range * PADDING_FACTOR;
+                yDomain = [min - padding, max + padding];
+            }
+            yDomain[0] = Math.max(0, Math.floor(yDomain[0] as number));
+            yDomain[1] = Math.ceil(yDomain[1] as number);
+            break;
+        }
+    }
+
+    const chartData = chartDataSource.map((value, index) => ({ name: index, value }));
+
+    return (
+        <Tooltip {...props} className="tag-trend-tooltip">
+            <div>
+                {info.map((item, index) => (
+                    <div key={index} className={`d-flex ${item.isKey ? 'fw-bold' : ''}`}>
+                        <span style={{ width: '150px', flexShrink: 0 }}>{item.label}:</span>
+                        <span>{item.value}</span>
+                    </div>
+                ))}
+            </div>
+            <div style={{ width: '100%', height: '60px', marginTop: '10px', marginLeft: '-10px' }}>
+                <ResponsiveContainer>
+                    <LineChart data={chartData}>
+                        <YAxis domain={yDomain} hide={true} />
+                        <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke={chartStrokeColor}
+                            strokeWidth={2}
+                            dot={false}
+                            isAnimationActive={false}
+                        />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+        </Tooltip>
+    );
+  };
 
   return (
-    <div className="p-4 lg:container mx-auto">
-      <div className="mb-4">
-        <h1 className="h2 mb-2 ps-0">태그 트렌드 분석</h1>
-        <p className="text-muted mb-0">
-          두 날짜를 비교하여 인기가 상승하거나 하락한 태그를 확인합니다.
-        </p>
+    <div className="container-fluid p-4">
+      <div className="mb-3">
+        <h1 className="h2 mb-2">태그 트렌드 분석</h1>
+        <p className="text-muted">지정된 기간 동안의 태그 점수 변화를 분석하여, 주목할 만한 트렌드를 카테고리별로 보여줍니다.</p>
       </div>
 
-      <div className="d-flex flex-wrap gap-3 mb-4 p-3 border rounded-3 bg-light">
-        <div className="d-flex align-items-center gap-2">
-          <span className="form-label mb-0">시작일:</span>
-          <CalendarPicker
-            selectedDate={startDate}
-            onDateChange={setStartDate}
-            availableDates={availableDates}
-            highlightDates={[startDate, endDate].filter(Boolean) as Date[]}
-          />
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <span className="form-label mb-0">종료일:</span>
-          <CalendarPicker
-            selectedDate={endDate}
-            onDateChange={setEndDate}
-            availableDates={availableDates}
-            highlightDates={[startDate, endDate].filter(Boolean) as Date[]}
-          />
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="text-center">
-          <Spinner animation="border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </Spinner>
-        </div>
-      ) : error ? (
-        <Alert variant="danger">{error}</Alert>
-      ) : (
-        <TagTrendAnalysisContent
-          risingTags={risingTags}
-          fallingTags={fallingTags}
-          newTags={newTags}
-          droppedTags={droppedTags}
-          startDate={startDate ? format(startDate, 'yyyy-MM-dd') : ''}
-          endDate={endDate ? format(endDate, 'yyyy-MM-dd') : ''}
+      <div className="d-flex align-items-center gap-2 mb-3">
+        <DateRangePicker
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={(date) => handleDateRangeChange(date, null)}
+            onEndDateChange={(date) => handleDateRangeChange(startDate, date)}
+            availableDates={Array.from(availableDates).map(d => new Date(d))}
+            novelAvailableDatesSet={new Set()} // TagTrendsPage에서는 필요 없으므로 빈 Set 전달
+            isNovelDetailPage={false}
+            noMargin={true}
+            showNovelDataIndicator={false} // Hide novel data indicator
         />
+        
+      </div>
+
+      {error && <Alert variant="danger">{error}</Alert>}
+
+      {isLoading && (
+         <div className="text-center p-5">
+            <Spinner animation="border" role="status">
+                <span className="visually-hidden">Loading...</span>
+            </Spinner>
+            <p className='mt-2'>데이터를 분석하고 있습니다...</p>
+        </div>
+      )}
+
+      {analysisResult && (
+        <Row xs={1} lg={2} className="g-3">
+          <Col>
+            <TagCategoryCard
+              title="급상승 태그"
+              description="기간 동안 일일 평균 점수의 추세선 기울기가 가장 가파르게 상승한 태그들입니다."
+              tags={analysisResult.rising_trend}
+              category="rising_trend"
+              variant="success"
+              renderTooltip={renderTooltip}
+            />
+          </Col>
+          <Col>
+            <TagCategoryCard
+              title="하락세 태그"
+              description="기간 동안 일일 평균 점수의 추세선 기울기가 가장 가파르게 하락한 태그들입니다."
+              tags={analysisResult.falling_trend}
+              category="falling_trend"
+              variant="danger"
+              renderTooltip={renderTooltip}
+            />
+          </Col>
+          <Col>
+            <TagCategoryCard
+              title="스테디셀러 태그"
+              description="기간 내 총점이 상위 10%에 속하는 인기 태그 중에서, 점수 변동성이 가장 낮은 태그들입니다."
+              tags={analysisResult.stable_popular}
+              category="stable_popular"
+              variant="primary"
+              renderTooltip={renderTooltip}
+            />
+          </Col>
+          {analysisResult.volatile_tags && analysisResult.volatile_tags.length > 0 && (
+            <Col>
+              <TagCategoryCard title="격동의 태그" description="기간 내 총점이 상위 10%에 속하는 인기 태그 중에서, 점수 변동성이 가장 높은 태그들입니다." tags={analysisResult.volatile_tags} category="volatile_tags" variant="warning" renderTooltip={renderTooltip} />
+            </Col>
+          )}
+          <Col>
+            <TagCategoryCard title="주목할 만한 태그" description="다른 카테고리에 속하지 않으면서, 기간 내 높은 일일 평균 점수를 기록하며 주목받은 태그들입니다." tags={analysisResult.noteworthy} category="noteworthy" variant="info" renderTooltip={renderTooltip} />
+          </Col>
+        </Row>
       )}
     </div>
   );

@@ -12,7 +12,7 @@ const AnalysisDashboardPage = () => {
         <div className="col-md-6 col-lg-4 mb-4">
           <TrendCard
             title="태그 트렌드"
-            description="시간의 흐름에 따른 태그 인기도 변화를 분석합니다."
+            description="지정된 기간 동안의 태그 순위 변화를 분석합니다."
             to="/trends/tags"
           />
         </div>

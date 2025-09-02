@@ -1,4 +1,4 @@
-import React, { useRef, forwardRef } from 'react';
+import React, { useRef, forwardRef, useMemo } from 'react';
 import { Form, InputGroup } from 'react-bootstrap';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -10,18 +10,21 @@ registerLocale('ko', ko);
 interface DateRangePickerProps {
   startDate: Date | null;
   endDate: Date | null;
-  minDate: Date | null;
-  maxDate: Date | null;
+  minDate?: Date | null;
+  maxDate?: Date | null;
   availableDates: Date[];
   novelAvailableDatesSet: Set<string>;
   onStartDateChange: (date: Date | null) => void;
   onEndDateChange: (date: Date | null) => void;
+  isNovelDetailPage?: boolean;
+  noMargin?: boolean;
+  showNovelDataIndicator?: boolean; // New prop
 }
 
-const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void }>(({ value, onClick }, ref) => (
-  <div 
-    className="form-control"
-    onClick={onClick} 
+const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void; className?: string }>(({ value, onClick, className }, ref) => (
+  <div
+    className={`form-control ${className || ''} rounded-0 w-100`}
+    onClick={onClick}
     ref={ref}
     style={{ cursor: 'pointer', backgroundColor: 'white' }}
   >
@@ -38,10 +41,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   novelAvailableDatesSet,
   onStartDateChange,
   onEndDateChange,
+  isNovelDetailPage,
+  noMargin,
+  showNovelDataIndicator = true // Default to true for backward compatibility
 }) => {
   const endDatePickerRef = useRef<DatePicker | null>(null);
 
-  const availableDateSet = React.useMemo(() => new Set(availableDates.map(d => format(d, 'yyyy-MM-dd'))), [availableDates]);
+  const availableDateSet = useMemo(() => new Set(availableDates.map(d => format(d, 'yyyy-MM-dd'))), [availableDates]);
   const filterDate = (date: Date) => availableDateSet.has(format(date, 'yyyy-MM-dd'));
 
   const handleStartDateChange = (date: Date | null) => {
@@ -71,22 +77,29 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     const hasData = novelAvailableDatesSet.has(dateString);
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '4px' }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        paddingBottom: showNovelDataIndicator ? '4px' : '0'
+      }}>
         {day}
-        <div style={{
-          height: '4px',
-          width: '4px',
-          borderRadius: '50%',
-          backgroundColor: hasData ? '#8884d8' : 'transparent',
-          margin: '-2px auto 0 auto'
-        }}></div>
+        {showNovelDataIndicator && (
+          <div style={{
+            height: '4px',
+            width: '4px',
+            borderRadius: '50%',
+            backgroundColor: hasData ? '#8884d8' : 'transparent',
+            margin: '-2px auto 0 auto'
+          }}></div>
+        )}
       </div>
     );
   };
 
   return (
-    <Form className="mb-2 d-flex flex-wrap align-items-end gap-3">
-      <Form.Group className="flex-grow-1" style={{ minWidth: '320px' }}>
+    <Form className={`d-flex flex-wrap align-items-end gap-0 ${noMargin ? '' : 'mb-2'}`}>
+      <Form.Group className="flex-grow-1" style={{ minWidth: '80px' }}>
         <InputGroup>
           <InputGroup.Text>From</InputGroup.Text>
           <DatePicker
@@ -102,7 +115,11 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             dateFormat="yyyy-MM-dd"
             placeholderText="Start Date"
             highlightDates={startDate && !endDate ? [startDate] : []}
+            className="rounded-end-0"
             locale={ko}
+            wrapperClassName="flex-grow-0"
+            popperPlacement="bottom-start"
+            portalId="datepicker-portal"
           />
           <InputGroup.Text>To</InputGroup.Text>
           <DatePicker
@@ -123,9 +140,23 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             onClickOutside={() => endDatePickerRef.current?.setOpen(false)}
             highlightDates={startDate && !endDate ? [startDate] : []}
             locale={ko}
+            className="rounded-start-0"
+            wrapperClassName="flex-grow-0"
+            popperPlacement="bottom-end"
+            portalId="datepicker-portal"
           />
         </InputGroup>
       </Form.Group>
+      {isNovelDetailPage && (
+        <div className="w-100 mt-1">
+            <p className="text-muted mb-0" style={{ fontSize: '0.85em' }}>
+            데이터가 수집되지 않은 날짜는 비활성화됩니다.
+            </p>
+            <p className="text-muted mb-0" style={{ fontSize: '0.85em' }}>
+            해당 소설 데이터가 존재하는 날짜에는 동그라미가 표시됩니다.
+            </p>
+        </div>
+      )}
     </Form>
   );
 };

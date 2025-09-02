@@ -203,8 +203,13 @@ body {
 }
 
 /* Ensure react-datepicker input has enough width */
+.react-datepicker__input-container {
+  max-width: 110px; /* 원하는 너비로 조절 */
+  min-width: 90px; /* 최소 너비 설정 */
+}
+
 .react-datepicker__input-container .react-datepicker__input {
-  min-width: 120px; /* Adjust as needed */
+  min-width: 100%; /* 부모 컨테이너에 꽉 차도록 */
 }
 
 .custom-button {
@@ -225,13 +230,13 @@ body {
 /* Ensure selected and today's date is always highlighted */
 .react-datepicker__day--selected.react-datepicker__day--today,
 .react-datepicker__day--selected.react-datepicker__day--today:hover {
-  background-color: #216ba5 !important; /* A standard blue for selected/today */
+  /* background-color: #216ba5 !important; /* A standard blue for selected/today */ */
   color: white !important;
 }
 
 /* Disable react-datepicker today highlight only if not selected */
 .react-datepicker__day--today:not(.react-datepicker__day--selected) {
-  background-color: transparent !important;
+  /* background-color: transparent !important; */
   font-weight: normal;
 }
 
@@ -259,7 +264,7 @@ body {
 .react-datepicker__day--highlighted {
     background-color: #3b82f6; /* A darker blue for start/end points */
     color: #ffffff;
-    font-weight: bold;
+    font-weight: bold !important; /* Add !important here */
 }
 
 .react-datepicker-popper {
@@ -418,4 +423,185 @@ body {
 
 .trend-card:hover {
   box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Ensure InputGroup.Text elements also have correct rounding */
+.input-group > .input-group-text:first-child {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.input-group > .input-group-text:last-child {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+
+/* --- DatePicker Highlight & Hover Fixes (Revised) --- */
+
+/* 1. 기본 keyboard-selected (호버 시 적용되는 클래스) 배경을 투명하게 초기화 */
+/*    이렇게 해야 다른 강조/선택 스타일이 호버 시에도 유지됩니다. */
+.react-datepicker__day--keyboard-selected {
+  background-color: transparent !important;
+  color: inherit !important; /* 글자색은 원래대로 유지 */
+  outline: none !important;
+}
+
+/* 2. 모든 날짜에 대한 일관된 호버 효과 (밝은 회색 배경, 검은색 글자) */
+/*    강조되거나 선택된 날짜가 아닌 경우에만 적용 */
+.react-datepicker__day:hover:not(.react-datepicker__day--selected):not(.react-datepicker__day--highlighted) {
+  background-color: #e0e0e0 !important; /* 밝은 회색 */
+  color: black !important;
+}
+
+/* 3. 강조된 날짜 (highlightDates)의 색상을 파란색으로 설정 */
+.react-datepicker__day--highlighted {
+  background-color: #3b82f6 !important; /* 표준 파란색 */
+  color: white !important;
+}
+
+/* 4. 선택된 날짜 (startDate, endDate)의 색상을 파란색으로 설정 */
+.react-datepicker__day--selected {
+  background-color: #3b82f6 !important; /* 표준 파란색 */
+  color: white !important;
+  outline: none !important;
+}
+
+/* 5. 강조되거나 선택된 날짜에 마우스 오버 시, 약간 더 진한 파란색으로 변경 */
+.react-datepicker__day--highlighted:hover,
+.react-datepicker__day--highlighted.react-datepicker__day--keyboard-selected,
+.react-datepicker__day--selected:hover,
+.react-datepicker__day--selected.react-datepicker__day--keyboard-selected {
+  background-color: #3b82f6 !important; /* 표준 파란색으로 변경 */
+  color: white !important;
+}
+
+
+/* 6. 선택 범위 내 날짜 (in-range)의 배경색 설정 */
+.react-datepicker__day--in-range {
+    background-color: #bfdbfe !important; /* 밝은 파란색 */
+    color: #1e3a8a !important;
+}
+
+/* 7. 범위의 시작/끝 날짜 (range-start/end)의 배경색 설정 */
+.react-datepicker__day--range-start,
+.react-datepicker__day--range-end {
+    background-color: #3b82f6 !important; /* 더 진한 파란색 */
+    color: #ffffff !important;
+    font-weight: bold !important;
+    outline: none !important;
+}
+
+/* Ensure selected range start/end dates maintain standard selected blue */
+.react-datepicker__day--selected.react-datepicker__day--range-start,
+.react-datepicker__day--selected.react-datepicker__day--range-end {
+  background-color: #3b82f6 !important; /* Ensure standard selected blue */
+}
+
+/* 8. 선택 중인 범위 미리보기 (in-selecting-range)의 배경을 투명하게 설정 */
+.react-datepicker__day--in-selecting-range {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+/* --- Tag Trend Page Tooltip --- */
+.tag-trend-tooltip .tooltip-inner {
+  max-width: none; /* Bootstrap의 max-width 제약 제거 */
+  min-width: 280px; /* 차트를 포함할 수 있도록 너비 확장 */
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.tag-button-compact {
+  font-size: 0.75rem !important; /* Smaller font (12px if base is 16px) */
+  padding: 0.15rem 0.6rem !important; /* Adjust padding to fit smaller font, slightly more horizontal */
+  line-height: 1.2; /* Ensure text doesn't get cut */
+}
+ 
+/* Specific styles for secondary compact buttons (unselected filter tags) */
+.btn-secondary.tag-button-compact { /* Used in TagFilter.tsx */
+  background-color: #495057; /* Dark Gray */
+  border-color: #495057;
+  color: #fff;
+}
+.btn-secondary.tag-button-compact:hover,
+.btn-secondary.tag-button-compact:focus {
+  background-color: #343a40; /* Darker Gray on hover/focus */
+  border-color: #2b2f33;
+  color: #fff;
+}
+
+/* Specific styles for primary compact buttons (selected filter tags) */
+.btn-primary.tag-button-compact { /* Used in NovelRankingsPage.tsx for selected filter tags */
+  background-color: #007bff; /* Standard Bootstrap primary blue */
+  border-color: #007bff;
+  color: #fff;
+}
+.btn-primary.tag-button-compact:hover,
+.btn-primary.tag-button-compact:focus {
+  background-color: #0056b3; /* Darker blue on hover/focus */
+  border-color: #004085;
+  color: #fff;
+}
+
+/* NEW: Styles for secondary buttons (unselected table tags) */
+/* These buttons will NOT have .tag-button-compact */
+.btn-secondary:not(.tag-button-compact).rounded-pill { /* Used in NovelRankingsPage.tsx for unselected table tags */
+  background-color: #00d4ff;
+  border-color: #00d4ff;
+  color: #000;
+  font-weight: normal;
+}
+.btn-secondary:not(.tag-button-compact).rounded-pill:hover {
+  background-color: #13b1d4;
+  border-color: #13b1d4;
+  color: #000;
+}
+
+/* NEW: Styles for primary buttons (selected table tags) */
+/* These buttons will NOT have .tag-button-compact */
+.btn-primary:not(.tag-button-compact).rounded-pill { /* Used in NovelRankingsPage.tsx for selected table tags */
+  background-color: #007bff; /* Standard Bootstrap primary blue */
+  border-color: #007bff;
+  color: #fff;
+  font-weight: normal;
+}
+.btn-primary:not(.tag-button-compact).rounded-pill:hover {
+  background-color: #0056b3; /* Darker blue on hover/focus */
+  border-color: #004085;
+  color: #fff;
+}
+
+/* Ensure danger variant for exclude mode also has white text */
+.btn-danger.tag-button-compact {
+  color: #fff; /* Ensure white text for danger compact tags */
+}
+.btn-danger:not(.tag-button-compact).rounded-pill {
+  color: #fff; /* Ensure white text for danger non-compact tags */
+}
+
+/* --- Global Focus & Active State Overrides --- */
+
+/*
+ * Remove the default Bootstrap focus glow (box-shadow) for a cleaner, more consistent look.
+ * For form elements, the default border-color change on focus is retained as a subtle indicator.
+ * For accordions, this removes the large blue ring that appears on click.
+*/
+.form-control:focus,
+.form-select:focus,
+.accordion-button:focus,
+.btn:focus {
+  box-shadow: none !important;
+}
+
+/*
+ * Override the default blue background for active/open accordion items.
+ * This addresses the issue on the "Data Collection Page" where the Q&A section turns blue.
+*/
+.accordion-button:not(.collapsed) {
+  color: #111827; /* Darker text for readability */
+  background-color: #f3f4f6; /* A very light gray, slightly darker than the body */
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.05); /* A more subtle bottom border */
+}
+
+/* The accordion icon color is tied to the `color` property via CSS variables, so it updates automatically. */
 }

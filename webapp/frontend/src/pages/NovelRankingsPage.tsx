@@ -6,6 +6,7 @@ import { format, parseISO, isValid } from 'date-fns';
 import { getNovelRankingsByDate, getAvailableDates } from '../services/api';
 import CalendarPicker from '../components/CalendarPicker';
 import NovelFilterControls from '../components/NovelFilterControls';
+import TagFilter from '../components/TagFilter';
 
 // --- TYPE DEFINITIONS ---
 interface Novel {
@@ -312,30 +313,39 @@ const NovelRankingsPage = () => {
     const fetchAndSetDate = async () => {
       try {
         const datesResponse = await getAvailableDates();
-        const fetchedDates: string[] = datesResponse.data.available_dates || [];
-        setAvailableDatesSet(new Set(fetchedDates));
 
-        if (dateParam) {
-          const parsedDate = parseISO(dateParam);
-          if (isValid(parsedDate) && fetchedDates.includes(dateParam)) {
-            setDate(parsedDate);
-          } else {
-            const latestDate = fetchedDates.sort().pop();
-            if (latestDate) navigate(`/novels/rankings/${latestDate}`, { replace: true });
-          }
-        } else if (fetchedDates.length > 0) {
-          const latestDate = fetchedDates.sort().pop();
-          if (latestDate) navigate(`/novels/rankings/${latestDate}`, { replace: true });
+        const fetchedDates: string[] = datesResponse.data.available_dates || [];
+
+        if (fetchedDates.length > 0) {
+            setAvailableDatesSet(new Set(fetchedDates));
+            if (dateParam) {
+                const parsedDate = parseISO(dateParam);
+                if (isValid(parsedDate) && fetchedDates.includes(dateParam)) {
+                    setDate(parsedDate);
+                } else {
+                    const latestDate = fetchedDates[0];
+                    if (latestDate) navigate(`/novels/rankings/${latestDate}`, { replace: true });
+                }
+            } else {
+                const latestDate = fetchedDates[0];
+                if (latestDate) navigate(`/novels/rankings/${latestDate}`, { replace: true });
+            }
+        } else {
+            setError("랭킹 데이터가 아직 없습니다. 데이터 수집 후 다시 시도해주세요.");
+            setLoading(false);
         }
       } catch (err) {
         setError('Failed to load available dates.');
+        setLoading(false);
       }
     };
     fetchAndSetDate();
   }, [dateParam, navigate]);
 
   useEffect(() => {
-    if (!date) return;
+    if (!date) {
+        return;
+    }
 
     const fetchRankings = async () => {
       setLoading(true);
@@ -344,9 +354,9 @@ const NovelRankingsPage = () => {
       setSelectedTags([]);
       setActiveAdvancedRule('');
       setAdvancedRule('');
-      setSearchTerm(''); // Reset search term
-      setActiveMinEps(null); // Reset min eps
-      setActiveMaxEps(null); // Reset max eps
+      setSearchTerm('');
+      setActiveMinEps(null);
+      setActiveMaxEps(null);
       try {
         const formattedDate = format(date, 'yyyy-MM-dd');
         const response = await getNovelRankingsByDate(formattedDate);
@@ -370,7 +380,7 @@ const NovelRankingsPage = () => {
         const fetchedDates: string[] = datesResponse.data.available_dates || [];
         setAvailableDatesSet(new Set(fetchedDates));
       } catch (err) {
-        console.error("Failed to refetch available dates:", err);
+        // In case of error, we just proceed with navigation
       }
       setOptimisticDate(newDate);
       navigate(`/novels/rankings/${format(newDate, 'yyyy-MM-dd')}`);
@@ -411,7 +421,7 @@ const NovelRankingsPage = () => {
       </Row>
 
       {/* --- Filter UI --- */}
-      <div className="p-3 border rounded mb-1">
+      <div className="px-3 py-2 border rounded mb-1">
         <NovelFilterControls onFilterChange={handleFilterChange} />
         <hr className="my-1"/>
         {/* Tag Filter Row */}
@@ -441,26 +451,21 @@ const NovelRankingsPage = () => {
 
         {!isAdvancedMode ? (
           <div>
-            <div className="d-flex flex-wrap gap-2 p-2 bg-light" style={{ minHeight: '40px', maxHeight: '80px', overflowY: 'auto' }}>
+            <div className="d-flex flex-wrap gap-1 p-2 bg-light" style={{ minHeight: '40px', maxHeight: '60px', overflowY: 'auto' }}>
                 {selectedTags.map(tag => (
-                    <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm" onClick={() => handleTagDeselect(tag)} className="rounded-pill">
+                    <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm" onClick={() => handleTagDeselect(tag)} className="rounded-pill tag-button-compact">
                         {tag} <span className="fw-bold ms-1">X</span>
                     </Button>
                 ))}
             </div>
             <hr className="my-1"/>
-            <div className="d-flex flex-wrap gap-1" style={{ maxHeight: '80px', overflowY: 'auto' }}>
-                {unselectedTags.map(tag => (
-                    <Button key={tag} variant="secondary" size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill">{tag}</Button>
-                ))}
-                {unselectedTags.length === 0 && <span className="text-muted">모든 태그가 선택되었습니다.</span>}
-            </div>
+            <TagFilter unselectedTags={unselectedTags} onTagSelect={handleTagSelect} />
           </div>
         ) : (
           <div>
             <InputGroup className="mb-2">
                 <Form.Control
-                    as="textarea" rows={2} placeholder="e.g. (판타지 AND 무협) OR (버튜버 AND NOT TS)"
+                    as="textarea" rows={2} placeholder="e.g. (하렘 AND 순애) OR (TS AND NOT BL)"
                     ref={advancedRuleInputRef} defaultValue={advancedRule} onKeyDown={handleAdvancedInputKeyDown} isInvalid={!!filterError}
                 />
             </InputGroup>
@@ -475,11 +480,14 @@ const NovelRankingsPage = () => {
         )}
       </div>
 
-      {filterError && <Alert variant="danger" className="mt-2">{filterError}</Alert>}
-      {loading && <Spinner animation="border" />}
-      {error && !filterError && <Alert variant="danger">{error}</Alert>}
+      {error && <Alert variant="danger" className="mt-2">{error}</Alert>}
       
-      {!loading && !error && (
+      {/* Show loading spinner only when fetching rankings for a specific date */}
+      {loading && date && <Spinner animation="border" />}
+      {!loading && !error && rankings.length === 0 && date && (
+          <Alert variant="info">해당 날짜의 랭킹 데이터가 없습니다.</Alert>
+      )}
+      {!loading && !error && rankings.length > 0 && (
         <div className="custom-table-wrapper" style={{ position: 'relative', maxHeight: '715px', overflowY: 'auto', backgroundColor: 'white', opacity: isPending ? 0.7 : 1 }}>
           {isPending && (
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
@@ -527,7 +535,7 @@ const NovelRankingsPage = () => {
                         {(novel.Tags || []).map((tag, index) => (
                           <Button 
                             key={`${novel.ID}-${tag}-${index}`}
-                            variant={selectedTags.includes(tag) ? "primary" : "info"} 
+                            variant={selectedTags.includes(tag) ? "primary" : "secondary"}
                             size="sm"
                             onClick={() => handleTagSelect(tag)}
                             className="rounded-pill"

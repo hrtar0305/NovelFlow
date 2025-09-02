@@ -37,10 +37,8 @@ data/
 GEMINI.md
 
 # User-requested ignores
+todo.md
 DATA_COLLECTION.md
-todo.txt
-webapp/frontend/public/DATA_COLLECTION.md
-
 
 # =============================================================================
 # Web Frontend (Node.js / Vite / React)
@@ -56,6 +54,9 @@ webapp/frontend/.env.*
 
 # Build output
 webapp/frontend/dist/
+
+# Vite cache
+webapp/frontend/.vite/
 
 # Logs
 npm-debug.log*

@@ -1,13 +1,15 @@
 import boto3
 import decimal
 import json
-from fastapi import FastAPI, HTTPException
+import numpy as np
+import math
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 # FastAPI 애플리케이션 인스턴스 생성
 app = FastAPI()
@@ -91,7 +93,6 @@ def get_available_dates():
     except Exception as e:
         return {"error": str(e)}
 
-
 @app.get("/ranks/novels/{date}")
 def get_novels_by_date(date: str):
     """
@@ -141,7 +142,6 @@ def get_novels_by_date(date: str):
     except Exception as e:
         return {"error": str(e)}
 
-
 @app.get("/novels/{novel_id}/latest")
 def get_latest_novel_details(novel_id: str):
     """
@@ -162,24 +162,16 @@ def get_latest_novel_details(novel_id: str):
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-
 @app.get("/trends/novels/{novel_id}")
-def get_novel_trend(novel_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None):
+def get_novel_trend(novel_id: str, start_date: str, end_date: str):
     """
     특정 소설의 기간별 데이터 트렌드를 조회합니다.
     데이터가 없는 날짜는 `Ranking: null`로 채워서 반환합니다.
+    프론트엔드에서 반드시 start_date와 end_date를 제공해야 합니다.
     """
     try:
-        # 날짜 파라미터가 없으면 기본값 설정 (최근 30일)
-        if not end_date:
-            end_date_dt = datetime.now()
-        else:
-            end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
-
-        if not start_date:
-            start_date_dt = end_date_dt - timedelta(days=29)
-        else:
-            start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
 
         # DynamoDB에서 해당 기간의 실제 데이터 조회
         response = table.query(
@@ -215,7 +207,6 @@ def get_novel_trend(novel_id: str, start_date: Optional[str] = None, end_date: O
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/trends/novels/{novel_id}/available-dates")
 def get_novel_available_dates(novel_id: str):
     """
@@ -235,131 +226,45 @@ def get_novel_available_dates(novel_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/ranks/tags/{date}")
 def get_tags_by_date(date: str):
     """
-    특정 날짜의 태그 랭킹 데이터를 조회하고, 직전 날짜와의 랭킹 변동을 포함합니다.
+    특정 날짜의 태그 랭킹 데이터를 조회합니다.
     """
     try:
-        # Helper function to process tag stats for a given date
-        def get_processed_tag_stats(target_date: str):
-            response = table.get_item(Key={'ID': f"STATS#{target_date}", 'Date': target_date})
-            item = response.get('Item')
-            if not item:
-                return None
-
-            scores_linear = item.get('TagWeightedScoresInverseLinear', {})
-            scores_inverse = item.get('TagWeightedScoresInverseRank', {})
-            scores_log = item.get('TagWeightedScoresLogarithmic', {})
-            counts = item.get('TagCounts', {})
-
-            tag_data = []
-            for tag in scores_linear.keys():
-                tag_data.append({
-                    'tag': tag,
-                    'score_linear': scores_linear.get(tag, 0),
-                    'score_inverse': scores_inverse.get(tag, 0),
-                    'score_log': scores_log.get(tag, 0),
-                    'count': counts.get(tag, 0)
-                })
-            
-            processed_data = json.loads(json.dumps(tag_data, cls=DecimalEncoder))
-            return sorted(processed_data, key=lambda x: x.get('score_linear', 0), reverse=True)
-
-        # 1. Get current day's ranked tags
-        current_day_ranks = get_processed_tag_stats(date)
-        if not current_day_ranks:
+        response = table.get_item(Key={'ID': f"STATS#{date}", 'Date': date})
+        item = response.get('Item')
+        if not item:
             return {"message": "No tag statistics found for the given date."}
 
-        # 2. Get previous day's ranked tags
-        current_date_dt = datetime.strptime(date, '%Y-%m-%d')
-        previous_date = (current_date_dt - timedelta(days=1)).strftime('%Y-%m-%d')
-        previous_day_ranks = get_processed_tag_stats(previous_date)
+        scores_linear = item.get('TagWeightedScoresInverseLinear', {})
+        scores_inverse = item.get('TagWeightedScoresInverseRank', {})
+        scores_log = item.get('TagWeightedScoresLogarithmic', {})
+        counts = item.get('TagCounts', {})
 
-        # 3. Create a map of previous day's ranks
-        previous_ranks_map = {}
-        if previous_day_ranks:
-            previous_ranks_map = {tag_info['tag']: i + 1 for i, tag_info in enumerate(previous_day_ranks)}
+        tag_data = []
+        for tag in scores_linear.keys():
+            tag_data.append({
+                'tag': tag,
+                'score_linear': scores_linear.get(tag, 0),
+                'score_inverse': scores_inverse.get(tag, 0),
+                'score_log': scores_log.get(tag, 0),
+                'count': counts.get(tag, 0)
+            })
+        
+        processed_data = json.loads(json.dumps(tag_data, cls=DecimalEncoder))
+        
+        # Sort by linear score to determine rank
+        sorted_data = sorted(processed_data, key=lambda x: x.get('score_linear', 0), reverse=True)
+        
+        # Add rank to each item
+        for i, item in enumerate(sorted_data):
+            item['rank'] = i + 1
 
-        # 4. Add rank and rank_change to current day's data
-        for i, tag_info in enumerate(current_day_ranks):
-            current_rank = i + 1
-            tag_info['rank'] = current_rank
-            
-            previous_rank = previous_ranks_map.get(tag_info['tag'])
-            if previous_rank is not None:
-                tag_info['rank_change'] = previous_rank - current_rank
-            else:
-                tag_info['rank_change'] = 'New'
-
-        return current_day_ranks
+        return sorted_data
 
     except Exception as e:
         return {"error": str(e)}
-
-@app.get("/trends/tags")
-def get_tag_trends(start_date: Optional[str] = None, end_date: Optional[str] = None):
-    """
-    기간별 태그 스코어 트렌드를 조회합니다.
-    """
-    try:
-        # 날짜 파라미터가 없으면 기본값 설정 (최근 30일)
-        if not end_date:
-            end_date_dt = datetime.now()
-            end_date = end_date_dt.strftime('%Y-%m-%d')
-        else:
-            end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
-
-        if not start_date:
-            start_date_dt = end_date_dt - timedelta(days=29)
-            start_date = start_date_dt.strftime('%Y-%m-%d')
-        else:
-            start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
-
-        delta = end_date_dt - start_date_dt
-        dates = [(start_date_dt + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(delta.days + 1)]
-        keys_to_get = [{'ID': f"STATS#{date}", 'Date': date} for date in dates]
-
-        response = dynamodb.batch_get_item(
-            RequestItems={
-                table.name: {
-                    'Keys': keys_to_get,
-                    'ProjectionExpression': 'ID, #d, TagWeightedScoresInverseLinear, TagWeightedScoresInverseRank, TagWeightedScoresLogarithmic, TagCounts',
-                    'ExpressionAttributeNames': {'#d': 'Date'}
-                }
-            }
-        )
-        items = response.get('Responses', {}).get(table.name, [])
-        tag_trends = {}
-        for item in items:
-            date = item['Date']
-            scores_linear = json.loads(json.dumps(item.get('TagWeightedScoresInverseLinear', {}), cls=DecimalEncoder))
-            scores_inverse = json.loads(json.dumps(item.get('TagWeightedScoresInverseRank', {}), cls=DecimalEncoder))
-            scores_log = json.loads(json.dumps(item.get('TagWeightedScoresLogarithmic', {}), cls=DecimalEncoder))
-            counts = json.loads(json.dumps(item.get('TagCounts', {}), cls=DecimalEncoder))
-            all_tags = set(scores_linear.keys()) | set(scores_inverse.keys()) | set(scores_log.keys()) | set(counts.keys())
-            for tag in all_tags:
-                if tag not in tag_trends:
-                    tag_trends[tag] = []
-                trend_point = {
-                    'date': date,
-                    'score_linear': scores_linear.get(tag),
-                    'score_inverse': scores_inverse.get(tag),
-                    'score_log': scores_log.get(tag),
-                    'count': counts.get(tag)
-                }
-                tag_trends[tag].append(trend_point)
-
-        if not tag_trends:
-            return {"message": "No data found for the given date range."}
-        return tag_trends
-    except Exception as e:
-        return {"error": str(e)}
-
-
-
-
 
 @app.get("/authors/{author_id}")
 async def get_author_novels(author_id: str):
@@ -389,3 +294,159 @@ async def get_author_novels(author_id: str):
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"DynamoDB query failed for novel {novel_id}: {e}")
     return latest_novels
+
+@app.get("/trends/tags/analysis")
+def analyze_tag_trends(start_date: str, end_date: str):
+    """
+    지정된 기간 동안의 태그 트렌드를 분석하여 카테고리별로 반환합니다.
+    """
+    try:
+        # 1. 데이터 조회 및 집계
+        start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        delta = end_date_dt - start_date_dt
+        dates = [(start_date_dt + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(delta.days + 1)]
+        
+        all_items_raw = []
+        keys_to_get = [{'ID': f"STATS#{date}", 'Date': date} for date in dates]
+
+        # DynamoDB batch_get_item은 한 번에 최대 100개의 아이템만 요청할 수 있으므로, 100개씩 나누어 처리합니다.
+        for i in range(0, len(keys_to_get), 100):
+            chunk = keys_to_get[i:i + 100]
+            response = dynamodb.batch_get_item(
+                RequestItems={
+                    table.name: {
+                        'Keys': chunk,
+                        'ProjectionExpression': 'ID, #d, TagWeightedScoresInverseLinear, TagCounts',
+                        'ExpressionAttributeNames': {'#d': 'Date'}
+                    }
+                }
+            )
+            all_items_raw.extend(response.get('Responses', {}).get(table.name, []))
+
+        items = json.loads(json.dumps(all_items_raw, cls=DecimalEncoder))
+        
+        if not items:
+            raise HTTPException(status_code=404, detail="No statistics data found for the given date range.")
+
+        # 2. 태그별 데이터 집계 및 시계열 생성
+        tag_analytics = {}
+        date_map = {date: i for i, date in enumerate(dates)}
+
+        for item in items:
+            item_date = item['Date']
+            if item_date not in date_map:
+                continue
+            
+            idx = date_map[item_date]
+            scores_linear = item.get('TagWeightedScoresInverseLinear', {})
+            counts = item.get('TagCounts', {})
+
+            for tag in scores_linear.keys():
+                if tag not in tag_analytics:
+                    tag_analytics[tag] = {
+                        'total_linear_score': 0,
+                        'total_count': 0,
+                        'daily_avg_scores': [0.0] * len(dates),
+                        'daily_total_scores': [0.0] * len(dates)
+                    }
+                
+                score = scores_linear.get(tag, 0)
+                count = counts.get(tag, 0)
+
+                tag_analytics[tag]['total_linear_score'] += score
+                tag_analytics[tag]['total_count'] += count
+                tag_analytics[tag]['daily_total_scores'][idx] = score
+                if count > 0:
+                    avg_score = score / count
+                    tag_analytics[tag]['daily_avg_scores'][idx] = avg_score
+
+        # 3. 각 태그에 대한 최종 분석 지표 계산
+        analyzed_tags = []
+        for tag, data in tag_analytics.items():
+            if data['total_count'] == 0:
+                continue
+
+            y_values_slope = data['daily_avg_scores']
+            if len(y_values_slope) < 2:
+                slope = 0.0
+            else:
+                x_values = np.arange(len(y_values_slope))
+                # 가중치 생성: 최근 데이터에 더 높은 가중치를 부여 (지수적 증가)
+                weights = np.exp(np.linspace(0, 1, len(y_values_slope)))
+                # 가중 선형 회귀를 사용하여 기울기 계산
+                m, _ = np.polyfit(x_values, y_values_slope, deg=1, w=weights)
+                slope = m
+            
+            daily_total_scores = data['daily_total_scores']
+            std_dev = np.std(daily_total_scores)
+            avg_total_score = np.mean(daily_total_scores) if daily_total_scores else 0
+            normalized_std_dev = std_dev / avg_total_score if avg_total_score > 0 else 0
+            
+            max_score = max(data['daily_avg_scores'])
+            min_score = min(data['daily_avg_scores'])
+            avg_daily_avg_score = np.mean(data['daily_avg_scores'])
+
+            analyzed_tags.append({
+                'tag': tag,
+                'slope': slope,
+                'avg_daily_avg_score': float(avg_daily_avg_score),
+                'avg_total_score': float(avg_total_score),
+                'min_score': float(min_score),
+                'max_score': float(max_score),
+                'normalized_std_dev': float(normalized_std_dev),
+                'total_score': data['total_linear_score'],
+                'score_series': data['daily_avg_scores'], # 일일 평균 점수 시계열
+                'total_score_series': data['daily_total_scores'] # 일일 총합 점수 시계열
+            })
+
+        if not analyzed_tags:
+            raise HTTPException(status_code=404, detail="No tags with enough data to analyze.")
+
+        # 4. 카테고리별 태그 분류
+        # 상승 태그 / 하락 태그
+        analyzed_tags.sort(key=lambda x: x['slope'], reverse=True)
+        rising_tags = [t for t in analyzed_tags if t['slope'] > 0][:20]
+        falling_tags = [t for t in reversed(analyzed_tags) if t['slope'] < 0][:20]
+
+        # 상위 10% 인기 태그 풀 생성
+        analyzed_tags.sort(key=lambda x: x['total_score'], reverse=True)
+        total_score_threshold_index = int(len(analyzed_tags) * 0.1)
+        popular_tags_pool = analyzed_tags[:total_score_threshold_index + 1]
+
+        # 꾸준한 인기 태그
+        stable_pool = list(popular_tags_pool)
+        stable_pool.sort(key=lambda x: x['normalized_std_dev'])
+        stable_popular_tags = stable_pool[:20]
+
+        # 격동의 태그
+        volatile_pool = list(popular_tags_pool)
+        volatile_pool.sort(key=lambda x: x['normalized_std_dev'], reverse=True)
+        volatile_tags = volatile_pool[:20]
+
+        # 주목할 만한 태그
+        all_categorized_tags = set(t['tag'] for t in rising_tags + falling_tags + stable_popular_tags + volatile_tags)
+        noteworthy_tags = [t for t in analyzed_tags if t['tag'] not in all_categorized_tags and t['max_score'] >= 450]
+        noteworthy_tags.sort(key=lambda x: x['max_score'], reverse=True)
+        noteworthy_tags = noteworthy_tags[:20]
+        
+        # Remove temporary total_score before returning
+        final_response = {
+            "rising_trend": rising_tags,
+            "falling_trend": falling_tags,
+            "stable_popular": stable_popular_tags,
+            "volatile_tags": volatile_tags,
+            "noteworthy": noteworthy_tags
+        }
+
+        for category_list in final_response.values():
+            for tag_data in category_list:
+                # Remove temporary or redundant fields before returning
+                tag_data.pop('total_score', None)
+                if category_list is not final_response['stable_popular'] and category_list is not final_response['volatile_tags']:
+                    tag_data.pop('total_score_series', None)
+
+        return final_response
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

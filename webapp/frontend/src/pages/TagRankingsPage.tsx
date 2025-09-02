@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useTransition } from 'react';
-import { Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert } from 'react-bootstrap';
+import { Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert, Form, InputGroup } from 'react-bootstrap';
 import { ArrowUp, ArrowDown, ArrowDownUp } from 'react-bootstrap-icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format, parseISO, isValid } from 'date-fns';
 import { getTagRankingsByDate, getAvailableDates } from '../services/api';
 import CalendarPicker from '../components/CalendarPicker';
+import TagSearchControl from '../components/TagSearchControl';
 import { ResponsiveContainer, ScatterChart, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Scatter, Cell } from 'recharts';
 
 // --- TYPE DEFINITIONS ---
@@ -42,14 +43,14 @@ const ColorLegend = () => (
   </div>
 );
 
-const CustomTooltip = ({ active, payload }: any) => {
+const CustomTooltip = ({ active, payload, yAxisKey, yAxisName }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
       <div className="custom-tooltip bg-white p-3 border rounded shadow-sm" style={{ fontSize: '0.9rem' }}>
         <p className="fw-bold mb-1">{data.tag} (랭킹: {data.rank})</p>
         <p className="mb-0 text-muted">등장 횟수: {data.count}</p>
-        <p className="mb-2 text-muted">평균 선형 점수: {data.avg_linear.toFixed(2)}</p>
+        <p className="mb-2 text-muted">{yAxisName}: {data[yAxisKey].toFixed(2)}</p>
         <hr className="my-1" />
         <p className="mb-0 text-muted small">선형 점수: {data.score_linear.toFixed(2)}</p>
         <p className="mb-0 text-muted small">역순위 점수: {data.score_inverse.toFixed(2)}</p>
@@ -85,9 +86,10 @@ const TagRankingsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set());
   const [sortConfig, setSortConfig] = useState<{ key: keyof Tag; direction: 'ascending' | 'descending' }>({ key: 'score_linear', direction: 'descending' });
-  const [topN, setTopN] = useState<number>(20);
+  const [topN, setTopN] = useState<number>(20);  
+  const [searchTerm, setSearchTerm] = useState(''); // Debounced search term
   const activeTagRef = useRef<string | null>(null);
-  const [isSorting, startSortTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   const { date: dateParam } = useParams();
   const navigate = useNavigate();
@@ -127,8 +129,8 @@ const TagRankingsPage = () => {
   }, []);
 
   const requestSort = (key: keyof Tag) => {
-    startSortTransition(() => {
-        const allowedSortKeys: (keyof Tag)[] = ['score_linear', 'score_inverse', 'score_log', 'count'];
+    startTransition(() => {
+        const allowedSortKeys: (keyof Tag)[] = ['score_linear', 'avg_linear', 'score_inverse', 'avg_inverse', 'score_log', 'avg_log', 'count'];
         if (!allowedSortKeys.includes(key)) return;
         let direction: 'ascending' | 'descending' = 'descending';
         if (sortConfig.key === key && sortConfig.direction === 'descending') {
@@ -137,6 +139,12 @@ const TagRankingsPage = () => {
         setSortConfig({ key, direction });
     });
   };
+
+  const handleSearchChange = useCallback((term: string) => {
+    startTransition(() => {
+      setSearchTerm(term);
+    });
+  }, []); // startTransition is stable
 
   const handleDateChange = (newDate: Date | null) => {
     if (newDate && (!date || format(newDate, 'yyyy-MM-dd') !== format(date, 'yyyy-MM-dd'))) {
@@ -169,7 +177,18 @@ const TagRankingsPage = () => {
     setLoading(true);
     setError(null);
     getTagRankingsByDate(format(date, 'yyyy-MM-dd')).then(response => {
-      setTags(response.data.message ? [] : response.data);
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setTags(data);
+      } else {
+        setTags([]);
+        if (data && data.message) {
+          // 데이터가 없다는 메시지는 에러는 아니므로 콘솔에만 표시
+          console.log(data.message);
+        } else if (data && data.error) {
+          setError('태그 랭킹을 불러오는 데 실패했습니다.');
+        }
+      }
     }).catch(_err => {
       setError('Failed to fetch tag rankings.');
       setTags([]);
@@ -189,21 +208,41 @@ const TagRankingsPage = () => {
         const bValue = b[sortConfig.key];
         if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
         if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
-        return 0;
+        
+        // Secondary sort for stability. To ensure items with the same score have a consistent
+        // rank regardless of the sort direction (asc/desc), the tie-breaker sort
+        // must be in the opposite direction of the primary sort.
+        const tieBreaker = a.tag.localeCompare(b.tag); // A-Z
+        return sortConfig.direction === 'ascending' ? -tieBreaker : tieBreaker;
       });
     }
-    return sortableItems.map((item, index) => ({
+    let rankedItems = sortableItems.map((item, index) => ({
       ...item,
       rank: sortConfig.direction === 'descending' ? index + 1 : sortableItems.length - index,
     }));
-  }, [tags, sortConfig]);
+
+    if (searchTerm) {
+      const lowercasedTerm = searchTerm.toLowerCase();
+      rankedItems = rankedItems.filter(item =>
+        item.tag.toLowerCase().includes(lowercasedTerm)
+      );
+    }
+
+    return rankedItems;
+  }, [tags, sortConfig, searchTerm]);
 
   const chartData = useMemo(() => {
-    const sortedByScore = [...tags]
-      .map(tag => ({ ...tag, avg_linear: tag.count > 0 ? tag.score_linear / tag.count : 0 }))
-      .sort((a, b) => b.score_linear - a.score_linear)
-      .map((tag, index) => ({ ...tag, rank: index + 1 }));
-    return sortedByScore.slice(0, topN);
+    // 차트 데이터는 항상 '선형 점수'를 기준으로 생성합니다.
+    const itemsWithAvgs = tags.map(tag => ({ ...tag, avg_linear: tag.count > 0 ? tag.score_linear / tag.count : 0 }));
+    const sortedForChart = [...itemsWithAvgs].sort((a, b) => {
+      const aValue = a.score_linear;
+      const bValue = b.score_linear;
+      if (aValue < bValue) return 1;
+      if (aValue > bValue) return -1;
+      return a.tag.localeCompare(b.tag);
+    });
+    const rankedForChart = sortedForChart.map((tag, index) => ({ ...tag, rank: index + 1 }));
+    return rankedForChart.slice(0, topN);
   }, [tags, topN]);
 
   const getSortIndicator = (key: keyof Tag) => {
@@ -246,89 +285,110 @@ const TagRankingsPage = () => {
         </div>
         
         <Row className="mb-2 align-items-center">
-          <Col md="auto"><CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} /></Col>
+          <Col sm="auto"><CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} /></Col>
+          <Col>
+            <TagSearchControl onSearchChange={handleSearchChange} />
+          </Col>
         </Row>
 
         {loading && <div className="text-center py-5"><Spinner animation="border" /></div>}
         {error && <Alert variant="danger">{error}</Alert>}
         
-        {!loading && !error && processedTags.length > 0 && (
+        {!loading && !error && (
           <>
-            <div className="custom-table-wrapper mb-2" style={{ position: 'relative', backgroundColor: 'white', maxHeight: '500px', overflowY: 'auto', opacity: isSorting ? 0.7 : 1 }}>
-              {isSorting && (
-                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
-                  <Spinner animation="border" />
-                </div>
-              )}
-              <Table hover className="custom-table">
-                <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'white' }}>
-                  <tr>
-                    <th style={{ fontSize: '0.85rem' }}>
-                      <div className="d-flex align-items-center justify-content-start gap-1"><span>순위</span></div>
-                    </th>
-                    <th style={{ fontSize: '0.85rem' }}>태그</th>
-                    <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem' }}>
-                      <div className="d-flex align-items-center justify-content-start gap-1"><span>선형 점수</span>{getSortIndicator('score_linear')}</div>
-                    </th></OverlayTrigger>
-                    <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / 순위'로 계산하여, 1위에 가까울수록 기하급수적으로 높은 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem' }}>
-                      <div className="d-flex align-items-center justify-content-start gap-1"><span>역순위 점수</span>{getSortIndicator('score_inverse')}</div>
-                    </th></OverlayTrigger>
-                    <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / ln(순위 + 1)'로 계산하여, 상위권에 완만한 가중치를 부여해 점수 격차를 줄인 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem' }}>
-                      <div className="d-flex align-items-center justify-content-start gap-1"><span>로그 점수</span>{getSortIndicator('score_log')}</div>
-                    </th></OverlayTrigger>
-                    <OverlayTrigger placement="top" overlay={<BootstrapTooltip>순위와 무관하게, 랭킹 내에 등장한 횟수를 그대로 집계하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('count')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem' }}>
-                      <div className="d-flex align-items-center justify-content-start gap-1"><span>등장 횟수</span>{getSortIndicator('count')}</div>
-                    </th></OverlayTrigger>
-                  </tr>
-                </thead>
-                <tbody onMouseLeave={handleTableMouseLeave}>
-                  {processedTags.length > 0 ? (
-                    processedTags.map((tag: Tag) => (
-                        <tr key={tag.tag} data-tag={tag.tag} onMouseEnter={handleMouseEnter} style={{ cursor: 'pointer' }}>
-                          <td style={{ fontSize: '0.9rem' }}>{tag.rank}</td>
-                          <td className="fw-bold" style={{ fontSize: '0.9rem' }}>{tag.tag}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{tag.score_linear.toFixed(2)}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{tag.score_inverse.toFixed(2)}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{tag.score_log.toFixed(2)}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{tag.count}</td>
-                        </tr>
-                      ))
-                  ) : (
-                    <tr><td colSpan={6} className="text-center py-4">현재 날짜에 대한 태그 랭킹을 찾을 수 없습니다.</td></tr>
+            {tags.length > 0 ? (
+              <>
+                <div className="custom-table-wrapper mb-2" style={{ position: 'relative', backgroundColor: 'white', maxHeight: '500px', overflowY: 'auto', opacity: isPending ? 0.7 : 1 }}>
+                  {isPending && (
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
+                      <Spinner animation="border" />
+                    </div>
                   )}
-                </tbody>
-              </Table>
-            </div>
-
-            <Card>
-              <Card.Header>
-                <Row className="align-items-center">
-                  <Col><h5 className="mb-0">태그 포지셔닝 맵</h5></Col>
-                  <Col xs="auto"><span className="text-muted small">*선형 점수 기준</span></Col>
-                  <Col xs="auto">
-                    <ButtonGroup size="sm">
-                      {topNOptions.map((option: number) => (
-                        <Button key={option} variant={topN === option ? 'primary' : 'outline-secondary'} onClick={() => setTopN(option)}>{`Top ${option}`}</Button>
-                      ))}
-                    </ButtonGroup>
-                  </Col>
-                </Row>
-              </Card.Header>
-              <Card.Body>
-                <ResponsiveContainer width="100%" height={400}>
-                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 0 }}>
-                        <CartesianGrid />
-                        <XAxis type="number" dataKey="count" name="등장 횟수" unit="회" domain={xDomain} allowDecimals={false} />
-                        <YAxis type="number" dataKey="avg_linear" name="평균 선형 점수" domain={yDomain} allowDecimals={false} />
-                        <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-                        <Scatter name="Tags" data={chartData} shape={<CustomScatterShape />} isAnimationActive={false}>
-                            {chartData.map((entry) => <Cell key={`cell-${entry.tag}`} fill={getColorByRank(entry.rank)} />)}
-                        </Scatter>
-                    </ScatterChart>
-                </ResponsiveContainer>
-                <ColorLegend />
-              </Card.Body>
-            </Card>
+                  <Table hover className="custom-table">
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'white' }}>
+                      <tr>
+                        <th style={{ fontSize: '0.85rem', width: '100px' }}>
+                          <div className="d-flex align-items-center justify-content-start gap-1"><span>순위</span></div>
+                        </th>
+                        <th style={{ fontSize: '0.85rem' }}>태그</th>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                          <div className="d-flex align-items-center justify-content-start gap-1"><span>선형 점수</span>{getSortIndicator('score_linear')}</div>
+                        </th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'선형 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('avg_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                          <div className="d-flex align-items-center justify-content-start gap-1"><span>평균 선형 점수</span>{getSortIndicator('avg_linear')}</div>
+                        </th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / 순위'로 계산하여, 1위에 가까울수록 기하급수적으로 높은 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                          <div className="d-flex align-items-center justify-content-start gap-1"><span>역순위 점수</span>{getSortIndicator('score_inverse')}</div>
+                        </th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'역순위 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('avg_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                          <div className="d-flex align-items-center justify-content-start gap-1"><span>평균 역순위 점수</span>{getSortIndicator('avg_inverse')}</div>
+                        </th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / ln(순위 + 1)'로 계산하여, 상위권에 완만한 가중치를 부여해 점수 격차를 줄인 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                          <div className="d-flex align-items-center justify-content-start gap-1"><span>로그 점수</span>{getSortIndicator('score_log')}</div>
+                        </th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'로그 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('avg_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                          <div className="d-flex align-items-center justify-content-start gap-1"><span>평균 로그 점수</span>{getSortIndicator('avg_log')}</div>
+                        </th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>순위와 무관하게, 랭킹 내에 등장한 횟수를 그대로 집계하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('count')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                          <div className="d-flex align-items-center justify-content-start gap-1"><span>등장 횟수</span>{getSortIndicator('count')}</div>
+                        </th></OverlayTrigger>
+                      </tr>
+                    </thead>
+                    <tbody onMouseLeave={handleTableMouseLeave}>
+                      {processedTags.length > 0 ? (
+                        processedTags.map((tag: Tag) => (
+                            <tr key={tag.tag} data-tag={tag.tag} onMouseEnter={handleMouseEnter} style={{ cursor: 'pointer' }}>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.rank}</td>
+                              <td className="fw-bold" style={{ fontSize: '0.9rem' }}>{tag.tag}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.score_linear.toFixed(2)}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.avg_linear.toFixed(2)}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.score_inverse.toFixed(2)}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.avg_inverse.toFixed(2)}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.score_log.toFixed(2)}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.avg_log.toFixed(2)}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.count}</td>
+                            </tr>
+                          ))
+                      ) : (
+                        <tr><td colSpan={9} className="text-center py-4">검색 결과가 없습니다.</td></tr>
+                      )}
+                    </tbody>
+                  </Table>
+                </div>
+    
+                <Card>
+                  <Card.Header>
+                    <Row className="align-items-center">
+                      <Col><h5 className="mb-0">태그 포지셔닝 맵</h5></Col>
+                      <Col xs="auto"><span className="text-muted small">*선형 점수 기준</span></Col>
+                      <Col xs="auto">
+                        <ButtonGroup size="sm">
+                          {topNOptions.map((option: number) => (
+                            <Button key={option} variant={topN === option ? 'primary' : 'outline-secondary'} onClick={() => setTopN(option)}>{`Top ${option}`}</Button>
+                          ))}
+                        </ButtonGroup>
+                      </Col>
+                    </Row>
+                  </Card.Header>
+                  <Card.Body>
+                    <ResponsiveContainer width="100%" height={400}>
+                        <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 0 }}>
+                            <CartesianGrid />
+                            <XAxis type="number" dataKey="count" name="등장 횟수" unit="회" domain={xDomain} allowDecimals={false} />
+                            <YAxis type="number" dataKey="avg_linear" name="평균 선형 점수" domain={yDomain} allowDecimals={false} />
+                            <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip yAxisKey="avg_linear" yAxisName="평균 선형 점수" />} />
+                            <Scatter name="Tags" data={chartData} shape={<CustomScatterShape />} isAnimationActive={false}>
+                                {chartData.map((entry) => <Cell key={`cell-${entry.tag}`} fill={getColorByRank(entry.rank)} />)}
+                            </Scatter>
+                        </ScatterChart>
+                    </ResponsiveContainer>
+                    <ColorLegend />
+                  </Card.Body>
+                </Card>
+              </>
+            ) : (
+              <Alert variant="info" className="text-center mt-3">해당 날짜에 대한 태그 랭킹 데이터가 없습니다.</Alert>
+            )}
           </>
         )}
       </div>

@@ -19,6 +19,17 @@ export const getTagTrends = (startDate: string, endDate: string) => {
   return apiClient.get(`/trends/tags`, { params: { start_date: startDate, end_date: endDate } });
 };
 
+
+
+export const analyzeTagTrends = (startDate: string, endDate: string) => {
+  return apiClient.get(`/trends/tags/analysis`, {
+    params: {
+      start_date: startDate,
+      end_date: endDate,
+    },
+  });
+};
+
 export const getNovelTrend = (novelId: string, startDate: string, endDate: string) => {
   return apiClient.get(`/trends/novels/${novelId}`, { params: { start_date: startDate, end_date: endDate } });
 };
