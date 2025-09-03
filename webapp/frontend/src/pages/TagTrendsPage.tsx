@@ -220,8 +220,6 @@ const TagTrendsPage: React.FC = () => {
     // --- Dynamic Y-Axis Domain Calculation ---
     let yDomain: [number | 'auto', number | 'auto'] = ['auto', 'auto'];
     const PADDING_FACTOR = 0.1; // 10% padding for min/max based charts
-    let chartMin = 0;
-    let chartMax = 0;
 
     switch (category) {
         case 'stable_popular':
@@ -231,8 +229,6 @@ const TagTrendsPage: React.FC = () => {
             if (scores.length > 0) {
                 const min = Math.min(...scores);
                 const max = Math.max(...scores);
-                chartMin = min;
-                chartMax = max;
                 if (min === max) {
                     const padding = max > 0 ? max * PADDING_FACTOR : 1;
                     yDomain = [max - padding, max + padding];
@@ -252,8 +248,6 @@ const TagTrendsPage: React.FC = () => {
             // For other charts, focus on showing the range of change.
             const min = data.min_score;
             const max = data.max_score;
-            chartMin = min;
-            chartMax = max;
             if (min === max) {
                 const padding = max > 0 ? max * PADDING_FACTOR : 1;
                 yDomain = [max - padding, max + padding];

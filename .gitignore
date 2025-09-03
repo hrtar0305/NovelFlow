@@ -26,6 +26,7 @@ build/
 
 # AWS Lambda dependency packages
 data-pipeline/package/
+webapp/backend/package/
 
 # Local data files
 data/

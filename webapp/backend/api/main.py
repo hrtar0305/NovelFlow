@@ -1,11 +1,15 @@
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'package'))
+
 import boto3
 import decimal
 import json
-import numpy as np
-import math
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
+from pydantic import BaseModel, Field
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
@@ -17,6 +21,7 @@ app = FastAPI()
 # CORS 미들웨어 설정
 origins = [
     "http://localhost:5173", # frontend development server
+    "https://d2ti06wylez2yq.cloudfront.net", # CloudFront Domain
 ]
 
 app.add_middleware(
@@ -45,6 +50,60 @@ class DecimalEncoder(json.JSONEncoder):
                 return float(o)
         return super(DecimalEncoder, self).default(o)
 
+# --- Pydantic Response Models ---
+class AvailableDatesResponse(BaseModel):
+    available_dates: List[str] = Field(..., description="데이터가 존재하는 모든 날짜 목록 (내림차순 정렬)", example=["2025-08-20", "2025-08-19"])
+
+class LatestDateResponse(BaseModel):
+    latest_date: str = Field(..., description="데이터가 존재하는 가장 최근 날짜", example="2025-08-20")
+
+class NovelRankData(BaseModel):
+    # Required fields
+    ID: str
+    Date: str
+    Ranking: int
+    Score: int
+
+    # Optional fields
+    Title: Optional[str] = None
+    AuthorName: Optional[str] = None
+    AuthorID: Optional[str] = None
+    View: Optional[int] = None
+    Like: Optional[int] = None
+    Fav: Optional[int] = None
+    Alr: Optional[int] = None
+    Eps: Optional[int] = None
+    Tags: List[str] = Field(default_factory=list)
+    Synopsis: Optional[str] = None
+    rank_change: Optional[Any] = Field(None, description="랭킹 변동. 숫자 또는 'New'", example=5)
+
+class NovelDetails(BaseModel):
+    # Required fields
+    ID: str
+    Date: str
+    Ranking: int
+    Score: int
+
+    # Optional fields that are usually present for detailed views
+    Title: Optional[str] = None
+    AuthorName: Optional[str] = None
+    AuthorID: Optional[str] = None
+    View: Optional[int] = None
+    Like: Optional[int] = None
+    Fav: Optional[int] = None
+    Alr: Optional[int] = None
+    Eps: Optional[int] = None
+    Tags: List[str] = Field(default_factory=list)
+    Synopsis: Optional[str] = None
+
+class TagRankData(BaseModel):
+    tag: str
+    score_linear: float
+    score_inverse: float
+    score_log: float
+    count: int
+    rank: int
+
 @app.get("/")
 def read_root():
     """
@@ -52,7 +111,7 @@ def read_root():
     """
     return {"message": "Welcome to NP-Trend API"}
 
-@app.get("/ranks/latest-date")
+@app.get("/api/ranks/latest-date", response_model=LatestDateResponse)
 def get_latest_date():
     """
     데이터가 존재하는 가장 최근 날짜를 조회합니다.
@@ -66,13 +125,12 @@ def get_latest_date():
         )
         items = response.get('Items', [])
         if items:
-            return {"latest_date": items[0]['Date']}
-        else:
-            return {"message": "No data found."}
-    except Exception as e:
-        return {"error": str(e)}
+            return LatestDateResponse(latest_date=items[0]['Date'])
+        raise HTTPException(status_code=404, detail="No data found.")
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-@app.get("/api/dates")
+@app.get("/api/dates", response_model=AvailableDatesResponse)
 def get_available_dates():
     """
     데이터가 존재하는 모든 날짜 목록을 조회합니다.
@@ -87,13 +145,12 @@ def get_available_dates():
         )
         item = response.get('Item')
         if item and 'dates' in item:
-            return {"available_dates": item['dates']}
-        else:
-            return {"message": "No available dates found."}
-    except Exception as e:
-        return {"error": str(e)}
+            return AvailableDatesResponse(available_dates=sorted(list(item['dates']), reverse=True))
+        raise HTTPException(status_code=404, detail="No available dates found.")
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-@app.get("/ranks/novels/{date}")
+@app.get("/api/ranks/novels/{date}", response_model=List[NovelRankData])
 def get_novels_by_date(date: str):
     """
     특정 날짜의 모든 소설 랭킹 데이터를 조회하고, 직전 날짜와의 랭킹 변동을 포함합니다.
@@ -108,7 +165,7 @@ def get_novels_by_date(date: str):
         current_day_items = json.loads(json.dumps(current_day_response.get('Items', []), cls=DecimalEncoder))
 
         if not current_day_items:
-            return {"message": "No data found for the given date."}
+            raise HTTPException(status_code=404, detail="No data found for the given date.")
 
         # 2. 직전 날짜 계산
         current_date_dt = datetime.strptime(date, '%Y-%m-%d')
@@ -139,10 +196,10 @@ def get_novels_by_date(date: str):
 
         return current_day_items
 
-    except Exception as e:
-        return {"error": str(e)}
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-@app.get("/novels/{novel_id}/latest")
+@app.get("/api/novels/{novel_id}/latest", response_model=NovelDetails)
 def get_latest_novel_details(novel_id: str):
     """
     특정 소설의 가장 최근 전체 데이터를 조회합니다.
@@ -162,7 +219,7 @@ def get_latest_novel_details(novel_id: str):
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-@app.get("/trends/novels/{novel_id}")
+@app.get("/api/trends/novels/{novel_id}", response_model=List[Dict[str, Any]])
 def get_novel_trend(novel_id: str, start_date: str, end_date: str):
     """
     특정 소설의 기간별 데이터 트렌드를 조회합니다.
@@ -207,7 +264,7 @@ def get_novel_trend(novel_id: str, start_date: str, end_date: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/trends/novels/{novel_id}/available-dates")
+@app.get("/api/trends/novels/{novel_id}/available-dates", response_model=AvailableDatesResponse)
 def get_novel_available_dates(novel_id: str):
     """
     특정 소설의 데이터가 존재하는 모든 날짜 목록을 조회합니다.
@@ -222,11 +279,11 @@ def get_novel_available_dates(novel_id: str):
         # DynamoDB는 날짜(SK)를 기준으로 자동 정렬하여 반환합니다.
         items = response.get('Items', [])
         dates = [item['Date'] for item in items]
-        return {"available_dates": dates}
+        return AvailableDatesResponse(available_dates=dates)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/ranks/tags/{date}")
+@app.get("/api/ranks/tags/{date}", response_model=List[TagRankData])
 def get_tags_by_date(date: str):
     """
     특정 날짜의 태그 랭킹 데이터를 조회합니다.
@@ -235,7 +292,7 @@ def get_tags_by_date(date: str):
         response = table.get_item(Key={'ID': f"STATS#{date}", 'Date': date})
         item = response.get('Item')
         if not item:
-            return {"message": "No tag statistics found for the given date."}
+            raise HTTPException(status_code=404, detail="No tag statistics found for the given date.")
 
         scores_linear = item.get('TagWeightedScoresInverseLinear', {})
         scores_inverse = item.get('TagWeightedScoresInverseRank', {})
@@ -263,10 +320,10 @@ def get_tags_by_date(date: str):
 
         return sorted_data
 
-    except Exception as e:
-        return {"error": str(e)}
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-@app.get("/authors/{author_id}")
+@app.get("/api/authors/{author_id}", response_model=List[NovelDetails])
 async def get_author_novels(author_id: str):
     if author_id == "0":
         raise HTTPException(status_code=404, detail="Author not found")
@@ -295,11 +352,14 @@ async def get_author_novels(author_id: str):
             raise HTTPException(status_code=500, detail=f"DynamoDB query failed for novel {novel_id}: {e}")
     return latest_novels
 
-@app.get("/trends/tags/analysis")
+@app.get("/api/trends/tags/analysis")
 def analyze_tag_trends(start_date: str, end_date: str):
     """
     지정된 기간 동안의 태그 트렌드를 분석하여 카테고리별로 반환합니다.
     """
+    import numpy as np
+    import math
+
     try:
         # 1. 데이터 조회 및 집계
         start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')

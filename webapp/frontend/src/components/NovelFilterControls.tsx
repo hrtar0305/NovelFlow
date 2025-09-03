@@ -7,7 +7,7 @@ interface NovelFilterControlsProps {
 }
 
 const NovelFilterControls = React.memo(({ onFilterChange }: NovelFilterControlsProps) => {
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [searchInput, setSearchInput] = useState('');
   const [tempMinEps, setTempMinEps] = useState(''); // For input field
   const [tempMaxEps, setTempMaxEps] = useState(''); // For input field
