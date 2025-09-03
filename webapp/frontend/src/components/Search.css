@@ -8,11 +8,6 @@
   width: 100%; /* Ensure it takes full width of its parent */
 }
 
-/* Set a fixed height on the form to prevent resizing during IME composition */
-.ais-SearchBox-form {
-  /* height: 38px; --- This is no longer needed with structural changes */
-}
-
 /* Style for the search box itself */
 .search-box {
   width: 400px; /* Doubled width as per request */

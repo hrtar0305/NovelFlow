@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, useTransition } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Table, Spinner, Alert, Form, Row, Col, Button, InputGroup, ButtonGroup } from 'react-bootstrap';
-import { InfoCircle, ArrowUp, ArrowDown, ArrowDownUp, ArrowUpShort, ArrowDownShort, Search } from 'react-bootstrap-icons';
+import { InfoCircle, ArrowUp, ArrowDown, ArrowDownUp, ArrowUpShort, ArrowDownShort} from 'react-bootstrap-icons';
 import { format, parseISO, isValid } from 'date-fns';
 import { getNovelRankingsByDate, getAvailableDates } from '../services/api';
 import CalendarPicker from '../components/CalendarPicker';

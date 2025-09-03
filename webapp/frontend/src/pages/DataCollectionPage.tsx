@@ -1,4 +1,3 @@
-import React from 'react';
 import { Card, ListGroup, Accordion, Alert } from 'react-bootstrap';
 
 const DataCollectionPage = () => {

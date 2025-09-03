@@ -230,7 +230,7 @@ body {
 /* Ensure selected and today's date is always highlighted */
 .react-datepicker__day--selected.react-datepicker__day--today,
 .react-datepicker__day--selected.react-datepicker__day--today:hover {
-  /* background-color: #216ba5 !important; /* A standard blue for selected/today */ */
+  /* background-color: #216ba5 !important; /* A standard blue for selected/today */
   color: white !important;
 }
 
@@ -604,4 +604,3 @@ body {
 }
 
 /* The accordion icon color is tied to the `color` property via CSS variables, so it updates automatically. */
-}

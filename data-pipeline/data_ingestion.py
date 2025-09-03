@@ -1,3 +1,8 @@
+# Copyright (c) 2025 Paohkin
+#
+# This software is released under the MIT License.
+# https://opensource.org/licenses/MIT
+
 import boto3
 import csv
 import io

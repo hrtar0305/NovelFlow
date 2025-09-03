@@ -13,6 +13,41 @@ const TOP_500_START_DATE = '2025-07-21';
 const RANK_OUT_VALUE = 501;
 const RANK_OUT_VALUE_300 = 301;
 
+// --- TYPE DEFINITIONS ---
+interface NovelData {
+  Date: string;
+  Ranking: number | null;
+  Title: string;
+  View: number | null;
+  Like: number | null;
+  Fav: number | null;
+  Score: number | null;
+  [key: string]: any;
+}
+
+interface SmallMultiplesChartProps {
+  data: NovelData[];
+  hasBothPeriods: boolean;
+  onZoomClick: (metric: string) => void;
+  isModal?: boolean;
+  modalMetric?: string | null;
+}
+
+interface CustomizedDotProps {
+  cx?: number;
+  cy?: number;
+  payload?: NovelData;
+  dataKey?: string;
+}
+
+interface CustomCandleTooltipProps {
+  active?: boolean;
+  payload?: any[]; // Recharts payload is complex, any is acceptable here for simplicity
+  label?: string;
+  name: string;
+  metric: string;
+}
+
 const metricConfigs: { [key: string]: { name: string } } = {
   Ranking: { name: '랭킹' },
   Score: { name: '점수' },
@@ -144,6 +179,9 @@ const NovelDetailPage = () => {
 
 const CenteredBar = (props: any) => {
   const { fill, x, y, width, height } = props;
+  if (x === undefined || y === undefined || width === undefined || height === undefined) {
+    return <g />; // Return an empty SVG group element instead of null to satisfy Recharts' type
+  }
   const centeredX = x - width / 2;
 
   if (height < 0) {
@@ -153,7 +191,7 @@ const CenteredBar = (props: any) => {
   return <rect x={centeredX} y={y} width={width} height={height} fill={fill} />;
 };
 
-const CustomizedDot = (props: any) => {
+const CustomizedDot = (props: CustomizedDotProps) => {
   const { cx, cy, payload, dataKey } = props;
   if (!dataKey || !payload || payload[dataKey] === null || payload[dataKey] === undefined) return null;
   
@@ -175,7 +213,7 @@ const CustomizedDot = (props: any) => {
   return <circle cx={cx} cy={cy} r={3} fill="#8884d8" />;
 };
 
-const CustomCandleTooltip = ({ active, payload, label, name, metric }: any) => {
+const CustomCandleTooltip = ({ active, payload, label, name, metric }: CustomCandleTooltipProps) => {
   if (active && payload && payload.length && metric) {
     const itemPayload = payload.find(p => p.dataKey === 'tooltipTrigger')?.payload;
     if (!itemPayload) return null;
@@ -225,12 +263,12 @@ const CustomCandleTooltip = ({ active, payload, label, name, metric }: any) => {
   return null;
 };
 
-const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = false, modalMetric = null }: any) => {
+const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = false, modalMetric = null }: SmallMultiplesChartProps) => {
   const processedData = useMemo(() => {
-    return data.map((curr: any, i: number) => {
+    return data.map((curr: NovelData, i: number) => {
       const entry: { [key: string]: any } = { ...curr };
       if (i > 0) {
-        const prev = data[i - 1];
+        const prev: NovelData = data[i - 1];
         ['Ranking', 'Score', 'View', 'Like', 'Fav'].forEach(metric => {
           const prevValue = prev[metric];
           const currValue = curr[metric];

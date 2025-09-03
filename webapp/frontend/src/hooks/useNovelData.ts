@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { getNovelTrend, getNovelAvailableDates, getAvailableDates, getLatestNovelDetails } from '../services/api';
 import { format, parseISO, subDays, startOfDay, addDays } from 'date-fns';

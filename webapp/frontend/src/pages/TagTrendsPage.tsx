@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2025 Paohkin
+ *
+ * This software is released under the MIT License.
+ * https://opensource.org/licenses/MIT
+ */
 import React, { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
 import { getAvailableDates, analyzeTagTrends } from '../services/api';
@@ -194,6 +200,7 @@ const TagTrendsPage: React.FC = () => {
 
     let chartDataSource: number[];
     let chartStrokeColor = "#8884d8"; // Default color for avg score (purple)
+    let chartTitle = "";
 
     switch (category) {
         case 'stable_popular':
@@ -201,16 +208,20 @@ const TagTrendsPage: React.FC = () => {
             // 이 카테고리들은 '일일 총합 점수'의 변동성을 기준으로 하므로 해당 차트를 표시
             chartDataSource = data.total_score_series || [];
             chartStrokeColor = "#82ca9d"; // Green for total score based charts
+            chartTitle = "일일 총합 점수";
             break;
         default: // rising_trend, falling_trend, noteworthy
             // 이 카테고리들은 '일일 평균 점수'를 기준으로 하므로 해당 차트를 표시
             chartDataSource = data.score_series;
+            chartTitle = "일일 평균 점수";
             break;
     }
 
     // --- Dynamic Y-Axis Domain Calculation ---
     let yDomain: [number | 'auto', number | 'auto'] = ['auto', 'auto'];
     const PADDING_FACTOR = 0.1; // 10% padding for min/max based charts
+    let chartMin = 0;
+    let chartMax = 0;
 
     switch (category) {
         case 'stable_popular':
@@ -220,6 +231,8 @@ const TagTrendsPage: React.FC = () => {
             if (scores.length > 0) {
                 const min = Math.min(...scores);
                 const max = Math.max(...scores);
+                chartMin = min;
+                chartMax = max;
                 if (min === max) {
                     const padding = max > 0 ? max * PADDING_FACTOR : 1;
                     yDomain = [max - padding, max + padding];
@@ -239,6 +252,8 @@ const TagTrendsPage: React.FC = () => {
             // For other charts, focus on showing the range of change.
             const min = data.min_score;
             const max = data.max_score;
+            chartMin = min;
+            chartMax = max;
             if (min === max) {
                 const padding = max > 0 ? max * PADDING_FACTOR : 1;
                 yDomain = [max - padding, max + padding];
@@ -255,6 +270,44 @@ const TagTrendsPage: React.FC = () => {
 
     const chartData = chartDataSource.map((value, index) => ({ name: index, value }));
 
+    // 차트의 최소/최대 지점에 라벨을 표시하기 위한 로직
+    let minPoint = { value: chartDataSource.length > 0 ? chartDataSource[0] : 0, index: 0 };
+    let maxPoint = { value: chartDataSource.length > 0 ? chartDataSource[0] : 0, index: 0 };
+
+    if (chartDataSource.length > 0) {
+        chartDataSource.forEach((value, index) => {
+            // 데이터 시리즈에서 첫 번째로 나타나는 최소값을 찾습니다.
+            if (value < minPoint.value) {
+                minPoint = { value, index };
+            }
+            // 데이터 시리즈에서 첫 번째로 나타나는 최대값을 찾습니다.
+            if (value > maxPoint.value) {
+                maxPoint = { value, index };
+            }
+        });
+    }
+
+    const MinMaxLabel = (props: any) => {
+        const { x, y, index, value } = props;
+
+        // 최소값과 최대값이 같은 지점일 경우 하나만 표시
+        if (minPoint.index === maxPoint.index) {
+            if (index === minPoint.index) {
+                return <text x={x} y={y} dy={-8} fill="#555" fontSize="0.75rem" textAnchor="middle">{value.toFixed(0)}</text>;
+            }
+        } else {
+            // 최소값 지점에 라벨 표시 (아래쪽)
+            if (index === minPoint.index) {
+                return <text x={x} y={y} dy={14} fill="#555" fontSize="0.75rem" textAnchor="middle">{value.toFixed(0)}</text>;
+            }
+            // 최대값 지점에 라벨 표시 (위쪽)
+            if (index === maxPoint.index) {
+                return <text x={x} y={y} dy={-8} fill="#555" fontSize="0.75rem" textAnchor="middle">{value.toFixed(0)}</text>;
+            }
+        }
+        return null;
+    };
+
     return (
         <Tooltip {...props} className="tag-trend-tooltip">
             <div>
@@ -265,18 +318,15 @@ const TagTrendsPage: React.FC = () => {
                     </div>
                 ))}
             </div>
-            <div style={{ width: '100%', height: '60px', marginTop: '10px', marginLeft: '-10px' }}>
+            <hr className="my-2" />
+            <div className="d-flex justify-content-between align-items-center mb-1">
+                <span className="fw-bold text-dark">{chartTitle}</span>
+            </div>
+            <div style={{ height: '60px', marginLeft: '-10px', marginRight: '-10px' }}>
                 <ResponsiveContainer>
-                    <LineChart data={chartData}>
+                    <LineChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                         <YAxis domain={yDomain} hide={true} />
-                        <Line
-                            type="monotone"
-                            dataKey="value"
-                            stroke={chartStrokeColor}
-                            strokeWidth={2}
-                            dot={false}
-                            isAnimationActive={false}
-                        />
+                        <Line type="monotone" dataKey="value" stroke={chartStrokeColor} strokeWidth={2} dot={false} isAnimationActive={false} label={<MinMaxLabel />} />
                     </LineChart>
                 </ResponsiveContainer>
             </div>
@@ -287,7 +337,7 @@ const TagTrendsPage: React.FC = () => {
   return (
     <div className="container-fluid p-4">
       <div className="mb-3">
-        <h1 className="h2 mb-2">태그 트렌드 분석</h1>
+        <h1 className="h2 mb-2">태그 트렌드</h1>
         <p className="text-muted">지정된 기간 동안의 태그 점수 변화를 분석하여, 주목할 만한 트렌드를 카테고리별로 보여줍니다.</p>
       </div>
 
