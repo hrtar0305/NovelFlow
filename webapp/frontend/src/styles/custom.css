@@ -17,10 +17,11 @@ body {
   -webkit-backdrop-filter: blur(12px);
 }
 
-.search-container {
-  position: relative;
-  width: 100%;
-  min-width: 500px;
+/* Wrapper for the search bar in the header to control its responsive size */
+.header-search-wrapper {
+  flex-grow: 1; /* Allows the search bar to take up available space */
+  min-width: 150px; /* Prevents it from becoming too small on mobile */
+  max-width: 450px; /* Sets a reasonable max width on large screens */
 }
 
 .search-input {
@@ -142,6 +143,62 @@ body {
 .app-header-link:hover {
   background-color: #374151; /* gray-700 */
   color: white;
+}
+
+/* 헤더 네비게이션 링크 폰트 두께를 normal로 재설정 */
+.app-header .navbar-nav .nav-link {
+  font-weight: normal;
+  color: #d1d5db; /* gray-300 */
+  transition: color 0.2s;
+}
+
+.app-header .navbar-nav .nav-link:hover {
+  color: white;
+}
+
+/* active 상태의 링크 (현재 페이지) */
+.app-header .navbar-nav .nav-link.active {
+  font-weight: 500;
+  color: white;
+}
+
+/* On mobile, make the collapsed navbar an overlay instead of pushing content down */
+@media (max-width: 991.98px) { /* Bootstrap's 'lg' breakpoint */
+  /* Override Bootstrap's default display:none to allow for our custom animation */
+  .app-header .navbar-collapse.collapse:not(.show) {
+    display: block;
+  }
+
+  .app-header .navbar-collapse {
+    position: absolute;
+    top: 100%; /* Position it right below the header's main bar */
+    left: 0;
+    right: 0;
+    background-color: rgba(17, 24, 39, 0.98); /* Use a slightly more opaque background */
+    padding: 1rem;
+    z-index: 49; /* Below the main header but above page content */
+    border-bottom-left-radius: 0.5rem;
+    border-bottom-right-radius: 0.5rem;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    
+    /* Use transform and opacity for smoother, GPU-accelerated animation */
+    transition: opacity 0.25s ease-out, transform 0.25s ease-out;
+    transform: translateY(-10px); /* Start slightly above to slide down */
+    opacity: 0;
+    pointer-events: none; /* Prevent interaction when hidden */
+  }
+  /* When Bootstrap adds 'show' class to indicate it's open */
+  .app-header .navbar-collapse.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  /* During the transition (Bootstrap's 'collapsing' class) */
+  .app-header .navbar-collapse.collapsing {
+    /* Override Bootstrap's height-based animation to use our transform/opacity animation */
+    height: auto !important;
+    display: block;
+  }
 }
 
 

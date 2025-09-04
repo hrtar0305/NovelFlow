@@ -1,8 +1,8 @@
-import { Card, ListGroup, Accordion, Alert } from 'react-bootstrap';
+import { Container, Card, ListGroup, Accordion, Alert } from 'react-bootstrap';
 
 const DataCollectionPage = () => {
   return (
-    <div className="p-4 lg:container mx-auto">
+    <Container className="py-4">
       <Card>
         <Card.Header>
           <h1 className="h3 mb-0">데이터 수집 및 랭킹 기준</h1>
@@ -57,7 +57,7 @@ const DataCollectionPage = () => {
           </Alert>
         </Card.Body>
       </Card>
-    </div>
+    </Container>
   );
 };
 

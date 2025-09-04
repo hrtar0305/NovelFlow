@@ -1,8 +1,9 @@
+import { Container } from 'react-bootstrap';
 import TrendCard from './../components/TrendCard';
 
 const AnalysisDashboardPage = () => {
   return (
-    <div className="p-4 lg:container mx-auto">
+    <Container className="py-4">
       <div className="mb-3">
         <h1 className="h2 mb-2 ps-0">데이터 분석</h1>
         <p className="text-muted mb-0">다양한 데이터 기반 분석 정보를 보여줍니다.</p>
@@ -18,7 +19,7 @@ const AnalysisDashboardPage = () => {
         </div>
         {/* 추가적인 트렌드 분석 기능 카드를 여기에 추가할 수 있습니다. */}
       </div>
-    </div>
+    </Container>
   );
 };
 

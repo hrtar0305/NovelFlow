@@ -54,7 +54,7 @@ const AuthorPage = () => {
   }, [authorId]);
 
   return (
-    <Container className="p-4">
+    <Container className="py-4">
       {loading ? (
         <div className="text-center">
           <Spinner animation="border" />

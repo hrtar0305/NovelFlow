@@ -10,7 +10,7 @@
 
 /* Style for the search box itself */
 .search-box {
-  width: 400px; /* Doubled width as per request */
+  width: 100%;
 }
 
 .search-box .ais-SearchBox-input {
@@ -38,7 +38,7 @@
   position: absolute;
   top: 100%;
   left: 0;
-  width: 400px; /* Match search box width */
+  width: 100%; /* Match search box width */
   margin-top: 8px;
   background-color: white;
   border-radius: 8px;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, useTransition } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Table, Spinner, Alert, Form, Row, Col, Button, InputGroup, ButtonGroup } from 'react-bootstrap';
+import { Table, Spinner, Alert, Form, Row, Col, Button, InputGroup, ButtonGroup, Container, Dropdown } from 'react-bootstrap';
 import { InfoCircle, ArrowUp, ArrowDown, ArrowDownUp, ArrowUpShort, ArrowDownShort} from 'react-bootstrap-icons';
 import { format, parseISO, isValid } from 'date-fns';
 import { getNovelRankingsByDate, getAvailableDates } from '../services/api';
@@ -101,6 +101,12 @@ const evaluateAdvancedRule = (rule: string, tags: string[]): boolean => {
   }
   if (evalStack.length !== 1) throw new Error("Invalid syntax");
   return evalStack[0];
+};
+
+const filterModeLabels: { [key: string]: string } = {
+  'include-and': '태그 포함 (모두)',
+  'include-or': '태그 포함 (일부)',
+  'exclude': '태그 제외'
 };
 
 
@@ -271,10 +277,12 @@ const NovelRankingsPage = () => {
     }
   };
 
-  const handleFilterModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    startTransition(() => {
-      setFilterMode(e.target.value as any);
-    });
+  const handleFilterModeChange = (mode: string | null) => {
+    if (mode) {
+      startTransition(() => {
+        setFilterMode(mode as 'include-or' | 'include-and' | 'exclude');
+      });
+    }
   };
 
   const handleSwitchToSimple = () => {
@@ -399,7 +407,7 @@ const NovelRankingsPage = () => {
 
   // --- RENDER ---
   return (
-    <div className="p-4 lg:container mx-auto">
+    <Container className="py-3 py-md-4">
       <div className="mb-3">
         <h1 className="h2 mb-2 ps-0">일간 소설 랭킹</h1>
         <p className="text-muted mb-0">
@@ -411,7 +419,7 @@ const NovelRankingsPage = () => {
       </div>
 
       <Row className="mb-2 align-items-center">
-        <Col md="auto">
+        <Col xs={12} md="auto" className="mb-2 mb-md-0">
           <CalendarPicker
             selectedDate={optimisticDate || date}
             onDateChange={handleDateChange}
@@ -423,42 +431,47 @@ const NovelRankingsPage = () => {
       {/* --- Filter UI --- */}
       <div className="px-3 py-2 border rounded mb-1">
         <NovelFilterControls onFilterChange={handleFilterChange} />
-        <hr className="my-1"/>
+        <hr className="my-2"/>
         {/* Tag Filter Row */}
-        <Row className="align-items-center mb-2">
-          <Col md="auto" className="d-flex align-items-center gap-3">
+        <div className="d-flex flex-wrap align-items-center mb-2">
+          <div className="d-flex align-items-center gap-3 me-auto">
             <span className="fw-bold">태그 선택</span>
             <ButtonGroup size="sm">
               <Button variant={!isAdvancedMode ? 'primary' : 'outline-secondary'} onClick={handleSwitchToSimple} className="fw-bold">기본</Button>
               <Button variant={isAdvancedMode ? 'primary' : 'outline-secondary'} onClick={handleSwitchToAdvanced} className="fw-bold">고급</Button>
             </ButtonGroup>
-          </Col>
+          </div>
           {!isAdvancedMode && (
-            <Col className="d-flex justify-content-end align-items-center gap-2">
-              <InputGroup size="sm" style={{ maxWidth: '160px' }}>
-                <Form.Select value={filterMode} onChange={handleFilterModeChange}>
-                  <option value="include-and">태그 포함 (모두)</option>
-                  <option value="include-or">태그 포함 (일부)</option>
-                  <option value="exclude">태그 제외</option>
-                </Form.Select>
-              </InputGroup>
+            <div className="d-flex align-items-center gap-2">
+              <div style={{ minWidth: '140px' }}>
+                <Dropdown onSelect={handleFilterModeChange}>
+                  <Dropdown.Toggle variant="outline-secondary" id="dropdown-filter-mode" size="sm" className="w-100 d-flex justify-content-between align-items-center">
+                    <span>{filterModeLabels[filterMode]}</span>
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu className="w-100">
+                    <Dropdown.Item eventKey="include-and">{filterModeLabels['include-and']}</Dropdown.Item>
+                    <Dropdown.Item eventKey="include-or">{filterModeLabels['include-or']}</Dropdown.Item>
+                    <Dropdown.Item eventKey="exclude">{filterModeLabels['exclude']}</Dropdown.Item>
+                  </Dropdown.Menu>
+                </Dropdown>
+              </div>
               {selectedTags.length > 0 && (
                 <Button variant="outline-danger" size="sm" onClick={clearAllTags}>비우기</Button>
               )}
-            </Col>
+            </div>
           )}
-        </Row>
+        </div>
 
         {!isAdvancedMode ? (
           <div>
-            <div className="d-flex flex-wrap gap-1 p-2 bg-light" style={{ minHeight: '40px', maxHeight: '60px', overflowY: 'auto' }}>
+            <div className="d-flex flex-wrap gap-1 p-2 bg-light border rounded" style={{ minHeight: '40px', maxHeight: '60px', overflowY: 'auto' }}>
                 {selectedTags.map(tag => (
                     <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm" onClick={() => handleTagDeselect(tag)} className="rounded-pill tag-button-compact">
                         {tag} <span className="fw-bold ms-1">X</span>
                     </Button>
                 ))}
             </div>
-            <hr className="my-1"/>
+            <hr className="my-2"/>
             <TagFilter unselectedTags={unselectedTags} onTagSelect={handleTagSelect} />
           </div>
         ) : (
@@ -473,7 +486,7 @@ const NovelRankingsPage = () => {
                 <div><Button variant="primary" size="sm" onClick={applyAdvancedFilter} className="fw-bold">필터 적용</Button></div>
                 <Alert variant="light" className="p-1 m-0 d-flex align-items-center">
                     <InfoCircle size={15} className="me-1 flex-shrink-0"/>
-                    <span>AND, OR, NOT 및 괄호()를 사용하여 태그를 조합할 수 있습니다.</span>
+                    <span className="d-none d-sm-inline">AND, OR, NOT 및 괄호()를 사용하여 태그를 조합할 수 있습니다.</span>
                 </Alert>
             </div>
           </div>
@@ -494,7 +507,7 @@ const NovelRankingsPage = () => {
               <Spinner animation="border" />
             </div>
           )}
-          <Table hover className="custom-table novel-rankings-table">
+          <Table responsive="md" hover className="custom-table novel-rankings-table">
             <thead>
               <tr>
                 <th onClick={() => requestSort('Ranking')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}>
@@ -503,13 +516,13 @@ const NovelRankingsPage = () => {
                 <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}>
                   <div className="d-flex align-items-center justify-content-center gap-1"><span>변동</span>{getSortIndicator('rank_change')}</div>
                 </th>
-                <th style={{ fontSize: '0.85rem', width: '300px', whiteSpace: 'normal' }}>제목</th>
-                <th style={{ fontSize: '0.85rem', width: '100px' }}>작가</th>
-                <th style={{ fontSize: '0.85rem', width: '60px' }}>점수</th>
-                <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '40px' }}>
+                <th style={{ fontSize: '0.85rem', minWidth: '300px', whiteSpace: 'normal' }}>제목</th>
+                <th style={{ fontSize: '0.85rem', minWidth: '100px' }}>작가</th>
+                <th style={{ fontSize: '0.85rem', minWidth: '60px' }}>점수</th>
+                <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '40px' }}>
                   <div className="d-flex align-items-center gap-1"><span>회차</span>{getSortIndicator('Eps')}</div>
                 </th>
-                <th style={{ fontSize: '0.85rem', width: '320px' }}>태그</th>
+                <th style={{ fontSize: '0.85rem', minWidth: '320px' }}>태그</th>
               </tr>
             </thead>
             <tbody>
@@ -554,7 +567,7 @@ const NovelRankingsPage = () => {
           </Table>
         </div>
       )}
-    </div>
+    </Container>
   );
 };
 

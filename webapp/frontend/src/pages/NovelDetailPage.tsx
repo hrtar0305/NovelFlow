@@ -86,7 +86,7 @@ const NovelDetailPage = () => {
   }
 
   return (
-    <Container className="p-4">
+    <Container className="py-4">
       {isInitialLoad ? (
         <div className="text-center vh-100 d-flex align-items-center justify-content-center">
           <Spinner animation="border" />

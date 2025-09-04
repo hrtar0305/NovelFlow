@@ -7,7 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
 import { getAvailableDates, analyzeTagTrends } from '../services/api';
-import { Alert, Spinner, Card, OverlayTrigger, Tooltip, Badge, Row, Col, ButtonGroup, Button } from 'react-bootstrap';
+import { Container, Alert, Spinner, Card, OverlayTrigger, Tooltip, Badge, Row, Col, ButtonGroup, Button } from 'react-bootstrap';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 
@@ -329,7 +329,7 @@ const TagTrendsPage: React.FC = () => {
   };
 
   return (
-    <div className="container-fluid p-4">
+    <Container className="py-4">
       <div className="mb-3">
         <h1 className="h2 mb-2">태그 트렌드</h1>
         <p className="text-muted">지정된 기간 동안의 태그 점수 변화를 분석하여, 주목할 만한 트렌드를 카테고리별로 보여줍니다.</p>
@@ -403,7 +403,7 @@ const TagTrendsPage: React.FC = () => {
           </Col>
         </Row>
       )}
-    </div>
+    </Container>
   );
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useTransition } from 'react';
-import { Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert} from 'react-bootstrap';
+import { Container, Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert} from 'react-bootstrap';
 import { ArrowUp, ArrowDown, ArrowDownUp } from 'react-bootstrap-icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format, parseISO, isValid } from 'date-fns';
@@ -278,7 +278,7 @@ const TagRankingsPage = () => {
             background-color: #e9ecef !important;
         }
       `}</style>
-      <div className="p-4 lg:container mx-auto">
+    <Container className="py-3 py-md-4">
         <div className="mb-3">
           <h1 className="h2 mb-2 ps-0">일간 태그 랭킹</h1>
           <p className="text-muted mb-0">소설 랭킹을 기반으로 태그별 점수를 계산하여 랭킹을 보여줍니다. 날짜를 선택하여 과거 랭킹을 조회할 수 있습니다.</p>
@@ -304,7 +304,7 @@ const TagRankingsPage = () => {
                       <Spinner animation="border" />
                     </div>
                   )}
-                  <Table hover className="custom-table">
+                  <Table responsive="md" hover className="custom-table">
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'white' }}>
                       <tr>
                         <th style={{ fontSize: '0.85rem', width: '100px' }}>
@@ -314,19 +314,19 @@ const TagRankingsPage = () => {
                         <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
                           <div className="d-flex align-items-center justify-content-start gap-1"><span>선형 점수</span>{getSortIndicator('score_linear')}</div>
                         </th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'선형 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('avg_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'선형 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
                           <div className="d-flex align-items-center justify-content-start gap-1"><span>평균 선형 점수</span>{getSortIndicator('avg_linear')}</div>
                         </th></OverlayTrigger>
                         <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / 순위'로 계산하여, 1위에 가까울수록 기하급수적으로 높은 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
                           <div className="d-flex align-items-center justify-content-start gap-1"><span>역순위 점수</span>{getSortIndicator('score_inverse')}</div>
                         </th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'역순위 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('avg_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'역순위 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
                           <div className="d-flex align-items-center justify-content-start gap-1"><span>평균 역순위 점수</span>{getSortIndicator('avg_inverse')}</div>
                         </th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / ln(순위 + 1)'로 계산하여, 상위권에 완만한 가중치를 부여해 점수 격차를 줄인 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / ln(순위 + 1)'로 계산하여, 상위권에 완만한 가중치를 부여해 점수 격차를 줄인 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('score_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
                           <div className="d-flex align-items-center justify-content-start gap-1"><span>로그 점수</span>{getSortIndicator('score_log')}</div>
                         </th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'로그 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('avg_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'로그 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
                           <div className="d-flex align-items-center justify-content-start gap-1"><span>평균 로그 점수</span>{getSortIndicator('avg_log')}</div>
                         </th></OverlayTrigger>
                         <OverlayTrigger placement="top" overlay={<BootstrapTooltip>순위와 무관하게, 랭킹 내에 등장한 횟수를 그대로 집계하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('count')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>
@@ -391,7 +391,7 @@ const TagRankingsPage = () => {
             )}
           </>
         )}
-      </div>
+      </Container>
     </>
   );
 };
