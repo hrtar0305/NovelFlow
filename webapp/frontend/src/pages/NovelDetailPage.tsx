@@ -99,7 +99,17 @@ const NovelDetailPage = () => {
           
           <div className="mt-3">
             <h4 className="mb-2">지표별 상세 추이</h4>
-            <DateRangePicker {...{startDate, endDate, minDate, maxDate, availableDates, novelAvailableDatesSet, onStartDateChange: handleStartDateChange, onEndDateChange: handleEndDateChange}} />
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              minDate={minDate}
+              maxDate={maxDate}
+              availableDates={availableDates}
+              novelAvailableDatesSet={novelAvailableDatesSet}
+              onStartDateChange={handleStartDateChange}
+              onEndDateChange={handleEndDateChange}
+              isNovelDetailPage={true}
+            />
           </div>
 
           <div className="mt-2 position-relative">

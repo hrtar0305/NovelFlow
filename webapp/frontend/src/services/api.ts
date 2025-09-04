@@ -1,7 +1,6 @@
 import axios from 'axios';
 
 // Vite 환경 변수를 사용하여 API 기본 URL을 설정합니다.
-// 개발 시에는 .env.development 파일의 값을, 빌드 시에는 .env.production 파일의 값을 사용합니다.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const apiClient = axios.create({

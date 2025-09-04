@@ -1,0 +1,21 @@
+# AWS Lambda의 Python 3.13 arm64 환경을 기반으로 함
+FROM public.ecr.aws/lambda/python:3.13-arm64
+
+# AWS Lambda 기본 이미지의 엔트리포인트가 빌드 과정에 영향을 주지 않도록 초기화합니다.
+ENTRYPOINT []
+
+# 빌드에 필요한 도구 설치 (Amazon Linux 2023에서는 dnf 사용)
+RUN dnf install -y unzip zip
+
+# 의존성 파일을 컨테이너 안으로 복사
+COPY requirements.lambda.txt /tmp/requirements.txt
+
+# /asset 폴더에 arm64용으로 컴파일된 라이브러리 설치
+RUN pip install -r /tmp/requirements.txt -t /asset/package
+
+# 애플리케이션 코드(main.py)를 /asset/api/ 폴더로 복사하여 디렉토리 구조를 유지합니다.
+COPY api/main.py /asset/api/
+
+# 최종 배포용 zip 파일 생성
+WORKDIR /asset
+RUN zip -r /tmp/deployment_package.zip .
