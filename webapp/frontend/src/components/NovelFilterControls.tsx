@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useTransition } from 'react';
-import { Row, Col, Form, InputGroup, Button } from 'react-bootstrap';
+import { Form, InputGroup, Button } from 'react-bootstrap';
 import { Search } from 'react-bootstrap-icons';
 
 interface NovelFilterControlsProps {
@@ -49,41 +49,41 @@ const NovelFilterControls = React.memo(({ onFilterChange }: NovelFilterControlsP
   };
 
   return (
-    <Row className="mb-2">
-      <Col md={6}>
+    <div className="d-flex flex-wrap align-items-end gap-2 mb-2">
+      <div className="flex-fill" style={{ minWidth: '150px' }}>
         <Form.Label htmlFor="search-input" className="fw-bold">제목/작가 검색</Form.Label>
         <InputGroup>
           <InputGroup.Text><Search /></InputGroup.Text>
           <Form.Control 
             id="search-input"
-            placeholder="검색어 입력" // Changed placeholder
+            placeholder="검색어 입력"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
         </InputGroup>
-      </Col>
-      <Col md={6}>
+      </div>
+      <div className="flex-fill" style={{ minWidth: '200px' }}>
         <Form.Label className="fw-bold">회차 범위 필터</Form.Label>
         <InputGroup>
           <Form.Control 
             type="number" 
             placeholder="최소 회차" 
             value={tempMinEps} 
-            onChange={(e) => setTempMinEps(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEpsFilter(); } }} // Added e.preventDefault()
+            onChange={(e) => setTempMinEps(e.target.value)} 
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEpsFilter(); } }}
           />
           <InputGroup.Text>-</InputGroup.Text>
           <Form.Control 
             type="number" 
             placeholder="최대 회차" 
             value={tempMaxEps} 
-            onChange={(e) => setTempMaxEps(e.target.value)} 
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEpsFilter(); } }} // Added e.preventDefault()
+            onChange={(e) => setTempMaxEps(e.target.value)}  
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEpsFilter(); } }}
           />
           <Button onClick={handleApplyEpsFilter}>적용</Button>
         </InputGroup>
-      </Col>
-    </Row>
+      </div>
+    </div>
   );
 });
 

@@ -43,38 +43,38 @@ const NovelDetailsCard: React.FC<NovelDetailsCardProps> = ({ details }) => {
         </div>
       </Card.Header>
       <Card.Body>
-        <div className="mb-2">
+        <div className="d-flex flex-wrap gap-1 mb-2">
           {details.Tags.map(tag => (
-            <Badge pill bg="info" text="dark" className="me-1 fw-bold" key={tag} style={{ fontSize: '0.95rem' }}>
+            <Badge pill bg="info" text="dark" className="fw-bold fs-tag-badge" key={tag}>
               #{tag}
             </Badge>
           ))}
         </div>
 
-        <div className="d-flex justify-content-start gap-4 text-center mb-2">
+        <div className="d-flex flex-wrap justify-content-around justify-content-md-start text-center mb-2 gap-3 gap-md-4">
           <div>
-            <strong className="fs-5">{details.View.toLocaleString()}</strong>
+            <strong className="fs-stat">{details.View.toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.8rem'}}>조회</div>
           </div>
           <div>
-            <strong className="fs-5">{details.Like.toLocaleString()}</strong>
+            <strong className="fs-stat">{details.Like.toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.8rem'}}>추천</div>
           </div>
           <div>
-            <strong className="fs-5">{details.Fav.toLocaleString()}</strong>
+            <strong className="fs-stat">{details.Fav.toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.8rem'}}>선호</div>
           </div>
           <div>
-            <strong className="fs-5">{details.Alr.toLocaleString()}</strong>
+            <strong className="fs-stat">{details.Alr.toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.8rem'}}>알람</div>
           </div>
           <div>
-            <strong className="fs-5">{details.Eps}</strong>
+            <strong className="fs-stat">{details.Eps}</strong>
             <div className="text-muted" style={{fontSize: '0.8rem'}}>회차</div>
           </div>
         </div>
         
-        <Card.Text className="mt-2 p-3 bg-light rounded" style={{ whiteSpace: 'pre-wrap' }}>
+        <Card.Text className="mt-2 p-3 bg-light rounded fs-synopsis" style={{ whiteSpace: 'pre-wrap' }}>
           {details.Synopsis}
         </Card.Text>
 

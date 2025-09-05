@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Table, Spinner, Alert, Container } from 'react-bootstrap';
+import { Spinner, Alert, Container, Card, Row, Col, Badge } from 'react-bootstrap';
 import { getAuthorNovels } from '../services/api';
 import axios from 'axios'; // axios import 추가
 
@@ -66,40 +66,38 @@ const AuthorPage = () => {
       ) : (
         <>
           {authorName && <h1 className="mb-4 h2">{authorName}</h1>}
-          <Table hover responsive className="custom-table">
-            <thead>
-              <tr>
-                <th>제목</th>
-                <th>회차</th>
-                <th>조회</th>
-                <th>추천</th>
-                <th>선호</th>
-                <th>알람</th>
-                <th>태그</th>
-              </tr>
-            </thead>
-            <tbody>
-              {novels.length > 0 ? (
-                novels.map((novel) => (
-                  <tr key={novel.ID}>
-                    <td>
-                      <Link to={`/novels/${novel.ID}`}>{novel.Title || '(제목 없음)'}</Link>
-                    </td>
-                    <td>{novel.Eps}</td>
-                    <td>{novel.View}</td>
-                    <td>{novel.Like}</td>
-                    <td>{novel.Fav}</td>
-                    <td>{novel.Alr}</td>
-                    <td>{novel.Tags.join(', ')}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={7} className="text-center py-4">No novels found for this author.</td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
+          <div>
+            {novels.length > 0 ? (
+              novels.map((novel) => (
+                <Card key={novel.ID} className="mb-3 shadow-sm">
+                  <Card.Body className="p-3">
+                    <Card.Title className="h5 mb-2">
+                      <Link to={`/novels/${novel.ID}`} className="text-dark text-decoration-none">
+                        {novel.Title || '(제목 없음)'}
+                      </Link>
+                    </Card.Title>
+                    <Row xs={2} md={4} className="g-4 g-md-2 text-center text-md-start mb-2">
+                      <Col><div className="text-muted small">회차</div><strong>{novel.Eps.toLocaleString()}화</strong></Col>
+                      <Col><div className="text-muted small">조회수</div><strong>{novel.View.toLocaleString()}</strong></Col>
+                      <Col><div className="text-muted small">추천</div><strong>{novel.Like.toLocaleString()}</strong></Col>
+                      <Col><div className="text-muted small">선호</div><strong>{novel.Fav.toLocaleString()}</strong></Col>
+                    </Row>
+                    {novel.Tags && novel.Tags.length > 0 && (
+                      <div className="pt-2 border-top">
+                        <div className="d-flex flex-wrap gap-1">
+                          {novel.Tags.map((tag) => (
+                            <Badge pill bg="secondary" key={tag} className="fw-normal" style={{ fontSize: '0.85rem' }}>{tag}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </Card.Body>
+                </Card>
+              ))
+            ) : (
+              <Alert variant="info">이 작가의 작품을 찾을 수 없습니다.</Alert>
+            )}
+          </div>
         </>
       )}
     </Container>

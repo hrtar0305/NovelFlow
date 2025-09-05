@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef } from 'react';
+import React, { useState, useCallback, forwardRef, useEffect } from 'react';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -29,6 +29,20 @@ const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?:
 
 const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateChange, availableDates, highlightDates }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [popperPlacement, setPopperPlacement] = useState<'bottom-start' | 'bottom'>('bottom-start');
+
+  useEffect(() => {
+    const updatePlacement = () => {
+      if (window.innerWidth < 768) {
+        setPopperPlacement('bottom-start');
+      } else {
+        setPopperPlacement('bottom');
+      }
+    };
+    updatePlacement();
+    window.addEventListener('resize', updatePlacement);
+    return () => window.removeEventListener('resize', updatePlacement);
+  }, []);
 
   const filterDate = useCallback((d: Date) => {
     return availableDates.has(format(d, 'yyyy-MM-dd'));
@@ -58,6 +72,7 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
         customInput={<CustomDateDisplay />}
         locale={ko}
         highlightDates={highlightDates}
+        popperPlacement={popperPlacement}
       />
     </div>
   );

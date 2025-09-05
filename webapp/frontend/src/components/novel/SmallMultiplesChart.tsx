@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Label } from 'recharts';
-import { parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Button } from 'react-bootstrap';
 
 // --- CONSTANTS ---
@@ -49,6 +49,16 @@ const metricConfigs: { [key: string]: { name: string } } = {
   View: { name: '조회수' },
   Like: { name: '추천' },
   Fav: { name: '선호' }
+};
+
+const formatNumberForMobile = (value: number): string => {
+  if (value >= 100000000) { // 1억 이상
+    return `${(value / 100000000).toFixed(1).replace(/\.0$/, '')}억`;
+  }
+  if (value >= 10000) { // 1만 이상
+    return `${(value / 10000).toFixed(1).replace(/\.0$/, '')}만`;
+  }
+  return value.toLocaleString();
 };
 
 // --- Chart Components ---
@@ -139,7 +149,59 @@ const CustomCandleTooltip = ({ active, payload, label, name, metric }: CustomCan
   return null;
 };
 
+const ChartWrapper = ({ children, isModal }: { children: React.ReactNode, isModal: boolean }) => {
+  if (isModal) {
+    return <div className="h-100">{children}</div>;
+  }
+
+  return (
+    <>
+      <style>{`
+        .charts-container {
+          /* Mobile-first: horizontal scroll */
+          display: flex;
+          overflow-x: auto;
+          scroll-snap-type: x mandatory;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none; /* Firefox */
+        }
+        .charts-container::-webkit-scrollbar {
+          display: none; /* Chrome, Safari, Opera */
+        }
+        .charts-container > .chart-item-wrapper {
+          flex: 0 0 95%;
+          scroll-snap-align: start;
+          padding-right: 1rem;
+        }
+        .charts-container > .chart-item-wrapper:last-child {
+          padding-right: 0;
+        }
+
+        /* Desktop: vertical stack */
+        @media (min-width: 768px) { /* Bootstrap's md breakpoint */
+          .charts-container {
+            display: grid;
+            gap: 0.5rem; /* Replicates Bootstrap's g-2 */
+          }
+        }
+      `}</style>
+      <div className="d-md-none text-muted small text-center mb-2">↔ 좌우로 스크롤하여 다른 지표를 확인하세요</div>
+      <div className="charts-container">{children}</div>
+    </>
+  );
+};
+
 const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = false, modalMetric = null }: SmallMultiplesChartProps) => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const processedData = useMemo(() => {
     return data.map((curr: NovelData, i: number) => {
       const entry: { [key: string]: any } = { ...curr };
@@ -162,7 +224,7 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
   const metrics = isModal && modalMetric ? [modalMetric] : ['Ranking', 'Score', 'View', 'Like', 'Fav'];
 
   return (
-    <div className={isModal ? "h-100" : "row g-2"}>
+    <ChartWrapper isModal={isModal}>
       {metrics.map((metric) => {
         const config = metricConfigs[metric];
         
@@ -218,18 +280,26 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
         const downColor = metric === 'Ranking' ? '#d9534f' : '#0d6efd';
 
         return (
-          <div key={metric} className={isModal ? "h-100" : "col-12"}>
+          <div key={metric} className={isModal ? "h-100" : "chart-item-wrapper"}>
             <div className="p-2 border rounded h-100 d-flex flex-column position-relative">
               <div className="flex-grow-1" style={{minHeight: isModal ? 'auto' : '180px'}}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dataWithTooltipTarget} margin={{ top: 20, right: 20, left: 35, bottom: 5 }}>
+                  <ComposedChart data={dataWithTooltipTarget} margin={{ top: 20, right: 20, left: isMobile ? -8 : 35, bottom: isMobile ? -14 : 5 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="Date" tickFormatter={(dateStr) => parseISO(dateStr).getDate().toString()} />
+                    <XAxis 
+                        dataKey="Date" 
+                        tickFormatter={(dateStr) => format(parseISO(dateStr), 'd')}
+                        tick={{ fontSize: isMobile ? 11 : undefined }}
+                    />
                     <YAxis 
                         domain={yDomain}
                         reversed={metric === 'Ranking'} 
-                        tickFormatter={(value) => value.toLocaleString()} 
-                        allowDecimals={metric !== 'Ranking'} 
+                        tickFormatter={(value) =>
+                          isMobile && metric !== 'Ranking'
+                            ? formatNumberForMobile(value)
+                            : value.toLocaleString()}
+                        allowDecimals={metric !== 'Ranking'}
+                        tick={{ fontSize: isMobile ? 11 : undefined }}
                     />
                     <Tooltip content={<CustomCandleTooltip name={config.name} metric={metric} />} isAnimationActive={false} />
                     {hasBothPeriods && <ReferenceLine x="2025-07-21" stroke="red" strokeDasharray="3 3" strokeWidth={2} />}
@@ -251,7 +321,7 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
           </div>
         );
       })}
-    </div>
+    </ChartWrapper>
   );
 };
 

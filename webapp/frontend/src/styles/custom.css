@@ -19,20 +19,22 @@ body {
 
 /* Wrapper for the search bar in the header to control its responsive size */
 .header-search-wrapper {
-  flex-grow: 1; /* Allows the search bar to take up available space */
-  min-width: 150px; /* Prevents it from becoming too small on mobile */
+  /* Let it grow and shrink, starting from a basis of 0. */
+  /* This is key to allowing it to shrink below its content size in a flex context. */
+  flex: 1 1 0;
+  min-width: 0; /* Explicitly allow shrinking to zero */
   max-width: 450px; /* Sets a reasonable max width on large screens */
 }
 
 .search-input {
   width: 100%;
-  padding: 0.5rem 1rem;
-  padding-left: 2.5rem; /* Space for the icon */
+  padding: 0.15rem 1rem;
+  padding-left: 2.25rem; /* Space for the icon */
   border-radius: 9999px; /* pill-shaped */
   border: 1px solid #4b5563; /* gray-600 */
   background-color: #374151; /* gray-700 */
   color: white;
-  font-size: 0.875rem;
+  font-size: 0.875rem; /* 14px */
 }
 
 .search-input::placeholder {
@@ -47,10 +49,16 @@ body {
 
 .search-icon {
   position: absolute;
-  left: 0.75rem;
+  left: 0.6rem;
   top: 50%;
   transform: translateY(-50%);
   color: #9ca3af; /* gray-400 */
+}
+
+/* Algolia SearchBox input height adjustment */
+.ais-SearchBox-input {
+  padding-top: 0.2rem !important;
+  padding-bottom: 0.2rem !important;
 }
 
 .search-results {
@@ -201,6 +209,16 @@ body {
   }
 }
 
+/* Custom styles for the navbar toggle (hamburger button) */
+.custom-navbar-toggle {
+  padding: 0.15rem 0.5rem;
+  font-size: 1rem;
+}
+.custom-navbar-toggle .navbar-toggler-icon {
+  width: 1.2em;
+  height: 1.2em;
+}
+
 
 /* Custom Table Styles */
 .custom-table-wrapper {
@@ -209,8 +227,6 @@ body {
   overflow: auto; /* Enable both vertical and horizontal scrolling */
   background-color: #ffffff;
   position: relative;
-  max-height: 70vh; /* Set a max-height relative to the viewport height */
-  min-height: 400px; /* Set a fixed minimum height */
 }
 
 .custom-table thead {
@@ -260,9 +276,10 @@ body {
 }
 
 /* Ensure react-datepicker input has enough width */
+/* This is mainly for DateRangePicker, the single picker overrides this below. */
 .react-datepicker__input-container {
   max-width: 110px; /* 원하는 너비로 조절 */
-  min-width: 90px; /* 최소 너비 설정 */
+  min-width: 90px;
 }
 
 .react-datepicker__input-container .react-datepicker__input {
@@ -366,7 +383,7 @@ body {
   align-items: center;
   border: 1px solid #ced4da; /* Standard bootstrap border color */
   border-radius: .375rem; /* Slightly more rounded */
-  padding: 0.3rem 0.6rem; /* Adjusted padding */
+  padding: 0.3rem 0.5rem; /* Adjusted padding */
   background-color: #fff;
   width: auto; /* Fit content */
   cursor: pointer; /* Make it look clickable */
@@ -387,7 +404,7 @@ body {
   box-shadow: none; /* Remove focus shadow */
   padding: 0.2rem 0; /* Adjusted padding */
   font-size: 0.9rem; /* Adjusted font size */
-  width: 90px; /* Adjusted width */
+  width: auto; /* Let width fit content */
   cursor: pointer !important; /* Unify cursor */
   background-color: transparent; /* Ensure it doesn't have its own background */
 }
@@ -397,6 +414,11 @@ body {
   box-shadow: none !important;
   border-color: transparent !important;
   background-color: transparent !important;
+}
+
+/* Override the min-width for the input container specifically within our single date picker */
+.date-picker-wrapper .react-datepicker__input-container {
+  min-width: 0;
 }
 
 /* --- Filter Group Styles --- */
@@ -595,8 +617,8 @@ body {
 }
 .btn-primary.tag-button-compact:hover,
 .btn-primary.tag-button-compact:focus {
-  background-color: #0056b3; /* Darker blue on hover/focus */
-  border-color: #004085;
+  background-color: #007bff; /* Keep same blue on hover/focus */
+  border-color: #007bff;
   color: #fff;
 }
 
@@ -623,8 +645,8 @@ body {
   font-weight: normal;
 }
 .btn-primary:not(.tag-button-compact).rounded-pill:hover {
-  background-color: #0056b3; /* Darker blue on hover/focus */
-  border-color: #004085;
+  background-color: #007bff; /* Keep same blue on hover/focus */
+  border-color: #007bff;
   color: #fff;
 }
 
@@ -661,3 +683,32 @@ body {
 }
 
 /* The accordion icon color is tied to the `color` property via CSS variables, so it updates automatically. */
+
+/* Responsive font size for stats in NovelDetailsCard */
+.fs-stat {
+  /* Default size for mobile (like fs-6) */
+  font-size: 1rem; 
+}
+
+/* Responsive font size for tags in NovelDetailsCard */
+.badge.fs-tag-badge {
+  font-size: 0.85rem;
+}
+
+/* Responsive font size for synopsis in NovelDetailsCard */
+.fs-synopsis {
+  font-size: 0.9rem;
+}
+
+@media (min-width: 768px) { /* md breakpoint */
+  .fs-stat {
+    /* Larger size for PC (like fs-5) */
+    font-size: 1.25rem; 
+  }
+  .badge.fs-tag-badge {
+    font-size: 0.95rem;
+  }
+  .fs-synopsis {
+    font-size: 1rem;
+  }
+}
