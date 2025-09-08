@@ -2,7 +2,7 @@
 
 A data engineering project to build a robust ETL pipeline for collecting and analyzing daily ranking data from [Novelpia](https://novelpia.com), with a web application for visualization.
 
-[![Live Site](https://img.shields.io/badge/Live-Site-blue?style=for-the-badge)](https://your-live-site-url.com) <!-- Please update with your actual service URL. -->
+[![Live Site](https://img.shields.io/badge/Live-Site-blue?style=for-the-badge)](https://d2ti06wylez2yq.cloudfront.net/)
 
 ---
 
