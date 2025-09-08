@@ -418,8 +418,8 @@ const NovelRankingsPage = () => {
           height: calc(100dvh - 56px);
         }
       `}</style>
-      <div className="d-flex align-items-center gap-2 mb-3">
-        <h1 className="h2 mb-0">일간 소설 랭킹</h1>
+      <div className="d-flex align-items-center gap-2 mb-2">
+        <h1 className="h2 mb-0 fs-page-title">소설 랭킹</h1>
         <OverlayTrigger
           placement="bottom"
           overlay={
@@ -439,7 +439,7 @@ const NovelRankingsPage = () => {
         <Link to="/data-collection-info" className="ms-2 subtle-link">(데이터 수집 방식)</Link>
       </p>
 
-      <Row className="mb-2 align-items-center justify-content-between">
+      <Row className="mb-1 align-items-center justify-content-between mobile-ranking-controls-row">
         <Col xs="auto">
           <CalendarPicker
             selectedDate={optimisticDate || date}
@@ -459,16 +459,17 @@ const NovelRankingsPage = () => {
         onClick={() => setShowFilters(!showFilters)}
         aria-controls="filters-collapse-content"
         aria-expanded={showFilters}
-        variant="outline-secondary"
-        className="d-flex d-md-none justify-content-between align-items-center w-100 mb-1"
+        variant="outline-secondary" size="sm"
+        className="d-flex d-md-none justify-content-between align-items-center w-100"
       >
         <span className="d-inline-flex align-items-center"><Funnel className="me-2" />필터 및 검색 옵션</span>
         {showFilters ? <ChevronUp /> : <ChevronDown />}
       </Button>
 
       {/* --- Filter UI --- */}
-      <Collapse in={showFilters}>
-        <div id="filters-collapse-content" className="px-3 py-2 border rounded mb-1">
+      <div className="mb-1">
+        <Collapse in={showFilters}>
+          <div id="filters-collapse-content" className="px-3 py-2 border rounded">
           <NovelFilterControls onFilterChange={handleFilterChange} />
           <hr className="my-2"/>
           {/* Tag Filter Row */}
@@ -535,8 +536,9 @@ const NovelRankingsPage = () => {
               </div>
             </div>
           )}
-        </div>
-      </Collapse>
+          </div>
+        </Collapse>
+      </div>
 
       {error && <Alert variant="danger" className="mt-2">{error}</Alert>}
       
@@ -588,7 +590,7 @@ const NovelRankingsPage = () => {
               <div className={mobileViewMode === 'card' ? 'd-md-none' : 'd-none'}>
                 <div className="p-1">
                   {processedRankings.map((novel) => (
-                    <Card key={novel.ID} className="mb-2 shadow-sm">
+                    <Card key={novel.ID} className="mb-1 shadow-sm">
                       <Card.Body className="p-2">
                         <div className="d-flex justify-content-between align-items-start mb-2">
                           <div className="flex-grow-1 me-2">

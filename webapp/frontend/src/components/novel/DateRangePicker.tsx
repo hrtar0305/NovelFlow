@@ -118,6 +118,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             className="rounded-end-0"
             locale={ko}
             wrapperClassName="flex-grow-0"
+            calendarClassName="mobile-calendar-small"
             popperPlacement="bottom-start"
             portalId="datepicker-portal"
           />
@@ -141,6 +142,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             highlightDates={startDate && !endDate ? [startDate] : []}
             locale={ko}
             className="rounded-start-0"
+            calendarClassName="mobile-calendar-small"
             wrapperClassName="flex-grow-0"
             popperPlacement="bottom-end"
             portalId="datepicker-portal"
@@ -148,13 +150,9 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
         </InputGroup>
       </Form.Group>
       {isNovelDetailPage && (
-        <div className="w-100 mt-1">
-            <p className="text-muted mb-0" style={{ fontSize: '0.85em' }}>
-            데이터가 수집되지 않은 날짜는 비활성화됩니다.
-            </p>
-            <p className="text-muted mb-0" style={{ fontSize: '0.85em' }}>
-            해당 소설 데이터가 존재하는 날짜에는 동그라미가 표시됩니다.
-            </p>
+        <div className="w-100 mt-1 datepicker-help-text-container">
+            <p className="text-muted mb-0">데이터가 수집되지 않은 날짜는 비활성화됩니다.</p>
+            <p className="text-muted mb-0">해당 소설 데이터가 존재하는 날짜에는 동그라미가 표시됩니다.</p>
         </div>
       )}
     </Form>

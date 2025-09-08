@@ -185,7 +185,6 @@ const ChartWrapper = ({ children, isModal }: { children: React.ReactNode, isModa
           }
         }
       `}</style>
-      <div className="d-md-none text-muted small text-center mb-2">↔ 좌우로 스크롤하여 다른 지표를 확인하세요</div>
       <div className="charts-container">{children}</div>
     </>
   );

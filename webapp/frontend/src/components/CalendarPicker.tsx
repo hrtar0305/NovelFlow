@@ -72,6 +72,7 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
         customInput={<CustomDateDisplay />}
         locale={ko}
         highlightDates={highlightDates}
+        calendarClassName="mobile-calendar-small"
         popperPlacement={popperPlacement}
       />
     </div>

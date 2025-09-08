@@ -1,15 +1,28 @@
-import { Container } from 'react-bootstrap';
+import { Container, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import TrendCard from './../components/TrendCard';
+import { InfoCircle } from 'react-bootstrap-icons';
 
 const AnalysisDashboardPage = () => {
   return (
-    <Container className="py-4">
-      <div className="mb-3">
-        <h1 className="h2 mb-2 ps-0">데이터 분석</h1>
-        <p className="text-muted mb-0">다양한 데이터 기반 분석 정보를 보여줍니다.</p>
+    <Container className="py-3 py-md-4">
+      <div className="d-flex align-items-center gap-2 mb-2">
+        <h1 className="h2 mb-0 fs-page-title">데이터 분석</h1>
+        <OverlayTrigger
+          placement="bottom"
+          overlay={
+            <Tooltip id="analysis-description-tooltip">
+              다양한 데이터 기반 분석 정보를 보여줍니다.
+            </Tooltip>
+          }
+        >
+          <span className="d-md-none" style={{ cursor: 'pointer' }}>
+            <InfoCircle />
+          </span>
+        </OverlayTrigger>
       </div>
+      <p className="text-muted mb-3 d-none d-md-block">다양한 데이터 기반 분석 정보를 보여줍니다.</p>
 
-      <div className="row">
+      <div className="row analysis-card-container">
         <div className="col-md-6 col-lg-4 mb-4">
           <TrendCard
             title="태그 트렌드"

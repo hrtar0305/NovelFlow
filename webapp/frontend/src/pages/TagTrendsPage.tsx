@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
+import { InfoCircle } from 'react-bootstrap-icons';
 import { getAvailableDates, analyzeTagTrends } from '../services/api';
 import { Container, Alert, Spinner, Card, OverlayTrigger, Tooltip, Badge, Row, Col, ButtonGroup, Button } from 'react-bootstrap';
 import DateRangePicker from '../components/novel/DateRangePicker';
@@ -47,7 +48,7 @@ const TagCategoryCard: React.FC<{
   const displayedTags = tags.slice(0, topN);
 
   return (
-    <Card className="h-100 shadow-sm">
+    <Card className="h-100 shadow-sm tag-category-card">
       <Card.Header className={`bg-${variant} bg-opacity-10 border-bottom-0 pt-3 pb-2`}>
         <div className="d-flex align-items-center mb-2">
           <h4 className="mb-0 h5 me-3">{title}</h4>
@@ -67,12 +68,12 @@ const TagCategoryCard: React.FC<{
         </div>
         <p className="mb-0 text-muted small">{description}</p>
       </Card.Header>
-      <Card.Body className="pt-2">
+      <Card.Body className="p-2 p-md-3">
         {displayedTags && displayedTags.length > 0 ? (
           <div className="d-flex flex-wrap gap-2">
             {displayedTags.map((tagData) => (
               <OverlayTrigger key={tagData.tag} placement="top" delay={{ show: 250, hide: 400 }} overlay={(props) => renderTooltip(props, tagData, category)}>
-                <Badge pill bg={variant} className="p-2 px-3 fs-6 fw-bold" style={{ cursor: 'pointer' }}>{tagData.tag}</Badge>
+                <Badge pill bg={variant} className="p-2 px-3 fw-bold" style={{ cursor: 'pointer' }}>{tagData.tag}</Badge>
               </OverlayTrigger>
             ))}
           </div>
@@ -329,13 +330,24 @@ const TagTrendsPage: React.FC = () => {
   };
 
   return (
-    <Container className="py-4">
-      <div className="mb-3">
-        <h1 className="h2 mb-2">태그 트렌드</h1>
-        <p className="text-muted">지정된 기간 동안의 태그 점수 변화를 분석하여, 주목할 만한 트렌드를 카테고리별로 보여줍니다.</p>
+    <Container className="py-3 py-md-4">
+      <div className="d-flex align-items-center gap-2 mb-2">
+        <h1 className="h2 mb-0 fs-page-title">태그 트렌드</h1>
+        <OverlayTrigger
+          placement="bottom"
+          overlay={
+            <Tooltip id="tag-trends-description-tooltip">
+              지정된 기간 동안의 태그 점수 변화를 분석하여, 주목할 만한 트렌드를 카테고리별로 보여줍니다.
+            </Tooltip>
+          }
+        >
+          <span className="d-md-none" style={{ cursor: 'pointer' }}>
+            <InfoCircle />
+          </span>
+        </OverlayTrigger>
       </div>
-
-      <div className="d-flex align-items-center gap-2 mb-3">
+      <p className="text-muted mb-3 d-none d-md-block">지정된 기간 동안의 태그 점수 변화를 분석하여, 주목할 만한 트렌드를 카테고리별로 보여줍니다.</p>
+      <div className="d-flex align-items-center gap-2 mb-2 date-range-picker-container">
         <DateRangePicker
             startDate={startDate}
             endDate={endDate}
@@ -362,7 +374,7 @@ const TagTrendsPage: React.FC = () => {
       )}
 
       {analysisResult && (
-        <Row xs={1} lg={2} className="g-3">
+        <Row xs={1} lg={2} className="g-2 g-lg-3">
           <Col>
             <TagCategoryCard
               title="급상승 태그"

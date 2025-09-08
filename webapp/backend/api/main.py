@@ -19,14 +19,18 @@ from typing import Optional, List, Dict, Any
 app = FastAPI()
 
 # CORS 미들웨어 설정
+# 정적 도메인 (운영 환경)
 origins = [
-    "http://localhost:5173", # frontend development server
     "https://d2ti06wylez2yq.cloudfront.net", # CloudFront Domain
 ]
+
+# 개발 환경을 위한 정규식
+dev_origin_regex = r"https?://(localhost|127\.0\.0\.1|172\..*):\d+"
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=dev_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -510,3 +514,7 @@ def analyze_tag_trends(start_date: str, end_date: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

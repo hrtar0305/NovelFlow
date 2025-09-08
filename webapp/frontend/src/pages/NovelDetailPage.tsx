@@ -86,7 +86,7 @@ const NovelDetailPage = () => {
   }
 
   return (
-    <Container className="py-4">
+    <Container className="py-3 py-md-4">
       {isInitialLoad ? (
         <div className="text-center vh-100 d-flex align-items-center justify-content-center">
           <Spinner animation="border" />
@@ -97,8 +97,8 @@ const NovelDetailPage = () => {
         <>
           {details && <NovelDetailsCard details={details} />}
           
-          <div className="mt-3">
-            <h4 className="mb-2">지표별 상세 추이</h4>
+          <div className="mt-1 date-range-picker-container">
+            <h4 className="mb-2 fs-section-title-mobile">지표별 상세 추이</h4>
             <DateRangePicker
               startDate={startDate}
               endDate={endDate}

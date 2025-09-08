@@ -287,8 +287,8 @@ const TagRankingsPage = () => {
         }
       `}</style>
         <Container className="py-3 py-md-4 d-flex flex-column" style={{ height: isMobile ? 'calc(100dvh - 56px)' : 'auto' }}>
-        <div className="d-flex align-items-center gap-2 mb-3">
-          <h1 className="h2 mb-0">일간 태그 랭킹</h1>
+        <div className="d-flex align-items-center gap-2 mb-2">
+          <h1 className="h2 mb-0 fs-page-title">태그 랭킹</h1>
           <OverlayTrigger
             placement="bottom"
             overlay={
@@ -428,8 +428,8 @@ const TagRankingsPage = () => {
                     </Row>
                   </Card.Header>
                   <Card.Body>
-                    <ResponsiveContainer width="100%" height={isMobile ? 220 : 400}>
-                        <ScatterChart margin={isMobile ? { top: 10, right: 10, bottom: -15, left: -20 } : { top: 20, right: 20, bottom: 20, left: 0 }}>
+                    <ResponsiveContainer width="100%" height={isMobile ? 180 : 400}>
+                        <ScatterChart margin={isMobile ? { top: 10, right: 10, bottom: -10, left: -20 } : { top: 20, right: 20, bottom: 20, left: 0 }}>
                             <CartesianGrid />
                             <XAxis 
                               type="number" 

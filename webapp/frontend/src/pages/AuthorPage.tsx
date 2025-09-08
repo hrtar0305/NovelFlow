@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Spinner, Alert, Container, Card, Row, Col, Badge } from 'react-bootstrap';
 import { getAuthorNovels } from '../services/api';
 import axios from 'axios'; // axios import 추가
@@ -24,6 +24,15 @@ const AuthorPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authorName, setAuthorName] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
 
   useEffect(() => {
     if (!authorId) return;
@@ -53,8 +62,14 @@ const AuthorPage = () => {
     fetchAuthorNovels();
   }, [authorId]);
 
+  const handleCardClick = (novelId: string) => {
+    if (isMobile) {
+      navigate(`/novels/${novelId}`);
+    }
+  };
+
   return (
-    <Container className="py-4">
+    <Container className="py-3 py-md-4">
       {loading ? (
         <div className="text-center">
           <Spinner animation="border" />
@@ -65,18 +80,27 @@ const AuthorPage = () => {
         </Alert>
       ) : (
         <>
-          {authorName && <h1 className="mb-4 h2">{authorName}</h1>}
+          {authorName && <h1 className="mb-2 h2 fs-page-title">{authorName}</h1>}
           <div>
             {novels.length > 0 ? (
               novels.map((novel) => (
-                <Card key={novel.ID} className="mb-3 shadow-sm">
+                <Card 
+                  key={novel.ID} 
+                  className="mb-2 shadow-sm"
+                  onClick={() => handleCardClick(novel.ID)}
+                  style={isMobile ? { cursor: 'pointer' } : {}}
+                >
                   <Card.Body className="p-3">
-                    <Card.Title className="h5 mb-2">
-                      <Link to={`/novels/${novel.ID}`} className="text-dark text-decoration-none">
-                        {novel.Title || '(제목 없음)'}
-                      </Link>
+                    <Card.Title className="h5 mb-2 fs-author-page-novel-title">
+                      {isMobile ? (
+                        <span className="text-dark text-decoration-none">{novel.Title || '(제목 없음)'}</span>
+                      ) : (
+                        <Link to={`/novels/${novel.ID}`} className="text-dark text-decoration-none">
+                          {novel.Title || '(제목 없음)'}
+                        </Link>
+                      )}
                     </Card.Title>
-                    <Row xs={2} md={4} className="g-4 g-md-2 text-center text-md-start mb-2">
+                    <Row xs={2} md={4} className="g-4 g-md-2 text-center text-md-start mb-2 author-page-stats">
                       <Col><div className="text-muted small">회차</div><strong>{novel.Eps.toLocaleString()}화</strong></Col>
                       <Col><div className="text-muted small">조회수</div><strong>{novel.View.toLocaleString()}</strong></Col>
                       <Col><div className="text-muted small">추천</div><strong>{novel.Like.toLocaleString()}</strong></Col>
@@ -86,7 +110,7 @@ const AuthorPage = () => {
                       <div className="pt-2 border-top">
                         <div className="d-flex flex-wrap gap-1">
                           {novel.Tags.map((tag) => (
-                            <Badge pill bg="secondary" key={tag} className="fw-normal" style={{ fontSize: '0.85rem' }}>{tag}</Badge>
+                            <Badge pill bg="secondary" key={tag} className="fw-normal fs-author-page-tag">{tag}</Badge>
                           ))}
                         </div>
                       </div>
