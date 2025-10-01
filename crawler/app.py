@@ -29,7 +29,7 @@ class Config:
     DEFAULT_ACTION_TIMEOUT = 30000      # 30 seconds
 
     # Novelpia URLs & Settings
-    BASE_URL = "https://novelpia.com"
+    BASE_URL = "https://novelpia.com/top100"
     RANKING_URL_TEMPLATE = "https://novelpia.com/top100/all/weekly/view/all/all/#more{}"
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
     RANKING_LOAD_TIMEOUT = 30000  # 30 seconds
@@ -86,17 +86,6 @@ def _perform_login(page, username, password, execution_id):
     """Handles the login process on Novelpia."""
     _log(logging.INFO, execution_id, "Performing login...")
     page.goto(Config.BASE_URL, wait_until="commit")
-    
-    # Check for and close any banner that might obstruct the login process
-    try:
-        banner_locator = page.locator(Config.Selectors.BANNER_CLOSE)
-        banner_locator.wait_for(state='visible', timeout=7000) # 7 second timeout
-        banner_locator.click()
-        _log(logging.INFO, execution_id, "Banner closed.")
-    except PlaywrightTimeoutError:
-        _log(logging.INFO, execution_id, "No banner found, proceeding with login.")
-        pass
-    
     page.locator(Config.Selectors.TOGGLE_MENU).click()
     page.locator(Config.Selectors.ADULT_SWITCH).click()
     page.locator(Config.Selectors.LOGIN_EMAIL).fill(username)
@@ -183,6 +172,7 @@ def _fetch_and_parse_ranking_page(page, ranking_url, target_novel_count, today, 
 def get_ranking_list(event, context):
     execution_id = event.get('execution_id', 'N/A')
     input_payload = event.get('input', {})
+    test_mode = input_payload.get('test_mode', False)
     _log(logging.INFO, execution_id, "Starting get ranking process...")
 
     try:
@@ -250,6 +240,14 @@ def get_ranking_list(event, context):
                     novels = _fetch_and_parse_ranking_page(page, ranking_url, target_novel_count, today, execution_id)
                     
                     _log(logging.INFO, execution_id, f"Successfully fetched {len(novels)} novels.", novel_count=len(novels), date=today)
+                    
+                    if test_mode:
+                        _log(logging.INFO, execution_id, "Test mode enabled. Returning summary without novel data.")
+                        return {
+                            "status": "TEST_SUCCESS",
+                            "fetched_count": len(novels),
+                            "fetched_novels": novels
+                        }
                     return {"novels": novels, "target_novel_count": target_novel_count, "date": today}
 
                 except (ValueError, PlaywrightTimeoutError) as e:
