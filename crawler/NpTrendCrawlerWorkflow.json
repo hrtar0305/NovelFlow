@@ -77,7 +77,7 @@
             "Lambda.TooManyRequestsException",
             "States.Timeout"
           ],
-          "IntervalSeconds": 5,
+          "IntervalSeconds": 60,
           "MaxAttempts": 5,
           "BackoffRate": 2
         }

@@ -27,6 +27,7 @@ build/
 # AWS Lambda dependency packages
 data-pipeline/package/
 webapp/backend/package/
+contests/2025/contest_id_collector/package/
 
 # Local data files
 data/

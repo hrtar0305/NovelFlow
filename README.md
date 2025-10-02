@@ -19,9 +19,11 @@ A data engineering project to build a robust ETL pipeline for collecting and ana
 
 ## ETL Pipeline Architecture
 
-The core of this project is a serverless ETL pipeline designed for daily, automated data collection. It is orchestrated by **AWS Step Functions** and triggered by **Amazon EventBridge**. The architecture prioritizes robustness, scalability, and data integrity.
+The core of this project consists of two distinct serverless ETL pipelines, both orchestrated by **AWS Step Functions** and triggered by **Amazon EventBridge**. The architecture prioritizes robustness, scalability, and data integrity.
 
-The process is managed by a Standard Workflow (`NpTrendCrawlerWorkflow.json`) which orchestrates several Lambda functions and an Express Workflow.
+### 1. Daily Ranking Pipeline (`crawler`)
+
+The process for daily ranking data is managed by a Standard Workflow (`NpTrendCrawlerWorkflow.json`) which orchestrates several Lambda functions and an Express Workflow.
 
 1.  **Initiation & Preparation (`get_ranking_list` Lambda)**
     -   **Trigger**: An Amazon EventBridge rule triggers the Step Functions workflow daily.
@@ -30,7 +32,7 @@ The process is managed by a Standard Workflow (`NpTrendCrawlerWorkflow.json`) wh
     -   **Crawling**: Launches a headless browser using **Playwright**, logs into Novelpia, and crawls the top 500 novels from the '7-day' ranking page.
     -   **Output**: Returns a list of 500 novels with basic information (ID, rank, score) and the total count to the next step.
 
-2.  **Parallel Processing (`NpTrendCrawlerExpressWorkflow.json`)**
+2.  **Parallel Parsing (`NpTrendCrawlerExpressWorkflow.json`)**
     -   The Standard Workflow invokes an **Express Workflow** to efficiently process each novel's details in parallel.
     -   The Express Workflow utilizes a `Map` state, which iterates through the list of 500 novels.
     -   With `MaxConcurrency` set to 20, it invokes the `parse_novel_details` Lambda for up to 20 novels simultaneously, significantly reducing total processing time.
@@ -47,6 +49,34 @@ The process is managed by a Standard Workflow (`NpTrendCrawlerWorkflow.json`) wh
         1.  **Archiving**: The complete, validated dataset is converted to a CSV file and uploaded to an **Amazon S3** bucket for backup and archival.
         2.  **Loading**: The data is then batch-written into an **Amazon DynamoDB** table. Daily statistics (e.g., tag scores) are also calculated and stored in a separate `STATS#<date>` item.
         3.  **Message Deletion**: Only after the data has been successfully archived to S3 and loaded into DynamoDB, the messages are deleted from the SQS queue. This "validate, load, then delete" pattern ensures data is not lost if a failure occurs during the storage phase.
+
+### 2. Contest Data Pipeline (`contest`)
+
+To handle a larger and growing number of contest novels (1,800+), a more advanced and cost-effective architecture was developed. This pipeline avoids the 5-minute execution limit of Express Workflows and minimizes Step Functions state transition costs.
+
+1.  **Task Distribution (`get_id_list_from_s3` Lambda)**
+    -   **Trigger**: Triggered by a main Step Functions workflow (`NpTrendContestDataPipelineMainWorkflow.json`).
+    -   **Queue Purge**: Clears both the "Task Queue" and "Result Queue" to ensure a clean run, waiting for confirmation that the queues are empty.
+    -   **Fan-Out**: Reads a master list of novel IDs from S3 and sends each ID as an individual message to a **Task SQS Queue**. This "fan-out" process decouples task distribution from the main workflow.
+
+2.  **Scalable Parallel Parsing (`parser` Lambda)**
+    -   **Trigger**: This Lambda is triggered directly by messages arriving in the "Task SQS Queue", with a batch size of 10.
+    -   **Controlled Concurrency**: Lambda's **Reserved Concurrency** is set to a reasonable number (e.g., 20) to limit simultaneous requests to the target website, preventing DDOS-like behavior.
+    -   **Robust Parsing**: Uses **Playwright** to handle dynamic, JavaScript-heavy pages. It includes an internal retry mechanism for transient network errors.
+    -   **Error Handling**:
+        -   For permanent errors (e.g., a novel is now private), a placeholder item is generated.
+        -   For persistent transient errors (after several retries), the Lambda fails, allowing SQS to automatically requeue the message batch for another attempt.
+    -   **Queueing**: Successfully parsed data and placeholders are sent to a **Result SQS Queue**.
+
+3.  **Dynamic Completion Check (Step Functions Loop)**
+    -   The main workflow enters a "Wait and Check" loop.
+    -   A `check_completion` Lambda periodically checks the number of messages in the "Result SQS Queue".
+    -   Once the message count matches the total number of fanned-out tasks, the workflow proceeds to the final step. This is far more efficient than a fixed wait time.
+
+4.  **Consolidation & Storage (`consolidate_data` Lambda)**
+    -   **Data Retrieval & Validation**: Collects all messages from the "Result SQS Queue", deduplicates them (to handle potential SQS retries), and validates that the total count matches the expected number.
+    -   **Data Processing**: Calculates `RetentionRate` for valid items.
+    -   **Commit Phase**: Batch-writes the final, clean data to DynamoDB and then deletes the messages from the SQS queue. The Step Functions `Retry` policy for this step is configured with a long interval to safely handle failures without causing race conditions with SQS's visibility timeout.
 
 ### Web Application (Visualization Layer)
 

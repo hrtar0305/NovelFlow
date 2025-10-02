@@ -1,0 +1,100 @@
+{
+  "Comment": "Main workflow to orchestrate the daily collection of contest novel data using a Fan-Out pattern with a dynamic completion check.",
+  "StartAt": "FanOutTasksToSQS",
+  "States": {
+    "FanOutTasksToSQS": {
+      "Type": "Task",
+      "Comment": "Reads novel IDs from S3 and sends them as individual messages to a Task SQS Queue.",
+      "Resource": "arn:aws:lambda:ap-northeast-2:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-get-id-list",
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Name",
+        "date.$": "$$.State.EnteredTime"
+      },
+      "ResultPath": "$.FanOutResult",
+      "Next": "CheckIfDone",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ]
+    },
+    "CheckIfDone": {
+      "Type": "Task",
+      "Comment": "Checks if the number of messages in the Result Queue matches the number of fanned-out tasks.",
+      "Resource": "arn:aws:lambda:ap-northeast-2:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-check-completion",
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Name",
+        "fanned_out_count.$": "$.FanOutResult.fanned_out_count"
+      },
+      "ResultPath": "$.CompletionCheck",
+      "Next": "IsParsingComplete?"
+    },
+    "IsParsingComplete?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.CompletionCheck.is_done",
+          "BooleanEquals": true,
+          "Next": "ConsolidateContestData"
+        }
+      ],
+      "Default": "WaitForNextCheck"
+    },
+    "WaitForNextCheck": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "CheckIfDone"
+    },
+    "ConsolidateContestData": {
+      "Type": "Task",
+      "Comment": "Collects all messages from the Result SQS Queue, calculates metrics, and saves to DynamoDB.",
+      "Resource": "arn:aws:lambda:ap-northeast-2:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-consolidate-data",
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Name",
+        "fanned_out_count.$": "$.FanOutResult.fanned_out_count"
+      },
+      "Next": "PipelineSuccess",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 90,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ]
+    },
+    "PipelineFail": {
+      "Type": "Fail",
+      "Comment": "The entire data collection process failed."
+    },
+    "PipelineSuccess": {
+      "Type": "Succeed",
+      "Comment": "The data collection process completed successfully."
+    }
+  },
+  "TimeoutSeconds": 1200
+}
