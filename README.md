@@ -6,6 +6,22 @@ A data engineering project to build a robust ETL pipeline for collecting and ana
 
 ---
 
+## Features
+
+-   **Daily Novel Rankings**: Provides daily rankings and change trends for top novels.
+-   **Daily Tag Rankings**: Offers tag-specific scores and rankings based on novel ranking data.
+-   **Novel Detail View**: Displays detailed metrics and trend charts for individual novels.
+-   **Author's Works List**: Shows a list of all works by a specific author.
+-   **Contest Rankings**: Allows viewing contest entry rankings by date for a specific year.
+-   **Contest Tag Rankings**: Provides tag-specific scores and rankings for contest entries.
+-   **Contest Novel Detail View**: Displays detailed metrics and trend charts for individual contest novels.
+-   **Advanced Tag Filtering**: Supports complex tag searches using `AND`, `OR`, `NOT`, and parentheses.
+-   **Data Trend Analysis**: Visualizes rising, falling, popular, and volatile tags based on trend analysis.
+-   **Responsive UI**: Optimized user interface for both desktop and mobile environments.
+
+
+---
+
 ## Tech Stack & Architecture
 
 | Category      | Technologies                                                              |
@@ -61,7 +77,7 @@ To handle a larger and growing number of contest novels (1,800+), a more advance
 
 2.  **Scalable Parallel Parsing (`parser` Lambda)**
     -   **Trigger**: This Lambda is triggered directly by messages arriving in the "Task SQS Queue", with a batch size of 10.
-    -   **Controlled Concurrency**: Lambda's **Reserved Concurrency** is set to a reasonable number (e.g., 20) to limit simultaneous requests to the target website, preventing DDOS-like behavior.
+    -   **Controlled Concurrency**: Lambda's **Reserved Concurrency** is set to a reasonable number (e.g., 20) to limit simultaneous requests to the target website, ensuring stable operation and preventing excessive server load.
     -   **Robust Parsing**: Uses **Playwright** to handle dynamic, JavaScript-heavy pages. It includes an internal retry mechanism for transient network errors.
     -   **Error Handling**:
         -   For permanent errors (e.g., a novel is now private), a placeholder item is generated.
@@ -84,19 +100,24 @@ The web application serves as a user-friendly interface to explore the collected
 
 -   **Backend**: A serverless API built with Python and **FastAPI**, deployed on **AWS Lambda** via Mangum. It queries the DynamoDB table to serve data to the frontend.
 -   **Frontend**: A Single-Page Application (SPA) built with **React** and **TypeScript**, using **Recharts** for interactive data visualization.
--   **Search**: **Algolia** is used to provide a fast and responsive search experience for novels and authors.
 
 ---
 
 ## Data Collection Strategy
 
-The data collection strategy is designed to provide a stable and comprehensive view of trends on the platform.
+The data collection strategy is designed to provide a stable and comprehensive view of trends on the platform. This project collects two main types of data.
 
-### Data Source & Scope
+### 1. Novel Ranking Data
 
 -   **Source**: Novelpia real-time view count ranking (7-day, all types).
 -   **Scope**: Top **500** novels (300 until 2025.07.20).
 -   **Frequency**: Daily at 9:00 PM (KST).
+
+### 2. Contest Ranking Data (e.g., 2025 Contest)
+
+-   **Source**: Novelpia '우주최강 공모전' entries list.
+-   **Scope**: All novels participating in the contest.
+-   **Frequency**: Daily at 2:00 PM (KST).
 
 ### Rationale for '7-Day' Ranking
 
