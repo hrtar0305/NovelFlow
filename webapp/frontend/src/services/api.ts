@@ -52,3 +52,34 @@ export const getAvailableDates = () => {
 export const getAuthorNovels = (authorId: string) => {
   return apiClient.get(`/api/authors/${authorId}`);
 };
+
+// --- CONTEST API FUNCTIONS ---
+
+export const getContestDataByDate = (year: number, date: string) => {
+  return axios.get(`${API_BASE_URL}/api/contests/${year}/${date}`);
+};
+
+export const getContestLatestDate = (year: number) => {
+  return axios.get(`${API_BASE_URL}/api/contests/${year}/latest-date`);
+};
+
+export const getContestAvailableDates = (year: number) => {
+  return axios.get(`${API_BASE_URL}/api/contests/${year}/available-dates`);
+};
+
+export const getLatestContestNovelDetails = (year: number, novelId: string) => {
+  return axios.get(`${API_BASE_URL}/api/contests/${year}/novels/${novelId}/latest`);
+};
+
+export const getContestNovelTrend = (year: number, novelId: string, startDate: string, endDate: string) => {
+  return axios.get(`${API_BASE_URL}/api/trends/contests/${year}/novels/${novelId}`, {
+    params: {
+      start_date: startDate,
+      end_date: endDate,
+    },
+  });
+};
+
+export const getContestTagRankingsByDate = (year: number, date: string) => {
+  return axios.get(`${API_BASE_URL}/api/contests/${year}/ranks/tags/${date}`);
+};

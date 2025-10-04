@@ -349,18 +349,19 @@ body {
 
 /* --- RankChangeIndicator Styles (1-1, v2) --- */
 .rank-change-badge {
-  display: inline-flex; /* Change to inline-flex for better vertical alignment with items */
-  align-items: center; /* Center items vertically */
-  justify-content: center; /* Center items horizontally */
-  width: 45px; /* Fixed width as requested */
-  height: 25px; /* Fixed height as requested */
-  padding: 0; /* Remove padding as width/height are fixed */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 45px;
+  height: 25px;
+  padding: 0;
+  gap: 2px;
   font-size: 0.875em;
   font-weight: 600;
-  line-height: 1; /* Ensure line-height doesn't affect height */
+  line-height: 1;
   text-align: center;
   white-space: nowrap;
-  vertical-align: middle; /* Use middle for better alignment */
+  vertical-align: middle;
   border-radius: 0.375rem;
 }
 
@@ -377,6 +378,10 @@ body {
 .rank-same {
   background-color: #f1f3f5; /* Light Pastel Gray */
   color: #495057; /* Darker Gray */
+}
+
+.contest-table .rank-change-badge {
+  width: 55px;
 }
 
 /* --- DatePicker Wrapper Styles (1-2, v3) --- */
@@ -517,7 +522,21 @@ body {
   border-bottom-left-radius: 0 !important;
 }
 
+
+/*
+ * react-datepicker alignment fix (padding).
+ * The calendar month area (`.react-datepicker__month`) has a horizontal margin,
+ * but the day names row (`.react-datepicker__day-names`) inside the header does not,
+ * causing a visual misalignment between the day names and the columns of dates.
+ * This rule adds matching horizontal padding to the day names container to align them.
+*/
+.react-datepicker__day-names {
+  padding: 0 0.4rem;
+  box-sizing: border-box; /* Ensure padding is included in the element's total width */
+}
+
 /* --- DatePicker Highlight & Hover Fixes (Revised) --- */
+
 
 /* 1. 기본 keyboard-selected (호버 시 적용되는 클래스) 배경을 투명하게 초기화 */
 /*    이렇게 해야 다른 강조/선택 스타일이 호버 시에도 유지됩니다. */

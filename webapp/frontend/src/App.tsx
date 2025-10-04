@@ -6,6 +6,9 @@ import TagRankingsPage from './pages/TagRankingsPage';
 import AnalysisDashboardPage from './pages/AnalysisDashboardPage';
 import NovelDetailPage from './pages/NovelDetailPage';
 import AuthorPage from './pages/AuthorPage';
+import ContestPage from './pages/ContestPage';
+import ContestNovelDetailPage from './pages/ContestNovelDetailPage'; // 새로 추가될 페이지
+import ContestTagRankingsPage from './pages/ContestTagRankingsPage';
 import DataCollectionPage from './pages/DataCollectionPage';
 import TagTrendsPage from './pages/TagTrendsPage';
 import NovelTrendsPage from './pages/NovelTrendsPage';
@@ -20,12 +23,16 @@ function App() {
           <div className="content-wrapper">
             <Routes>
               <Route path='/' element={<Navigate to="/novels/rankings" replace />} />
+              <Route path='/contests' element={<Navigate to="/contests/2025" replace />} />
               <Route path='/novels/rankings/:date?' element={<NovelRankingsPage />} />
               <Route path='/tags/rankings/:date?' element={<TagRankingsPage />} />
               <Route path='/trends' element={<AnalysisDashboardPage />} />
               <Route path='/trends/tags' element={<TagTrendsPage />} />
               <Route path='/trends/novels' element={<NovelTrendsPage />} />
               <Route path='/novels/:novelId' element={<NovelDetailPage />} />
+              <Route path='/contests/:year/:date?' element={<ContestPage />} />
+              <Route path='/contests/:year/tags/rankings/:date?' element={<ContestTagRankingsPage />} />
+              <Route path='/contests/:year/novels/:novelId' element={<ContestNovelDetailPage />} />
               <Route path='/authors/:authorId' element={<AuthorPage />} />
               <Route path='/data-collection-info' element={<DataCollectionPage />} />
             </Routes>

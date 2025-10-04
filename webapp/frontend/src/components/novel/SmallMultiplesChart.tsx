@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Label } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { Button } from 'react-bootstrap';
@@ -25,6 +25,7 @@ interface SmallMultiplesChartProps {
   hasBothPeriods: boolean;
   onZoomClick: (metric: string) => void;
   isModal?: boolean;
+  metricConfigs: { [key: string]: { name: string } };
   modalMetric?: string | null;
 }
 
@@ -34,22 +35,6 @@ interface CustomizedDotProps {
   payload?: NovelData;
   dataKey?: string;
 }
-
-interface CustomCandleTooltipProps {
-  active?: boolean;
-  payload?: any[];
-  label?: string;
-  name: string;
-  metric: string;
-}
-
-const metricConfigs: { [key: string]: { name: string } } = {
-  Ranking: { name: '랭킹' },
-  Score: { name: '점수' },
-  View: { name: '조회수' },
-  Like: { name: '추천' },
-  Fav: { name: '선호' }
-};
 
 const formatNumberForMobile = (value: number): string => {
   if (value >= 100000000) { // 1억 이상
@@ -77,15 +62,15 @@ const CenteredBar = (props: any) => {
   return <rect x={centeredX} y={y} width={width} height={height} fill={fill} />;
 };
 
-const CustomizedDot = (props: CustomizedDotProps) => {
+const CustomizedDot = React.memo((props: CustomizedDotProps) => {
   const { cx, cy, payload, dataKey } = props;
   if (!dataKey || !payload || payload[dataKey] === null || payload[dataKey] === undefined) return null;
   
   const isRankOut = 
-    dataKey === 'Ranking' && 
+    dataKey.toLowerCase().includes('rank') && 
     (
-      payload.Ranking === RANK_OUT_VALUE || 
-      (payload.Ranking === RANK_OUT_VALUE_300 && payload.Date <= TOP_300_END_DATE)
+      payload[dataKey] === RANK_OUT_VALUE || 
+      (payload[dataKey] === RANK_OUT_VALUE_300 && payload.Date <= TOP_300_END_DATE)
     );
 
   if (isRankOut) {
@@ -97,17 +82,17 @@ const CustomizedDot = (props: CustomizedDotProps) => {
   }
   
   return <circle cx={cx} cy={cy} r={3} fill="#8884d8" />;
-};
+});
 
-const CustomCandleTooltip = ({ active, payload, label, name, metric }: CustomCandleTooltipProps) => {
-  if (active && payload && payload.length && metric) {
+const CustomCandleTooltip = ({ active, payload, label, name, metricKey }: { active?: boolean; payload?: any[]; label?: string; name: string; metricKey: string; }) => {
+  if (active && payload && payload.length && metricKey) {
     const itemPayload = payload.find(p => p.dataKey === 'tooltipTrigger')?.payload;
     if (!itemPayload) return null;
 
-    let currValue = itemPayload[metric];
+    let currValue = itemPayload[metricKey];
 
     const isRankOut = 
-      metric === 'Ranking' && 
+      metricKey.toLowerCase().includes('rank') && 
       (
         currValue === RANK_OUT_VALUE || 
         (currValue === RANK_OUT_VALUE_300 && itemPayload.Date <= TOP_300_END_DATE)
@@ -120,17 +105,17 @@ const CustomCandleTooltip = ({ active, payload, label, name, metric }: CustomCan
     let changeString = '-';
     let changeColor = '#6c757d';
 
-    if (itemPayload[`${metric}_prevValue`] !== undefined && itemPayload[`${metric}_prevValue`] !== null) {
-      const prevValue = itemPayload[`${metric}_prevValue`];
-      const actualCurrValue = itemPayload[metric];
+    if (itemPayload[`${metricKey}_prevValue`] !== undefined && itemPayload[`${metricKey}_prevValue`] !== null) {
+      const prevValue = itemPayload[`${metricKey}_prevValue`];
+      const actualCurrValue = itemPayload[metricKey];
 
       if (actualCurrValue !== null && prevValue !== null) {
         const change = actualCurrValue - prevValue;
-        const positiveChangeColor = metric === 'Ranking' ? '#0d6efd' : '#d9534f';
-        const negativeChangeColor = metric === 'Ranking' ? '#d9534f' : '#0d6efd';
+        const positiveChangeColor = metricKey.toLowerCase().includes('rank') ? '#0d6efd' : '#d9534f';
+        const negativeChangeColor = metricKey.toLowerCase().includes('rank') ? '#d9534f' : '#0d6efd';
         if (change !== 0) {
           changeColor = change > 0 ? positiveChangeColor : negativeChangeColor;
-          const displayChange = metric === 'Ranking' ? -change : change;
+          const displayChange = metricKey.toLowerCase().includes('rank') ? -change : change;
           changeString = `${displayChange > 0 ? '+' : ''}${displayChange.toLocaleString()}`;
         }
       }
@@ -190,7 +175,7 @@ const ChartWrapper = ({ children, isModal }: { children: React.ReactNode, isModa
   );
 };
 
-const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = false, modalMetric = null }: SmallMultiplesChartProps) => {
+const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = false, metricConfigs, modalMetric = null }: SmallMultiplesChartProps) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -206,7 +191,7 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
       const entry: { [key: string]: any } = { ...curr };
       if (i > 0) {
         const prev: NovelData = data[i - 1];
-        ['Ranking', 'Score', 'View', 'Like', 'Fav'].forEach(metric => {
+        Object.keys(metricConfigs).forEach(metric => {
           const prevValue = prev[metric];
           const currValue = curr[metric];
           if (prevValue != null && currValue != null) {
@@ -218,9 +203,9 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
       }
       return entry;
     });
-  }, [data]);
+  }, [data, metricConfigs]);
 
-  const metrics = isModal && modalMetric ? [modalMetric] : ['Ranking', 'Score', 'View', 'Like', 'Fav'];
+  const metrics = isModal && modalMetric ? [modalMetric] : Object.keys(metricConfigs);
 
   return (
     <ChartWrapper isModal={isModal}>
@@ -229,7 +214,7 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
         
         const yDomain = useMemo(() => {
             const values = data.map((d: any) => d[metric]).filter((v: any) => v != null) as number[];
-            
+
             if (values.length === 0) {
                 return metric === 'Ranking' ? [1, 100] : [0, 100];
             }
@@ -240,7 +225,7 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
             let domainMin, domainMax;
 
             if (min === max) {
-                if (metric === 'Ranking') {
+                if (metric.toLowerCase().includes('rank')) {
                     const padding = 5;
                     domainMin = min - padding;
                     domainMax = max + padding;
@@ -256,7 +241,7 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
                 domainMax = max + padding;
             }
 
-            if (metric === 'Ranking') {
+            if (metric.toLowerCase().includes('rank')) {
                 domainMin = Math.max(1, Math.floor(domainMin));
                 domainMax = Math.ceil(domainMax);
             } else {
@@ -275,8 +260,8 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
             processedData.map(d => ({...d, tooltipTrigger: [yDomain[0], yDomain[1]]}))
         , [processedData, yDomain]);
 
-        const upColor = metric === 'Ranking' ? '#0d6efd' : '#d9534f';
-        const downColor = metric === 'Ranking' ? '#d9534f' : '#0d6efd';
+        const upColor = metric.toLowerCase().includes('rank') ? '#0d6efd' : '#d9534f';
+        const downColor = metric.toLowerCase().includes('rank') ? '#d9534f' : '#0d6efd';
 
         return (
           <div key={metric} className={isModal ? "h-100" : "chart-item-wrapper"}>
@@ -292,15 +277,15 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
                     />
                     <YAxis 
                         domain={yDomain}
-                        reversed={metric === 'Ranking'} 
+                        reversed={metric.toLowerCase().includes('rank')} 
                         tickFormatter={(value) =>
-                          isMobile && metric !== 'Ranking'
+                          isMobile && !metric.toLowerCase().includes('rank')
                             ? formatNumberForMobile(value)
                             : value.toLocaleString()}
-                        allowDecimals={metric !== 'Ranking'}
+                        allowDecimals={!metric.toLowerCase().includes('rank')}
                         tick={{ fontSize: isMobile ? 11 : undefined }}
                     />
-                    <Tooltip content={<CustomCandleTooltip name={config.name} metric={metric} />} isAnimationActive={false} />
+                    <Tooltip content={<CustomCandleTooltip name={config.name} metricKey={metric} />} isAnimationActive={false} />
                     {hasBothPeriods && <ReferenceLine x="2025-07-21" stroke="red" strokeDasharray="3 3" strokeWidth={2} />}
                     <Label value={config.name} position="insideTopLeft" offset={10} style={{fill: '#666', fontSize: '0.9rem', fontWeight: 'bold'}} />
                     <Bar dataKey="tooltipTrigger" fill="transparent" isAnimationActive={false} />
@@ -309,7 +294,7 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
                         <Cell key={`cell-${index}`} fill={entry[`${metric}_changeType`] === 'up' ? upColor : entry[`${metric}_changeType`] === 'down' ? downColor : '#e0e0e0'} />
                       ))}
                     </Bar>
-                    <Line type="monotone" dataKey={metric} stroke="#343a40" dot={<CustomizedDot />} connectNulls={metric === 'Ranking'} isAnimationActive={false} />
+                    <Line type="monotone" dataKey={metric} stroke="#343a40" dot={<CustomizedDot dataKey={metric} />} connectNulls={metric.toLowerCase().includes('rank')} isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

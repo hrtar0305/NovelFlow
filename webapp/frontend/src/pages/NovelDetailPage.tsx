@@ -79,6 +79,7 @@ const NovelDetailPage = () => {
         data={novelData} 
         hasBothPeriods={hasBothPeriods} 
         onZoomClick={() => {}} 
+        metricConfigs={metricConfigs}
         isModal={true}
         modalMetric={selectedMetric}
       />
@@ -128,7 +129,7 @@ const NovelDetailPage = () => {
                     </Alert>
                   )}
                   <Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>
-                    <SmallMultiplesChart data={novelData} hasBothPeriods={hasBothPeriods} onZoomClick={handleZoomClick} />
+                    <SmallMultiplesChart data={novelData} hasBothPeriods={hasBothPeriods} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} />
                   </Suspense>
                 </>
               ) : (

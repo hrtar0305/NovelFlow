@@ -96,12 +96,75 @@ def _validate_data(execution_id, items, expected_count):
         raise ValueError(error_message)
     _log(logging.INFO, execution_id, f"Validation successful: {collected_data_count}/{expected_count} unique items collected.")
 
-def _process_and_upload_data(dynamodb_table, execution_id, items):
-    """Calculates retention rate and batch-writes items to DynamoDB."""
-    processed_items = []
-    # The parser already ensures that view and episode numbers are integers,
-    # and invalid values are set to -1. This function now only calculates RetentionRate.
+def _calculate_and_store_tag_stats(dynamodb_table, execution_id, items):
+    """Calculates tag statistics from all items and stores them in a single DynamoDB item."""
+    if not items:
+        _log(logging.INFO, execution_id, "No items to calculate tag stats from.")
+        return
+
+    _log(logging.INFO, execution_id, "Calculating tag statistics...")
+    tag_counts = {}
+    tag_weighted_scores_inverse_linear = {}
+    tag_weighted_scores_inverse_rank = {}
+    tag_weighted_scores_logarithmic = {}
+    total_ranks = len(items)
+
     for item in items:
+        Rank = item.get('Rank')
+        if not isinstance(Rank, int) or Rank <= 0:
+            continue
+
+        weight_inverse_linear = total_ranks - Rank + 1
+        weight_inverse_rank = 1 / Rank
+        weight_logarithmic = 1 / math.log(Rank + 1)
+
+        tags = item.get('Tags', [])
+        if isinstance(tags, list):
+            for tag in tags:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+                tag_weighted_scores_inverse_linear[tag] = tag_weighted_scores_inverse_linear.get(tag, 0) + weight_inverse_linear
+                tag_weighted_scores_inverse_rank[tag] = tag_weighted_scores_inverse_rank.get(tag, 0) + weight_inverse_rank
+                tag_weighted_scores_logarithmic[tag] = tag_weighted_scores_logarithmic.get(tag, 0) + weight_logarithmic
+
+    if not tag_counts:
+        _log(logging.INFO, execution_id, "No tags found in items to create stats.")
+        return
+
+    date = items[0]['Date']
+    stats_item = {
+        'ID': f'TAG_STATS#{date}',
+        'Date': date,
+        'DataType': 'CONTEST_TAG_STATS',
+        'TagCounts': tag_counts,
+        'TagWeightedScoresInverseLinear': {k: Decimal(str(v)) for k, v in tag_weighted_scores_inverse_linear.items()},
+        'TagWeightedScoresInverseRank': {k: Decimal(str(v)) for k, v in tag_weighted_scores_inverse_rank.items()},
+        'TagWeightedScoresLogarithmic': {k: Decimal(str(v)) for k, v in tag_weighted_scores_logarithmic.items()},
+    }
+
+    try:
+        dynamodb_table.put_item(Item=stats_item)
+        _log(logging.INFO, execution_id, f"Successfully stored tag stats for {date}.")
+    except Exception as e:
+        _log(logging.ERROR, execution_id, f"Failed to store tag stats for {date}. Error: {e}")
+
+def _process_and_upload_data(dynamodb_table, execution_id, items):
+    """Calculates rank, retention rate, and batch-writes items to DynamoDB."""
+    if not items:
+        _log(logging.WARNING, execution_id, "No items to process for upload.")
+        return
+
+    # 1. Rank items based on View count (and ID as a tie-breaker)
+    _log(logging.INFO, execution_id, "Ranking items based on 'View' count.")
+    sorted_items = sorted(
+        items,
+        key=lambda x: (x.get('View', 0), -int(x.get('ID', '0'))),
+        reverse=True
+    )
+
+    # 2. Calculate RetentionRate and add rank for each item
+    processed_items = []
+    for i, item in enumerate(sorted_items):
+        item['Rank'] = i + 1
         first_view = item.get("FirstEpView", -1)
         latest_view = item.get("TargetLatestEpView", -1)
         first_ep_num = item.get("FirstEpNum", -1)
@@ -127,6 +190,9 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
             batch.put_item(Item=item)
     _log(logging.INFO, execution_id, "Batch write to DynamoDB complete.")
     
+    # --- Calculate and store tag statistics ---
+    _calculate_and_store_tag_stats(dynamodb_table, execution_id, processed_items)
+
     # --- Update the CONTEST_AVAILABLE_DATES item ---
     # This must happen only after the main data has been successfully written.
     try:

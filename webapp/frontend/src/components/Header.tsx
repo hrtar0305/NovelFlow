@@ -28,6 +28,7 @@ const Header = () => {
             <Nav.Link as={NavLink} to="/novels/rankings" className="fs-6" onClick={() => setExpanded(false)}>소설 랭킹</Nav.Link>
             <Nav.Link as={NavLink} to="/tags/rankings" className="fs-6" onClick={() => setExpanded(false)}>태그 랭킹</Nav.Link>
             <Nav.Link as={NavLink} to="/trends" className="fs-6" onClick={() => setExpanded(false)}>데이터 분석</Nav.Link>
+            <Nav.Link as={NavLink} to="/contests" className="fs-6" onClick={() => setExpanded(false)}>공모전</Nav.Link>
           </Nav>
         </Navbar.Collapse>
       </Container>

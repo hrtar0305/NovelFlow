@@ -42,6 +42,7 @@ handler = Mangum(app)
 # DynamoDB 리소스 초기화
 dynamodb = boto3.resource('dynamodb', region_name='ap-northeast-2')
 table = dynamodb.Table('NovelRanks')
+contest_table = dynamodb.Table('ContestStats2025')
 
 # DynamoDB의 Decimal 타입을 JSON으로 직렬화하기 위한 헬퍼 클래스
 class DecimalEncoder(json.JSONEncoder):
@@ -106,7 +107,30 @@ class TagRankData(BaseModel):
     score_inverse: float
     score_log: float
     count: int
-    rank: int
+    Rank: int
+
+class ContestNovelData(BaseModel):
+    ID: str
+    Date: str
+    Title: Optional[str] = None
+    AuthorName: Optional[str] = None
+    AuthorID: Optional[str] = None
+    View: Optional[int] = None
+    Like: Optional[int] = None
+    Fav: Optional[int] = None
+    Alr: Optional[int] = None
+    Eps: Optional[int] = None
+    IsPlus: Optional[bool] = None
+    IsFree: Optional[bool] = None
+    FirstUpdate: Optional[str] = None
+    LastUpdate: Optional[str] = None
+    Synopsis: Optional[str] = None
+    Tags: List[str] = Field(default_factory=list)
+    RetentionRate: Optional[float] = None # 연독률
+    Rank: Optional[int] = None  # Calculated rank based on view_change
+    view_change: int = Field(0, description="조회수 변동. 프론트엔드에서 계산됨.")
+    is_new: bool = Field(False, description="신규 진입 여부. 프론트엔드에서 계산됨.")
+
 
 @app.get("/")
 def read_root():
@@ -320,7 +344,7 @@ def get_tags_by_date(date: str):
         
         # Add rank to each item
         for i, item in enumerate(sorted_data):
-            item['rank'] = i + 1
+            item['Rank'] = i + 1
 
         return sorted_data
 
@@ -355,6 +379,207 @@ async def get_author_novels(author_id: str):
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"DynamoDB query failed for novel {novel_id}: {e}")
     return latest_novels
+
+@app.get("/api/contests/{year}/latest-date", response_model=LatestDateResponse)
+def get_contest_latest_date(year: int):
+    """
+    공모전 데이터가 존재하는 가장 최근 날짜를 조회합니다.
+    """
+    if year != 2025:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    try:
+        response = contest_table.get_item(
+            Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
+        )
+        item = response.get('Item')
+        if item and 'dates' in item and item['dates']:
+            latest_date = sorted(list(item['dates']), reverse=True)[0]
+            return LatestDateResponse(latest_date=latest_date)
+        raise HTTPException(status_code=404, detail="No latest date found for contest.")
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+
+@app.get("/api/contests/{year}/available-dates", response_model=AvailableDatesResponse)
+def get_contest_available_dates(year: int):
+    """
+    공모전 데이터가 존재하는 모든 날짜 목록을 조회합니다.
+    """
+    if year != 2025:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    try:
+        response = contest_table.get_item(
+            Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
+        )
+        item = response.get('Item')
+        if item and 'dates' in item:
+            return AvailableDatesResponse(available_dates=sorted(list(item['dates']), reverse=True))
+        raise HTTPException(status_code=404, detail="No available dates found for contest.")
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+
+@app.get("/api/contests/{year}/{date}", response_model=List[ContestNovelData])
+def get_contest_data_by_date(year: int, date: str):
+    """
+    지정된 연도의 특정 날짜 공모전 소설 데이터를 조회합니다.
+    """
+    # For now, we only have 2025 data.
+    if year != 2025:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+
+    try:
+        # 1. Get current day's data with pagination
+        all_items = []
+        query_args = {
+            'IndexName': 'DateViewIndex',
+            'KeyConditionExpression': Key('Date').eq(date)
+        }
+
+        while True:
+            response = contest_table.query(**query_args)
+            items = response.get('Items', [])
+            all_items.extend(items)
+            
+            if 'LastEvaluatedKey' in response:
+                query_args['ExclusiveStartKey'] = response['LastEvaluatedKey']
+            else:
+                break
+
+        current_day_items = json.loads(json.dumps(all_items, cls=DecimalEncoder))
+
+        if not current_day_items:
+            raise HTTPException(status_code=404, detail="No data found for the given date.")
+
+        # The 'rank' is now pre-calculated. We just need to add placeholder fields
+        # for the frontend to calculate daily changes.
+        for item in current_day_items:
+            # Add placeholder fields that frontend will calculate
+            item['view_change'] = 0
+            item['is_new'] = False
+
+        return current_day_items
+
+    except ClientError as e:
+        # Handle cases where the GSI might not exist yet
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+             raise HTTPException(status_code=500, detail="Required index 'DateViewIndex' not found on contest table.")
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+
+@app.get("/api/contests/{year}/novels/{novel_id}/latest", response_model=ContestNovelData)
+def get_latest_contest_novel_details(year: int, novel_id: str):
+    """
+    특정 공모전 소설의 가장 최근 전체 데이터를 조회합니다.
+    """
+    if year != 2025:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+
+    try:
+        response = contest_table.query(
+            KeyConditionExpression=Key('ID').eq(novel_id),
+            ScanIndexForward=False,
+            Limit=1
+        )
+        items = response.get('Items', [])
+        if items:
+            latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
+            # 프론트엔드에서 필요한 필드 추가
+            latest_item['Rank'] = latest_item.get('Rank', 0)
+            latest_item['view_change'] = 0
+            latest_item['is_new'] = False
+            return latest_item
+        else:
+            raise HTTPException(status_code=404, detail="Contest novel not found")
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+
+@app.get("/api/trends/contests/{year}/novels/{novel_id}", response_model=List[Dict[str, Any]])
+def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date: str):
+    """
+    특정 공모전 소설의 기간별 데이터 트렌드를 조회합니다.
+    데이터가 없는 날짜는 null 값으로 채워서 반환합니다.
+    """
+    if year != 2025:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+
+    try:
+        start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+
+        # DynamoDB에서 해당 기간의 실제 데이터 조회
+        response = contest_table.query(
+            KeyConditionExpression=Key('ID').eq(novel_id) & Key('Date').between(start_date_dt.strftime('%Y-%m-%d'), end_date_dt.strftime('%Y-%m-%d'))
+        )
+        items = json.loads(json.dumps(response.get('Items', []), cls=DecimalEncoder))
+
+        novel_title = items[0].get('Title', 'Unknown Title') if items else 'Unknown Title'
+
+        # 조회를 빠르게 하기 위해 날짜를 키로 하는 맵 생성
+        data_map = {item['Date']: item for item in items}
+
+        # 모든 날짜를 순회하며 데이터 채우기 (Padding)
+        padded_data = []
+        current_date = start_date_dt
+        while current_date <= end_date_dt:
+            date_str = current_date.strftime('%Y-%m-%d')
+            if date_str in data_map:
+                padded_data.append(data_map[date_str])
+            else:
+                # 데이터가 없는 날
+                padded_data.append({
+                    'Date': date_str,
+                    'ID': novel_id,
+                    'Title': novel_title,
+                    'View': None,
+                    'Like': None,
+                    'Fav': None,
+                    'Eps': None,
+                    'Synopsis': None,
+                    'Rank': None,
+                    'RetentionRate': None,
+                })
+            current_date += timedelta(days=1)
+
+        return padded_data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/contests/{year}/ranks/tags/{date}", response_model=List[TagRankData])
+def get_contest_tags_by_date(year: int, date: str):
+    """
+    특정 날짜의 공모전 태그 랭킹 데이터를 조회합니다.
+    """
+    if year != 2025:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+
+    try:
+        response = contest_table.get_item(Key={'ID': f"TAG_STATS#{date}", 'Date': date})
+        item = response.get('Item')
+        if not item:
+            raise HTTPException(status_code=404, detail="No tag statistics found for the given date.")
+
+        scores_linear = item.get('TagWeightedScoresInverseLinear', {})
+        scores_inverse = item.get('TagWeightedScoresInverseRank', {})
+        scores_log = item.get('TagWeightedScoresLogarithmic', {})
+        counts = item.get('TagCounts', {})
+
+        tag_data = []
+        for tag in scores_linear.keys():
+            tag_data.append({
+                'tag': tag,
+                'score_linear': scores_linear.get(tag, 0),
+                'score_inverse': scores_inverse.get(tag, 0),
+                'score_log': scores_log.get(tag, 0),
+                'count': counts.get(tag, 0)
+            })
+        
+        processed_data = json.loads(json.dumps(tag_data, cls=DecimalEncoder))
+        sorted_data = sorted(processed_data, key=lambda x: x.get('score_linear', 0), reverse=True)
+        
+        for i, item in enumerate(sorted_data):
+            item['Rank'] = i + 1
+        return sorted_data
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/trends/tags/analysis")
 def analyze_tag_trends(start_date: str, end_date: str):

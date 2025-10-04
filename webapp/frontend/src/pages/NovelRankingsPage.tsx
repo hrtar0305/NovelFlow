@@ -23,20 +23,26 @@ interface Novel {
 
 // --- HELPER COMPONENTS ---
 const RankChangeIndicator: React.FC<{ value: number | 'New' | undefined }> = ({ value }) => {
-    const containerClasses = "d-flex align-items-center justify-content-center rank-change-badge";
+    const containerClasses = "d-inline-flex align-items-center justify-content-center rank-change-badge px-2";
+    const commonStyle = { width: '42px', height: '25px', borderRadius: '0.375rem' };
+
     return (
-        <div style={{ width: '40px', margin: '0 auto' }}>
+        <div style={{ margin: '0 auto' }}>
             {(() => {
-                if (value === 'New') {
-                    return <span className={`${containerClasses} rank-up`} style={{ height: '25px', lineHeight: '25px' }}>New</span>;
-                }
+                if (value === 'New') return <span className={`${containerClasses} rank-up`} style={commonStyle}>New</span>;
                 if (value === undefined || value === 0) {
-                    return <span className={`${containerClasses} rank-same`} style={{ height: '25px', lineHeight: '25px' }}>-</span>;
+                    return <span className={`${containerClasses} rank-same`} style={commonStyle}>-</span>;
                 }
                 if (value > 0) {
-                    return <span className={`${containerClasses} rank-up`} style={{ height: '25px', lineHeight: '25px' }}><ArrowUpShort size={16} /> {value}</span>;
+                    return <span className={`${containerClasses} rank-up`} style={commonStyle}>
+                        <ArrowUpShort size={12} viewBox="3 3 10 10" className="flex-shrink-0" />
+                        <span style={{ lineHeight: 1 }}>{value.toLocaleString()}</span>
+                    </span>;
                 }
-                return <span className={`${containerClasses} rank-down`} style={{ height: '25px', lineHeight: '25px' }}><ArrowDownShort size={16} /> {Math.abs(value)}</span>;
+                return <span className={`${containerClasses} rank-down`} style={commonStyle}>
+                    <ArrowDownShort size={12} viewBox="3 3 10 10" className="flex-shrink-0" />
+                    <span style={{ lineHeight: 1 }}>{Math.abs(value).toLocaleString()}</span>
+                </span>;
             })()}
         </div>
     );
@@ -421,6 +427,8 @@ const NovelRankingsPage = () => {
       <div className="d-flex align-items-center gap-2 mb-2">
         <h1 className="h2 mb-0 fs-page-title">소설 랭킹</h1>
         <OverlayTrigger
+          trigger="click"
+          rootClose
           placement="bottom"
           overlay={
             <Tooltip id="ranking-description-tooltip">
@@ -554,72 +562,76 @@ const NovelRankingsPage = () => {
               <Spinner animation="border" />
             </div>
           )}
-          {processedRankings.length > 0 ? (
-            <>
-              {/* Desktop & Mobile Table View */}
-              <div className={mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'}>
-                <Table hover className="custom-table novel-rankings-table">
-                  <thead>
-                    <tr>
-                      <th onClick={() => requestSort('Ranking')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}><div className="d-flex align-items-center justify-content-center gap-1"><span>순위</span>{getSortIndicator('Ranking')}</div></th>
-                      <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}><div className="d-flex align-items-center justify-content-center gap-1"><span>변동</span>{getSortIndicator('rank_change')}</div></th>
-                      <th style={{ fontSize: '0.85rem', minWidth: '300px', whiteSpace: 'normal' }}>제목</th>
-                      <th style={{ fontSize: '0.85rem', minWidth: '100px' }}>작가</th>
-                      <th style={{ fontSize: '0.85rem', minWidth: '60px' }}>점수</th>
-                      <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '40px' }}><div className="d-flex align-items-center gap-1"><span>회차</span>{getSortIndicator('Eps')}</div></th>
-                      <th style={{ fontSize: '0.85rem', minWidth: '320px' }}>태그</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {processedRankings.map((novel) => (
-                        <tr key={novel.ID}>
-                          <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Ranking}</td>
-                          <td className="text-center" style={{ fontSize: '0.9rem', width: '40px' }}><RankChangeIndicator value={novel.rank_change} /></td>
-                          <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}><Link to={`/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link></td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.Score.toLocaleString()}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.Eps}</td>
-                          <td style={{ fontSize: '0.9rem' }}><div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill">{tag}</Button>))}</div></td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </Table>
-              </div>
+          <>
+            {/* Desktop & Mobile Table View */}
+            <div className={mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'}>
+              <Table hover className="custom-table novel-rankings-table">
+                <thead>
+                  <tr>
+                    <th onClick={() => requestSort('Ranking')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}><div className="d-flex align-items-center justify-content-center gap-1"><span>순위</span>{getSortIndicator('Ranking')}</div></th>
+                    <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}><div className="d-flex align-items-center justify-content-center gap-1"><span>변동</span>{getSortIndicator('rank_change')}</div></th>
+                    <th style={{ fontSize: '0.85rem', minWidth: '300px', whiteSpace: 'normal', textAlign: 'left' }}>제목</th>
+                    <th style={{ fontSize: '0.85rem', minWidth: '100px', textAlign: 'left' }}>작가</th>
+                    <th style={{ fontSize: '0.85rem', minWidth: '60px', textAlign: 'left' }}>점수</th>
+                    <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '40px', textAlign: 'left' }}><div className="d-flex align-items-center gap-1"><span>회차</span>{getSortIndicator('Eps')}</div></th>
+                    <th style={{ fontSize: '0.85rem', minWidth: '320px', textAlign: 'left' }}>태그</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processedRankings.length > 0 ? (
+                    processedRankings.map((novel) => (
+                      <tr key={novel.ID}>
+                        <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Ranking}</td>
+                        <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} /></td>
+                        <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}><Link to={`/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link></td>
+                        <td style={{ fontSize: '0.9rem' }}>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</td>
+                        <td style={{ fontSize: '0.9rem' }}>{novel.Score.toLocaleString()}</td>
+                        <td style={{ fontSize: '0.9rem' }}>{novel.Eps}</td>
+                        <td style={{ fontSize: '0.9rem' }}><div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill">{tag}</Button>))}</div></td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan={7} className="text-center py-4">현재 필터와 일치하는 결과가 없습니다.</td></tr>
+                  )}
+                </tbody>
+              </Table>
+            </div>
 
-              {/* Mobile Card View */}
-              <div className={mobileViewMode === 'card' ? 'd-md-none' : 'd-none'}>
-                <div className="p-1">
-                  {processedRankings.map((novel) => (
-                    <Card key={novel.ID} className="mb-1 shadow-sm">
-                      <Card.Body className="p-2">
-                        <div className="d-flex justify-content-between align-items-start mb-2">
-                          <div className="flex-grow-1 me-2">
-                            <div className="d-flex align-items-baseline gap-2">
-                              <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Ranking}위</span>
-                              <h5 className="mb-0 h6"><Link to={`/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title}</Link></h5>
-                            </div>
-                            <div className="text-muted small mt-1">
-                              <span>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</span>
-                              <span className="mx-1">·</span>
-                              <span>{novel.Eps}화</span>
-                            </div>
+            {/* Mobile Card View */}
+            <div className={mobileViewMode === 'card' ? 'd-md-none' : 'd-none'}>
+              <div className="p-1">
+                {processedRankings.length > 0 ? (
+                  processedRankings.map((novel) => (
+                  <Card key={novel.ID} className="mb-1 shadow-sm">
+                    <Card.Body className="p-2">
+                      <div className="d-flex justify-content-between align-items-start mb-2">
+                        <div className="flex-grow-1 me-2">
+                          <div className="d-flex align-items-baseline gap-2">
+                            <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Ranking}위</span>
+                            <h5 className="mb-0 h6"><Link to={`/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title}</Link></h5>
                           </div>
-                          <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} /></div>
+                          <div className="text-muted small mt-1">
+                            <span>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</span>
+                            <span className="mx-1">·</span>
+                            <span>{novel.Eps}화</span>
+                          </div>
                         </div>
-                        {novel.Tags && novel.Tags.length > 0 && (
-                          <div className="pt-2 border-top">
-                            <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
-                          </div>
-                        )}
-                      </Card.Body>
-                    </Card>
-                  ))}
-                </div>
+                        <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} /></div>
+                      </div>
+                      {novel.Tags && novel.Tags.length > 0 && (
+                        <div className="pt-2 border-top">
+                          <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
+                        </div>
+                      )}
+                    </Card.Body>
+                  </Card>
+                  ))
+                ) : (
+                  <Alert variant="info" className="text-center m-0">현재 필터와 일치하는 결과가 없습니다.</Alert>
+                )}
               </div>
-            </>
-          ) : (
-            <div className="p-3"><Alert variant="info" className="text-center m-0">현재 필터와 일치하는 결과가 없습니다.</Alert></div>
-          )}
+            </div>
+          </>
         </div>
       )}
     </Container>

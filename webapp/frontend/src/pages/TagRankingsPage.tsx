@@ -10,7 +10,7 @@ import { ResponsiveContainer, ScatterChart, CartesianGrid, XAxis, YAxis, Tooltip
 
 // --- TYPE DEFINITIONS ---
 interface Tag {
-  rank: number;
+  Rank: number;
   tag: string;
   score_linear: number;
   score_inverse: number;
@@ -48,7 +48,7 @@ const CustomTooltip = ({ active, payload, yAxisKey, yAxisName }: any) => {
     const data = payload[0].payload;
     return (
       <div className="custom-tooltip bg-white p-3 border rounded shadow-sm" style={{ fontSize: '0.9rem' }}>
-        <p className="fw-bold mb-1">{data.tag} (랭킹: {data.rank})</p>
+        <p className="fw-bold mb-1">{data.tag} (랭킹: {data.Rank})</p>
         <p className="mb-0 text-muted">등장 횟수: {data.count}</p>
         <p className="mb-2 text-muted">{yAxisName}: {data[yAxisKey].toFixed(2)}</p>
         <hr className="my-1" />
@@ -226,7 +226,7 @@ const TagRankingsPage = () => {
     }
     let rankedItems = sortableItems.map((item, index) => ({
       ...item,
-      rank: sortConfig.direction === 'descending' ? index + 1 : sortableItems.length - index,
+      Rank: sortConfig.direction === 'descending' ? index + 1 : sortableItems.length - index,
     }));
 
     if (searchTerm) {
@@ -249,7 +249,7 @@ const TagRankingsPage = () => {
       if (aValue > bValue) return -1;
       return a.tag.localeCompare(b.tag);
     });
-    const rankedForChart = sortedForChart.map((tag, index) => ({ ...tag, rank: index + 1 }));
+    const rankedForChart = sortedForChart.map((tag, index) => ({ ...tag, Rank: index + 1 }));
     return rankedForChart.slice(0, topN);
   }, [tags, topN]);
 
@@ -336,7 +336,7 @@ const TagRankingsPage = () => {
                           <div className="d-flex justify-content-between align-items-center">
                             <div className="flex-grow-1 me-2">
                               <div className="d-flex align-items-baseline gap-2">
-                                <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{tag.rank}위</span>
+                            <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{tag.Rank}위</span>
                                 <h5 className="mb-0 h6 text-dark">{tag.tag}</h5>
                               </div>
                             </div>
@@ -383,7 +383,7 @@ const TagRankingsPage = () => {
                       {processedTags.length > 0 ? (
                         processedTags.map((tag: Tag) => (
                             <tr key={tag.tag} data-tag={tag.tag} onMouseEnter={handleMouseEnter} style={{ cursor: 'pointer' }}>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.rank}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{tag.Rank}</td>
                               <td className="fw-bold" style={{ fontSize: '0.9rem' }}>{tag.tag}</td>
                               <td style={{ fontSize: '0.9rem' }}>{tag.score_linear.toFixed(2)}</td>
                               <td style={{ fontSize: '0.9rem' }}>{tag.avg_linear.toFixed(2)}</td>
@@ -450,7 +450,7 @@ const TagRankingsPage = () => {
                             />
                             <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip yAxisKey="avg_linear" yAxisName="평균 선형 점수" />} />
                             <Scatter name="Tags" data={chartData} shape={<CustomScatterShape />} isAnimationActive={false}>
-                                {chartData.map((entry) => <Cell key={`cell-${entry.tag}`} fill={getColorByRank(entry.rank)} />)}
+                                {chartData.map((entry) => <Cell key={`cell-${entry.tag}`} fill={getColorByRank(entry.Rank)} />)}
                             </Scatter>
                         </ScatterChart>
                     </ResponsiveContainer>
