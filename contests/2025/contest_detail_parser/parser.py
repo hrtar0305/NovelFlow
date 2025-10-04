@@ -22,7 +22,8 @@ class Config:
     BROWSER_ARGS = ['--disable-gpu', '--no-sandbox', '--single-process', '--disable-dev-shm-usage']
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
     VIEWPORT_SIZE = {"width": 1920, "height": 1080}
-    DEFAULT_NAVIGATION_TIMEOUT = 30000
+    DEFAULT_NAVIGATION_TIMEOUT = 10000
+    DEFAULT_ACTION_TIMEOUT = 5000
 
     # Novelpia URLs & Settings
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
@@ -109,6 +110,7 @@ def parse_contest_novel_details_batch(event, context):
         browser = p.chromium.launch(headless=True, args=Config.BROWSER_ARGS)
         pw_context = browser.new_context(user_agent=Config.USER_AGENT, viewport=Config.VIEWPORT_SIZE)
         pw_context.set_default_navigation_timeout(Config.DEFAULT_NAVIGATION_TIMEOUT)
+        pw_context.set_default_timeout(Config.DEFAULT_ACTION_TIMEOUT)
 
         try:
             success_count = 0
@@ -219,12 +221,10 @@ def parse_contest_novel_details_batch(event, context):
                         # If parsing is successful, break the retry loop
                         break
                     except (PlaywrightTimeoutError, ClientError) as e:
-                        _log(logging.WARNING, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed for {novel_id}: {e}. Retrying...")
-                        if attempt < Config.MAX_INTERNAL_RETRIES - 1:
-                            time.sleep(2)
-                        else:
+                        if attempt >= Config.MAX_INTERNAL_RETRIES - 1:
                             _log(logging.ERROR, execution_id, f"All {Config.MAX_INTERNAL_RETRIES} retry attempts failed for {novel_id}. Failing this batch.", novel_id=novel_id)
                             raise # Re-raise the final exception to fail the Lambda
+                        _log(logging.WARNING, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed for {novel_id}: {e}. Retrying immediately...")
                     finally:
                         if page:
                             page.close()
