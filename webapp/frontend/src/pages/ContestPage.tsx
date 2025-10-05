@@ -169,7 +169,7 @@ const ContestPage = () => {
           if (latestDateStr) {
             navigate(`/contests/${year}/${latestDateStr}`, { replace: true });
           } else {
-            throw new Error("No data available.");
+            throw new Error("조회 가능한 공모전 데이터가 없습니다.");
           }
         }
       } catch (err) {
@@ -229,7 +229,7 @@ const ContestPage = () => {
         setNovelsWithViewChange(processedData);
 
       } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to fetch contest data. Please try again later.');
+        setError(err.response?.data?.detail || '공모전 데이터를 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
         setNovels([]);
         setNovelsWithViewChange([]);
       } finally {
@@ -259,7 +259,7 @@ const ContestPage = () => {
         try {
           filteredItems = filteredItems.filter(novel => evaluateAdvancedRule(activeAdvancedRule, novel.Tags || []));
         } catch (e) {
-          setFilterError(`필터 오류: ${e instanceof Error ? e.message : '잘못된 구문'}. 규칙을 확인해주세요.`);
+          setFilterError(`필터 오류: ${e instanceof Error ? e.message : '잘못된 구문입니다'}. 규칙을 확인해주세요.`);
           return [];
         }
       }

@@ -169,8 +169,8 @@ const NovelRankingsPage = () => {
                 evaluateAdvancedRule(activeAdvancedRule, novel.Tags || [])
             );
         } catch (e) {
-            const errorMessage = e instanceof Error ? e.message : 'Invalid syntax';
-            setFilterError(`Filter Error: ${errorMessage}. Please check the rule.`);
+            const errorMessage = e instanceof Error ? e.message : '잘못된 구문입니다';
+            setFilterError(`필터 오류: ${errorMessage}. 규칙을 확인해주세요.`);
             return [];
         }
       }
@@ -352,7 +352,7 @@ const NovelRankingsPage = () => {
             setLoading(false);
         }
       } catch (err) {
-        setError('Failed to load available dates.');
+        setError('조회 가능한 날짜를 불러오는 데 실패했습니다.');
         setLoading(false);
       }
     };
@@ -379,7 +379,7 @@ const NovelRankingsPage = () => {
         const response = await getNovelRankingsByDate(formattedDate);
         setRankings(response.data.message ? [] : response.data);
       } catch (err) {
-        setError('Failed to fetch rankings. Please try again later.');
+        setError('랭킹을 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
         setRankings([]);
       } finally {
         setLoading(false);

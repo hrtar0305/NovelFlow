@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Spinner, Alert, Container, Card, Row, Col, Badge } from 'react-bootstrap';
 import { getAuthorNovels } from '../services/api';
-import axios from 'axios'; // axios import 추가
 
 // API로부터 받는 소설 데이터 타입 정의
 interface Novel {
@@ -42,16 +41,22 @@ const AuthorPage = () => {
       setError(null);
       try {
         const response = await getAuthorNovels(authorId);
-        const sortedNovels = response.data.sort((a: Novel, b: Novel) => a.Title.localeCompare(b.Title));
-        setNovels(sortedNovels);
-        if (sortedNovels.length > 0) {
-          setAuthorName(sortedNovels[0].AuthorName);
+        if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+          const sortedNovels = response.data.sort((a: Novel, b: Novel) => a.Title.localeCompare(b.Title));
+          setNovels(sortedNovels);
+          if (sortedNovels.length > 0) {
+            setAuthorName(sortedNovels[0].AuthorName);
+          }
+        } else {
+          // 데이터가 없거나 배열이 아닌 경우 '찾을 수 없음'으로 처리
+          setError('해당 작가를 찾을 수 없습니다.');
+          setNovels([]);
         }
-      } catch (err) {
-        if (axios.isAxiosError(err) && err.response?.status === 404) {
+      } catch (err: any) {
+        if (err.response && (err.response.status === 404 || err.response.status === 304)) {
           setError('해당 작가를 찾을 수 없습니다.');
         } else {
-          setError('Failed to fetch author\'s novels. Please try again later.');
+          setError('작품 목록을 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
         }
         setNovels([]);
       } finally {

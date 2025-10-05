@@ -198,7 +198,7 @@ const TagRankingsPage = () => {
         }
       }
     }).catch(_err => {
-      setError('Failed to fetch tag rankings.');
+      setError('태그 랭킹을 불러오는 데 실패했습니다.');
       setTags([]);
     }).finally(() => setLoading(false));
   }, [date]);

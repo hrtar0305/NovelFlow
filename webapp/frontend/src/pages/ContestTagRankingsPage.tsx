@@ -370,10 +370,10 @@ const ContestTagRankingsPage = () => {
                             <td className="fw-bold" style={{ fontSize: '0.9rem' }}>{tag.tag}</td>
                             <td style={{ fontSize: '0.9rem' }}>{tag.score_linear.toFixed(2)}</td>
                             <td style={{ fontSize: '0.9rem' }}>{tag.avg_linear.toFixed(2)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.score_inverse.toFixed(2)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_inverse.toFixed(2)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.score_log.toFixed(2)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_log.toFixed(2)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.score_inverse.toFixed(4)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_inverse.toFixed(4)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.score_log.toFixed(4)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_log.toFixed(4)}</td>
                             <td style={{ fontSize: '0.9rem' }}>{tag.count}</td>
                           </tr>
                         ))}

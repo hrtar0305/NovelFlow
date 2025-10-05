@@ -46,7 +46,7 @@ const NovelDetailPage = () => {
     if (isInitialLoad && !loading) {
       setIsInitialLoad(false);
     }
-  }, [loading, isInitialLoad]);
+  }, [loading, isInitialLoad, error]);
 
   const handleStartDateChange = (date: Date | null) => {
     setStartDate(date);
@@ -92,10 +92,10 @@ const NovelDetailPage = () => {
         <div className="text-center vh-100 d-flex align-items-center justify-content-center">
           <Spinner animation="border" />
         </div>
-      ) : error ? (
-        <Alert variant="danger" className="text-center">{error}</Alert>
-      ) : (
-        <>
+    ) : error ? (
+      <Alert variant="danger" className="text-center">{error}</Alert>
+    ) : (
+      <>
           {details && <NovelDetailsCard details={details} />}
           
           <div className="mt-1 date-range-picker-container">
