@@ -164,13 +164,15 @@ def parse_contest_novel_details_batch(event, context):
                                     sort_button.click()
                                     start_time = time.time()
                                     while len(api_responses) < 2:
-                                        if time.time() - start_time > 15: raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs. Captured {len(api_responses)}/2.")
+                                        if time.time() - start_time > (Config.DEFAULT_ACTION_TIMEOUT / 1000):
+                                            raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs. Captured {len(api_responses)}/2.")
                                         page.wait_for_timeout(100)
                                 finally:
                                     page.remove_listener("response", response_handler)
                             first_ep_row_selector = f"{Config.Selectors.EPISODE_ROWS}:has-text('EP.')"
-                            page.wait_for_selector(first_ep_row_selector, timeout=15000)
+                            page.wait_for_selector(first_ep_row_selector)
                             first_ep_row = page.locator(first_ep_row_selector).first
+
                             first_ep_upload_date_str = first_ep_row.locator(Config.Selectors.EPISODE_UPLOAD_DATE).last.inner_text().strip()
                             is_too_new = not re.match(r"^\d{2}\.\d{2}\.\d{2}$", first_ep_upload_date_str)
                             if is_too_new:
@@ -190,7 +192,8 @@ def parse_contest_novel_details_batch(event, context):
                                     sort_button.click()
                                     start_time = time.time()
                                     while len(api_responses_latest) < 2:
-                                        if time.time() - start_time > 15: raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs (latest). Captured {len(api_responses_latest)}/2.")
+                                        if time.time() - start_time > (Config.DEFAULT_ACTION_TIMEOUT / 1000):
+                                            raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs (latest). Captured {len(api_responses_latest)}/2.")
                                         page.wait_for_timeout(100)
                                 finally:
                                     page.remove_listener("response", response_handler_latest)

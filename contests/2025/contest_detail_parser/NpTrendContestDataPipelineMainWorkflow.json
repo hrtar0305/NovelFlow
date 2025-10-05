@@ -55,7 +55,7 @@
     },
     "WaitForNextCheck": {
       "Type": "Wait",
-      "Seconds": 60,
+      "Seconds": 30,
       "Next": "CheckIfDone"
     },
     "ConsolidateContestData": {
