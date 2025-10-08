@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useTransition, useRef } from 'react';
 import { useParams, Link, useNavigate, NavLink } from 'react-router-dom';
 import { Table, Spinner, Alert, Container, Card, Row, Col, Button, Collapse, Dropdown, ButtonGroup, InputGroup, Form, OverlayTrigger, Tooltip, Nav } from 'react-bootstrap';
-import { Funnel, ChevronUp, ChevronDown, InfoCircle, ArrowUpShort, ArrowDownShort } from 'react-bootstrap-icons';
+import { Funnel, ChevronUp, ChevronDown, InfoCircle, ArrowUpShort, ArrowDownShort, ExclamationCircleFill } from 'react-bootstrap-icons';
 import { getContestDataByDate, getContestLatestDate, getContestAvailableDates } from '../services/api';
 import ContestNovelFilterControls from '../components/ContestNovelFilterControls';
 import CalendarPicker from '../components/CalendarPicker';
@@ -488,13 +488,41 @@ const ContestPage = () => {
         </Nav.Item>
       </Nav>
 
-      <Row className="mb-1 align-items-center justify-content-between mobile-ranking-controls-row">
-        <Col xs="auto">
-          <CalendarPicker
-            selectedDate={currentDate}
-            onDateChange={handleDateChange}
-            availableDates={availableDates}
-          />
+      <Row className="mb-2 align-items-center mobile-ranking-controls-row">
+        <Col className="d-flex align-items-center gap-2">
+          <div className="flex-shrink-0">
+            <CalendarPicker
+              selectedDate={currentDate}
+              onDateChange={handleDateChange}
+              availableDates={availableDates}
+            />
+          </div>
+          {/* Desktop: Show alert to the right of the date picker */}
+          <div className="d-none d-md-block">
+            {currentDate && format(currentDate, 'yyyy-MM-dd') <= '2025-10-08' && (
+              <Alert variant="info" className="d-flex align-items-center text-start p-2 mb-0 small">
+                <InfoCircle size={16} className="me-2 flex-shrink-0" style={{ minWidth: '16px' }} />
+                <span><strong>참고:</strong> 2025년 10월 9일 이전 데이터의 연독률은 집계 로직 오류로 인해 부정확할 수 있습니다.</span>
+              </Alert>
+            )}
+          </div>
+          {/* Mobile: Show info icon with tooltip */}
+          <div className="d-md-none">
+            {currentDate && format(currentDate, 'yyyy-MM-dd') <= '2025-10-08' && (
+              <OverlayTrigger
+                trigger="click"
+                rootClose
+                placement="bottom-start"
+                overlay={
+                  <Tooltip id="retention-rate-warning-tooltip" className="small">
+                    <strong>참고:</strong> 2025년 10월 9일 이전 데이터의 연독률은 집계 로직 오류로 인해 부정확할 수 있습니다.
+                  </Tooltip>
+                }
+              >
+                <span style={{ cursor: 'pointer' }} className="text-danger d-flex align-items-center"><ExclamationCircleFill /></span>
+              </OverlayTrigger>
+            )}
+          </div>
         </Col>
         <Col xs="auto" className="d-md-none">
           <ButtonGroup size="sm">
