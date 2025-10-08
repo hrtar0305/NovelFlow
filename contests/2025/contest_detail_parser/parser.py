@@ -163,9 +163,9 @@ def parse_contest_novel_details_batch(event, context):
                                 try:
                                     sort_button.click()
                                     start_time = time.time()
-                                    while len(api_responses) < 2:
+                                    while len(api_responses) < 3:
                                         if time.time() - start_time > (Config.DEFAULT_ACTION_TIMEOUT / 1000):
-                                            raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs. Captured {len(api_responses)}/2.")
+                                            raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs. Captured {len(api_responses)}/3.")
                                         page.wait_for_timeout(100)
                                 finally:
                                     page.remove_listener("response", response_handler)
@@ -191,9 +191,9 @@ def parse_contest_novel_details_batch(event, context):
                                 try:
                                     sort_button.click()
                                     start_time = time.time()
-                                    while len(api_responses_latest) < 2:
+                                    while len(api_responses_latest) < 3:
                                         if time.time() - start_time > (Config.DEFAULT_ACTION_TIMEOUT / 1000):
-                                            raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs (latest). Captured {len(api_responses_latest)}/2.")
+                                            raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs (latest). Captured {len(api_responses_latest)}/3.")
                                         page.wait_for_timeout(100)
                                 finally:
                                     page.remove_listener("response", response_handler_latest)
