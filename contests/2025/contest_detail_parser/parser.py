@@ -43,7 +43,7 @@ class Config:
         EPISODE_ROWS = "#episode_list tr.ep_style5"
         EPISODE_UPLOAD_DATE = "div.ep_style2 b"
         EPISODE_NUMBER = "div.ep_style2 span:first-child"
-        EPISODE_VIEW_COUNT = "span.episode_count_view"
+        EPISODE_VIEW_COUNT = "span.episode_show[style*='display: inline'] span.episode_count_view"
 
 if not Config.SQS_RESULT_QUEUE_URL:
     raise ValueError("Environment variable SQS_RESULT_QUEUE_URL must be set.")

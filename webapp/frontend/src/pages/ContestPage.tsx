@@ -499,23 +499,23 @@ const ContestPage = () => {
           </div>
           {/* Desktop: Show alert to the right of the date picker */}
           <div className="d-none d-md-block">
-            {currentDate && format(currentDate, 'yyyy-MM-dd') <= '2025-10-08' && (
+            {currentDate && format(currentDate, 'yyyy-MM-dd') <= '2025-10-09' && (
               <Alert variant="info" className="d-flex align-items-center text-start p-2 mb-0 small">
                 <InfoCircle size={16} className="me-2 flex-shrink-0" style={{ minWidth: '16px' }} />
-                <span><strong>참고:</strong> 2025년 10월 9일 이전 데이터의 연독률은 집계 로직 오류로 인해 부정확할 수 있습니다.</span>
+                <span><strong>참고:</strong> 2025년 10월 10일 이전 데이터의 연독률은 집계 로직 오류로 인해 부정확할 수 있습니다.</span>
               </Alert>
             )}
           </div>
           {/* Mobile: Show info icon with tooltip */}
           <div className="d-md-none">
-            {currentDate && format(currentDate, 'yyyy-MM-dd') <= '2025-10-08' && (
+            {currentDate && format(currentDate, 'yyyy-MM-dd') <= '2025-10-09' && (
               <OverlayTrigger
                 trigger="click"
                 rootClose
                 placement="bottom-start"
                 overlay={
                   <Tooltip id="retention-rate-warning-tooltip" className="small">
-                    <strong>참고:</strong> 2025년 10월 9일 이전 데이터의 연독률은 집계 로직 오류로 인해 부정확할 수 있습니다.
+                    <strong>참고:</strong> 2025년 10월 10일 이전 데이터의 연독률은 집계 로직 오류로 인해 부정확할 수 있습니다.
                   </Tooltip>
                 }
               >
