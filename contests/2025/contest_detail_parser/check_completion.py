@@ -26,7 +26,7 @@ def _get_unique_id_count(execution_id):
     unique_ids = set()
     all_entries_to_reset = []
     loop_start_time = time.time()
-    timeout_seconds = 10
+    timeout_seconds = 30
 
     try:
         while time.time() - loop_start_time < timeout_seconds:

@@ -55,7 +55,7 @@
     },
     "WaitForNextCheck": {
       "Type": "Wait",
-      "Seconds": 30,
+      "Seconds": 60,
       "Next": "CheckIfDone"
     },
     "ConsolidateContestData": {
@@ -96,5 +96,5 @@
       "Comment": "The data collection process completed successfully."
     }
   },
-  "TimeoutSeconds": 1200
+  "TimeoutSeconds": 3600
 }
