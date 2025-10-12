@@ -23,7 +23,7 @@ class Config:
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
     VIEWPORT_SIZE = {"width": 1920, "height": 1080}
     DEFAULT_NAVIGATION_TIMEOUT = 10000
-    DEFAULT_ACTION_TIMEOUT = 5000
+    DEFAULT_ACTION_TIMEOUT = 10000
 
     # Novelpia URLs & Settings
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
@@ -155,20 +155,12 @@ def parse_contest_novel_details_batch(event, context):
                             sort_button = page.locator(Config.Selectors.SORT_BUTTON)
                             if "최신화부터" in sort_button.inner_text():
                                 _log(logging.INFO, execution_id, "Sorting to '첫화부터'.", novel_id=novel_id)
-                                api_responses = []
-                                def response_handler(response):
-                                    if response.ok and ("/proc/episode_list" in response.url or "/proc/novel" in response.url):
-                                        api_responses.append(response.url)
-                                page.on("response", response_handler)
-                                try:
-                                    sort_button.click()
-                                    start_time = time.time()
-                                    while len(api_responses) < 3:
-                                        if time.time() - start_time > (Config.DEFAULT_ACTION_TIMEOUT / 1000):
-                                            raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs. Captured {len(api_responses)}/3.")
-                                        page.wait_for_timeout(100)
-                                finally:
-                                    page.remove_listener("response", response_handler)
+                                with page.expect_response(lambda r: "/proc/episode_list" in r.url and r.ok, timeout=Config.DEFAULT_ACTION_TIMEOUT):
+                                    with page.expect_response(lambda r: "/proc/novel" in r.url and r.ok, timeout=Config.DEFAULT_ACTION_TIMEOUT):
+                                        with page.expect_response(lambda r: "/proc/novel" in r.url and r.ok, timeout=Config.DEFAULT_ACTION_TIMEOUT):
+                                            sort_button.click()
+                                page.wait_for_timeout(500)
+
                             first_ep_row_selector = f"{Config.Selectors.EPISODE_ROWS}:has-text('EP.')"
                             page.wait_for_selector(first_ep_row_selector)
                             first_ep_row = page.locator(first_ep_row_selector).first
@@ -183,20 +175,12 @@ def parse_contest_novel_details_batch(event, context):
                                 parsed_item["FirstEpNum"] = _parse_int_from_raw_text(first_ep_row.locator(Config.Selectors.EPISODE_NUMBER).inner_text(), "EP.")
                                 _log(logging.INFO, execution_id, f"First episode: {parsed_item['FirstEpNum']}, Views: {parsed_item['FirstEpView']}", novel_id=novel_id)
                                 _log(logging.INFO, execution_id, "Sorting to '최신화부터'.", novel_id=novel_id)
-                                api_responses_latest = []
-                                def response_handler_latest(response):
-                                    if response.ok and ("/proc/episode_list" in response.url or "/proc/novel" in response.url):
-                                        api_responses_latest.append(response.url)
-                                page.on("response", response_handler_latest)
-                                try:
-                                    sort_button.click()
-                                    start_time = time.time()
-                                    while len(api_responses_latest) < 3:
-                                        if time.time() - start_time > (Config.DEFAULT_ACTION_TIMEOUT / 1000):
-                                            raise PlaywrightTimeoutError(f"Timeout waiting for sort APIs (latest). Captured {len(api_responses_latest)}/3.")
-                                        page.wait_for_timeout(100)
-                                finally:
-                                    page.remove_listener("response", response_handler_latest)
+                                with page.expect_response(lambda r: "/proc/episode_list" in r.url and r.ok, timeout=Config.DEFAULT_ACTION_TIMEOUT):
+                                    with page.expect_response(lambda r: "/proc/novel" in r.url and r.ok, timeout=Config.DEFAULT_ACTION_TIMEOUT):
+                                        with page.expect_response(lambda r: "/proc/novel" in r.url and r.ok, timeout=Config.DEFAULT_ACTION_TIMEOUT):
+                                            sort_button.click()
+                                page.wait_for_timeout(500)
+
                                 xpath_selector = f"//tr[contains(@class, 'ep_style5') and .//div[contains(@class, 'ep_style2')]/descendant::b[contains(., '.') and string-length(normalize-space(.)) = 8]]"
                                 target_latest_ep_row = page.locator(xpath_selector).first
                                 if not target_latest_ep_row.count():
