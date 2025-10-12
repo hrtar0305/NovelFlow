@@ -78,7 +78,7 @@ const ContestNovelDetailsCard: React.FC<ContestNovelDetailsCardProps> = ({ detai
           <div><strong className="fs-stat">{isMobile ? formatStatNumber(Fav) : Fav.toLocaleString()}</strong><div className="text-muted" style={{fontSize: '0.65rem'}}>선호</div></div>
           <div><strong className="fs-stat">{isMobile ? formatStatNumber(Alr) : Alr.toLocaleString()}</strong><div className="text-muted" style={{fontSize: '0.65rem'}}>알람</div></div>
           <div><strong className="fs-stat">{Eps.toLocaleString()}</strong><div className="text-muted" style={{fontSize: '0.65rem'}}>회차</div></div>
-          {typeof RetentionRate === 'number' && <div><strong className="fs-stat">{(RetentionRate * 100).toFixed(1)}%</strong><div className="text-muted" style={{fontSize: '0.65rem'}}>연독률</div></div>}
+          <div><strong className="fs-stat">{typeof RetentionRate === 'number' ? `${(RetentionRate * 100).toFixed(1)}%` : '-'}</strong><div className="text-muted" style={{fontSize: '0.65rem'}}>연독률</div></div>
         </div>
         
         <Card.Text className="mt-2 p-2 bg-light rounded fs-synopsis" style={{ whiteSpace: 'pre-wrap' }}>

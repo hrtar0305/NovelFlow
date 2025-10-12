@@ -304,14 +304,21 @@ const ContestPage = () => {
             bValue = b.is_new ? Infinity : (bValue ?? -Infinity);
         }
 
-        // Handle potential null/undefined values for other keys
-        if (aValue == null) return 1;
-        if (bValue == null) return -1;
+        // Handle null/undefined values to always place them at the bottom, regardless of sort direction.
+        const aIsNull = aValue == null;
+        const bIsNull = bValue == null;
+        if (aIsNull && bIsNull) {
+            // If both are null, sort by View (secondary sort)
+            return (b.View ?? -1) - (a.View ?? -1);
+        }
+        if (aIsNull) return 1; // a is null, should be at the bottom
+        if (bIsNull) return -1; // b is null, should be at the bottom
 
-        if (aValue < bValue) return direction === 'ascending' ? -1 : 1;
-        if (aValue > bValue) return direction === 'ascending' ? 1 : -1;
+        if (aValue! < bValue!) return direction === 'ascending' ? -1 : 1;
+        if (aValue! > bValue!) return direction === 'ascending' ? 1 : -1;
 
-        return 0;
+        // 2차 정렬: 같은 값이면 총 조회수(View)가 높은 순으로 정렬
+        return (b.View ?? -1) - (a.View ?? -1);
       });
     }
 
@@ -443,6 +450,15 @@ const ContestPage = () => {
             padding: .1rem .3rem;
             font-size: 0.8rem;
           }
+        }
+        .placeholder-row td {
+          color: #6c757d !important; /* Bootstrap's text-muted color */
+          opacity: 0.7;
+        }
+        .placeholder-row a {
+          color: inherit !important;
+          text-decoration: none !important;
+          pointer-events: none;
         }
       `}</style>
 
@@ -655,16 +671,24 @@ const ContestPage = () => {
                   <tbody>
                     {processedNovels.length > 0 ? (
                       processedNovels.map((novel) => (
-                        <tr key={novel.ID}>
+                        <tr key={novel.ID} className={novel.View === -1 ? 'placeholder-row' : ''}>
                           <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Rank}</td>
                           <td className="text-center" style={{ fontSize: '0.9rem' }}><ViewChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></td>
-                          <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}><Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link></td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)')}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.View ? novel.View.toLocaleString() : 'N/A'}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.view_change.toLocaleString()}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{`${(novel.like_to_view_ratio * 100).toFixed(2)}%`}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{typeof novel.RetentionRate === 'number' ? `${(novel.RetentionRate * 100).toFixed(1)}%` : 'N/A'}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.Eps?.toLocaleString() ?? 'N/A'}</td>
+                          <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}>
+                            {novel.View === -1 ? `삭제된 소설 (${novel.ID})` : <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link>}
+                          </td>
+                          <td style={{ fontSize: '0.9rem' }}>
+                            {novel.View === -1 ? '-' : (novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)'))}
+                          </td>
+                          <td style={{ fontSize: '0.9rem' }}>
+                            {novel.View === -1 ? '-' : (novel.View != null ? novel.View.toLocaleString() : '-')}
+                          </td>
+                          <td style={{ fontSize: '0.9rem' }}>
+                            {novel.View === -1 ? '-' : novel.view_change.toLocaleString()}
+                          </td>
+                          <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : `${(novel.like_to_view_ratio * 100).toFixed(2)}%`}</td>
+                          <td style={{ fontSize: '0.9rem' }}>{typeof novel.RetentionRate === 'number' ? `${(novel.RetentionRate * 100).toFixed(1)}%` : '-'}</td>
+                          <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : (novel.Eps?.toLocaleString() ?? '-')}</td>
                           <td style={{ fontSize: '0.9rem' }}>
                             <div className="d-flex flex-wrap gap-1">
                               {(novel.Tags || []).map(tag => (
