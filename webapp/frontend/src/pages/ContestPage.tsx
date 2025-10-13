@@ -123,6 +123,13 @@ const filterModeLabels: { [key: string]: string } = {
   'exclude': '태그 제외'
 };
 
+// 경량 파서를 사용한 날짜 목록 (연독률 데이터 없음)
+// 여기에 날짜를 'YYYY-MM-DD' 형식으로 추가하면 해당 날짜에 알림이 표시됩니다.
+const LIGHTWEIGHT_PARSER_DATES = new Set([
+  // 예: '2025-10-14'
+  '2025-10-13'
+]);
+
 const ContestPage = () => {
   const { year, date: dateParam } = useParams<{ year: string; date?: string }>();
   const navigate = useNavigate();
@@ -426,6 +433,22 @@ const ContestPage = () => {
     }
   };
 
+  const alertInfo = useMemo(() => {
+    if (!currentDate) return null;
+    const currentDateStr = format(currentDate, 'yyyy-MM-dd');
+
+    if (LIGHTWEIGHT_PARSER_DATES.has(currentDateStr)) {
+      return {
+        text: '사이트 성능 저하로 인해 해당 날짜의 연독률은 수집되지 않았습니다.',
+        variant: 'info' as const,
+      };
+    }
+    if (currentDateStr <= '2025-10-12') {
+      return { text: '2025년 10월 13일 이전 데이터의 연독률은 오류로 인해 일부 부정확할 수 있습니다.', variant: 'info' as const };
+    }
+    return null;
+  }, [currentDate]);
+
   return (
     <Container className="py-3 py-md-4 d-flex flex-column page-height-manager">
       <style type="text/css">{`
@@ -515,27 +538,29 @@ const ContestPage = () => {
           </div>
           {/* Desktop: Show alert to the right of the date picker */}
           <div className="d-none d-md-block">
-            {currentDate && format(currentDate, 'yyyy-MM-dd') <= '2025-10-12' && (
-              <Alert variant="info" className="d-flex align-items-center text-start p-2 mb-0 small">
+            {alertInfo && (
+              <Alert variant={alertInfo.variant} className="d-flex align-items-center text-start p-2 mb-0 small">
                 <InfoCircle size={16} className="me-2 flex-shrink-0" style={{ minWidth: '16px' }} />
-                <span><strong>참고:</strong> 2025년 10월 13일 이전 데이터의 연독률은 오류로 인해 일부 부정확할 수 있습니다.</span>
+                <span><strong>참고:</strong> {alertInfo.text}</span>
               </Alert>
             )}
           </div>
           {/* Mobile: Show info icon with tooltip */}
           <div className="d-md-none">
-            {currentDate && format(currentDate, 'yyyy-MM-dd') <= '2025-10-12' && (
+            {alertInfo && (
               <OverlayTrigger
                 trigger="click"
                 rootClose
                 placement="bottom-start"
                 overlay={
                   <Tooltip id="retention-rate-warning-tooltip" className="small">
-                    <strong>참고:</strong> 2025년 10월 13일 이전 데이터의 연독률은 오류로 인해 일부 부정확할 수 있습니다.
+                    <strong>참고:</strong> {alertInfo.text}
                   </Tooltip>
                 }
               >
-                <span style={{ cursor: 'pointer' }} className="text-danger d-flex align-items-center"><ExclamationCircleFill /></span>
+                <span style={{ cursor: 'pointer' }} className="d-flex align-items-center text-info">
+                  <ExclamationCircleFill />
+                </span>
               </OverlayTrigger>
             )}
           </div>
