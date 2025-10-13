@@ -29,10 +29,9 @@ class Config:
     DEFAULT_ACTION_TIMEOUT = 30000      # 30 seconds
 
     # Novelpia URLs & Settings
-    BASE_URL = "https://novelpia.com/top100"
-    RANKING_URL_TEMPLATE = "https://novelpia.com/top100/all/weekly/view/all/all/#more{}"
+    BASE_URL = "https://novelpia.com/page/youth_policy"
+    RANK_MORE_URL = "https://novelpia.com/proc/rank_more"
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
-    RANKING_LOAD_TIMEOUT = 30000  # 30 seconds
     MAX_INTERNAL_RETRIES = 10
     SEOUL_TIMEZONE = timezone('Asia/Seoul')
 
@@ -115,51 +114,59 @@ def _parse_score(score_text):
         return int(float(score_text.replace("K", "")) * 1000)
     return int(score_text.replace(",", ""))
 
-def _fetch_and_parse_ranking_page(page, ranking_url, target_novel_count, today, execution_id):
-    """Navigates to the ranking page and parses the novel list."""
-    expected_api_calls = (target_novel_count - 1) // 100
-    _log(logging.INFO, execution_id, f"Expecting {expected_api_calls} 'rank_more' API calls.")
+def _fetch_rankings_with_requests(session, target_novel_count, today, execution_id):
+    """Fetches initial and additional rankings using a requests session."""
+    _log(logging.INFO, execution_id, f"Fetching {target_novel_count} rankings via single API call...")
+
+    payload = {
+        "load": "top100", "cate": "all", "proc": "weekly", "info": "view",
+        "req1": "all", "req2": "all", "req3": "",
+        "idx": 0,
+        "page_cut": target_novel_count,
+        "main_genre": ""
+    }
     
-    api_responses = []
-    def response_handler(response):
-        if "proc/rank_more" in response.url and response.request.method == "POST" and response.ok:
-            _log(logging.INFO, execution_id, f"Captured SUCCESSFUL 'rank_more' API response #{len(api_responses) + 1}.")
-            api_responses.append(response)
+    response = session.post(Config.RANK_MORE_URL, data=payload, timeout=30)
+    response.raise_for_status()
     
-    page.on("response", response_handler)
-    page.goto(ranking_url, wait_until="domcontentloaded")
-    
-    try:
-        timeout_seconds = Config.RANKING_LOAD_TIMEOUT / 1000
-        start_time = time.time()
-        while len(api_responses) < expected_api_calls:
-            if time.time() - start_time > timeout_seconds:
-                raise PlaywrightTimeoutError(f"Timeout: Only captured {len(api_responses)}/{expected_api_calls} API responses.")
-            time.sleep(0.1)
-        _log(logging.INFO, execution_id, "All expected API responses have been captured.")
-    finally:
-        page.remove_listener("response", response_handler)
-        
-    _log(logging.INFO, execution_id, "Fetching the entire page content...")
-    page_html = page.content()
-    soup = BeautifulSoup(page_html, 'html.parser')
-    boxes = soup.select(f"{Config.Selectors.NOVEL_BOX}")
-    
+    response_json = response.json()
+    if response_json.get("status") != "200" or not response_json.get("result"):
+        _log(logging.ERROR, execution_id, "API call for rankings returned non-200 status or empty result.", response_data=response_json)
+        raise ValueError("Failed to fetch novel list from API.")
+
+    full_html = response_json["result"]
+
+    _log(logging.INFO, execution_id, "Parsing API response HTML for novel data...")
+    soup = BeautifulSoup(full_html, 'html.parser')
+    boxes = soup.select(Config.Selectors.NOVEL_BOX)
+
     novels = []
     seen_novel_ids = set()
+
+    if len(boxes) < target_novel_count:
+         _log(logging.WARNING, execution_id, f"Expected at least {target_novel_count} novel boxes, but found {len(boxes)}. Proceeding with found items.")
+
     for idx, box in enumerate(boxes[:target_novel_count]):
-        onclick_div = box.select_one("div[onclick]")
-        raw_onclick = onclick_div['onclick']
-        novel_id = str(raw_onclick.split('/')[-1].strip("';"))
-        
-        if novel_id in seen_novel_ids:
-            raise ValueError(f"Duplicate novel ID found: {novel_id}.")
-        seen_novel_ids.add(novel_id)
-        
-        score_element = box.select_one("font.thumb_s4")
-        score = _parse_score(score_element.get_text(strip=True))
-        
-        novels.append({"date": today, "ranking": idx + 1, "id": novel_id, "score": score})
+        try:
+            onclick_div = box.select_one("div[onclick]")
+            if not onclick_div:
+                _log(logging.WARNING, execution_id, f"Skipping box at index {idx} due to missing 'onclick' div.")
+                continue
+
+            raw_onclick = onclick_div['onclick']
+            novel_id = str(raw_onclick.split('/')[-1].strip("';"))
+
+            if novel_id in seen_novel_ids:
+                _log(logging.WARNING, execution_id, f"Duplicate novel ID found and skipped: {novel_id}.")
+                continue
+            seen_novel_ids.add(novel_id)
+
+            score_element = box.select_one("font.thumb_s4")
+            score = _parse_score(score_element.get_text(strip=True))
+
+            novels.append({"date": today, "ranking": len(novels) + 1, "id": novel_id, "score": score})
+        except (AttributeError, IndexError, ValueError) as e:
+            _log(logging.WARNING, execution_id, f"Could not parse a novel box at index {idx}: {e}")
 
     if len(novels) != target_novel_count:
         raise ValueError(f"Expected {target_novel_count} novels, but found {len(novels)}.")
@@ -189,9 +196,6 @@ def get_ranking_list(event, context):
     if not (1 <= target_novel_count <= 1000):
         raise ValueError("Invalid target number of novels. Must be between 1 and 1000.")
     
-    url_request_count = ((target_novel_count - 1) // 100 + 1) * 100
-    ranking_url = Config.RANKING_URL_TEMPLATE.format(url_request_count)
-
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=Config.BROWSER_ARGS)
         pw_context = None
@@ -229,36 +233,38 @@ def get_ranking_list(event, context):
                 _ensure_adult_mode(setup_page, execution_id)
             finally:
                 setup_page.close() # Close the setup page immediately after use
+            
+            # --- Extract cookies from Playwright and set up requests session ---
+            _log(logging.INFO, execution_id, "Extracting cookies from Playwright context...")
+            cookies = pw_context.cookies()
+            requests_session = requests.Session()
+            requests_session.headers.update({"User-Agent": Config.USER_AGENT})
+            for cookie in cookies:
+                requests_session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
+            _log(logging.INFO, execution_id, "Requests session created with login cookies.")
 
-            # --- Retry loop for fetching data, using a new page for each attempt ---
+            # --- Retry loop for fetching data with requests ---
             for attempt in range(Config.MAX_INTERNAL_RETRIES):
-                page = None  # Ensure page is defined in the loop's scope
                 try:
-                    page = pw_context.new_page()
-                    page.route("**/*", block_unnecessary_resources)
-                    
-                    novels = _fetch_and_parse_ranking_page(page, ranking_url, target_novel_count, today, execution_id)
+                    novels = _fetch_rankings_with_requests(requests_session, target_novel_count, today, execution_id)
                     
                     _log(logging.INFO, execution_id, f"Successfully fetched {len(novels)} novels.", novel_count=len(novels), date=today)
                     
                     if test_mode:
-                        _log(logging.INFO, execution_id, "Test mode enabled. Returning summary without novel data.")
+                        _log(logging.INFO, execution_id, "Test mode enabled. Returning fetched novels directly.")
                         return {
-                            "status": "TEST_SUCCESS",
+                            "status": "TEST_SUCCESS_REQUESTS",
                             "fetched_count": len(novels),
                             "fetched_novels": novels
                         }
                     return {"novels": novels, "target_novel_count": target_novel_count, "date": today}
 
-                except (ValueError, PlaywrightTimeoutError) as e:
+                except (ValueError, requests.exceptions.RequestException) as e:
                     if attempt < Config.MAX_INTERNAL_RETRIES - 1:
                         _log(logging.WARNING, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed: {e}. Retrying...")
                     else:
                         _log(logging.ERROR, execution_id, f"Attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES} failed. All internal retry attempts failed.")
                         raise
-                finally:
-                    if page:
-                        page.close()
 
         except Exception as e:
             _log(logging.ERROR, execution_id, f"A non-recoverable error occurred in get_ranking_list: {e}", exc_info=True)
@@ -346,7 +352,7 @@ def parse_novel_details(event, context):
                     "Alr": _parse_int_from_raw_text(info_count2[1].get_text(strip=True)),
                     "Eps": _parse_int_from_raw_text(info_count2[2].get_text(strip=True), "회차"),
                     "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
-                    "Synopsis": ' '.join([p.get_text(strip=True, separator=' ') for p in soup.select(Config.Selectors.SYNOPSIS)])
+                    "Synopsis": soup.select_one(Config.Selectors.SYNOPSIS).get_text(separator='\n', strip=True)
                 }
                 _validate_item(item, novel_id)
                 item_to_send = item
