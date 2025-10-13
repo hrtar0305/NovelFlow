@@ -76,11 +76,11 @@ To handle a larger and growing number of contest novels (1,800+), a more advance
     -   **Fan-Out**: Reads a master list of novel IDs from S3 and sends each ID as an individual message to a **Task SQS Queue**. This "fan-out" process decouples task distribution from the main workflow.
 
 2.  **Scalable Parallel Parsing (`parser` Lambda)**
-    -   **Trigger**: This Lambda is triggered directly by messages arriving in the "Task SQS Queue", with a batch size of 10.
-    -   **Controlled Concurrency**: Lambda's **Reserved Concurrency** is set to a reasonable number (e.g., 20) to limit simultaneous requests to the target website, ensuring stable operation and preventing excessive server load.
-    -   **Robust Parsing**: Uses **Playwright** to handle dynamic, JavaScript-heavy pages. It includes an internal retry mechanism for transient network errors.
+    -   **Trigger**: This Lambda is triggered directly by messages arriving in the "Task SQS Queue", with a batch size of 50.
+    -   **Controlled Concurrency**: Lambda's **Reserved Concurrency** is set to a specific number (e.g., 40) to balance processing speed and server load, while the batch size is increased (e.g., 50) for cost-effective processing.
+    -   **Robust Parsing**: Uses lightweight `requests` and `BeautifulSoup` for fast and efficient data scraping. It includes logic to fetch first/latest episode information for retention rate calculation.
     -   **Error Handling**:
-        -   For permanent errors (e.g., a novel is now private), a placeholder item is generated.
+        -   For permanent errors (e.g., a novel is now private or a parsing error occurs), a placeholder item is generated.
         -   For persistent transient errors (after several retries), the Lambda fails, allowing SQS to automatically requeue the message batch for another attempt.
     -   **Queueing**: Successfully parsed data and placeholders are sent to a **Result SQS Queue**.
 
