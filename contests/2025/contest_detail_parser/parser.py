@@ -181,10 +181,19 @@ def parse_contest_novel_details_batch(event, context):
                             html_latest_ep = _get_episode_list_html(session, novel_id, 'UP')
                             soup_latest = BeautifulSoup(html_latest_ep, 'html.parser')
                             
-                            # Find the first valid latest episode (not scheduled)
+                            # Find the first valid latest episode (not scheduled and older than 24h)
                             target_latest_ep_row = None
                             for row in soup_latest.select("tr.ep_style5"):
-                                if "공개예정" not in row.get_text() and row.get('data-episode-no'):
+                                # Check 1: Not a scheduled episode
+                                if "공개예정" in row.get_text():
+                                    continue
+                                
+                                # Check 2: Older than 24 hours (date format is YY.MM.DD)
+                                upload_date_element = row.select_one(Config.Selectors.EPISODE_UPLOAD_DATE)
+                                if not upload_date_element or not re.match(r"^\d{2}\.\d{2}\.\d{2}$", upload_date_element.get_text(strip=True)):
+                                    continue
+
+                                if row.get('data-episode-no'):
                                     target_latest_ep_row = row
                                     break
 

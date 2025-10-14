@@ -123,13 +123,6 @@ const filterModeLabels: { [key: string]: string } = {
   'exclude': '태그 제외'
 };
 
-// 경량 파서를 사용한 날짜 목록 (연독률 데이터 없음)
-// 여기에 날짜를 'YYYY-MM-DD' 형식으로 추가하면 해당 날짜에 알림이 표시됩니다.
-const LIGHTWEIGHT_PARSER_DATES = new Set([
-  // 예: '2025-10-14'
-  '2025-10-13'
-]);
-
 const ContestPage = () => {
   const { year, date: dateParam } = useParams<{ year: string; date?: string }>();
   const navigate = useNavigate();
@@ -436,15 +429,12 @@ const ContestPage = () => {
   const alertInfo = useMemo(() => {
     if (!currentDate) return null;
     const currentDateStr = format(currentDate, 'yyyy-MM-dd');
-
-    if (LIGHTWEIGHT_PARSER_DATES.has(currentDateStr)) {
+    
+    if (currentDateStr < '2025-10-15') {
       return {
-        text: '사이트 성능 저하로 인해 해당 날짜의 연독률은 수집되지 않았습니다.',
+        text: '10월 15일 이전 랭킹 데이터는 연독률을 제공하지 않습니다.',
         variant: 'info' as const,
       };
-    }
-    if (currentDateStr <= '2025-10-12') {
-      return { text: '2025년 10월 13일 이전 데이터의 연독률은 오류로 인해 일부 부정확할 수 있습니다.', variant: 'info' as const };
     }
     return null;
   }, [currentDate]);
@@ -712,7 +702,12 @@ const ContestPage = () => {
                             {novel.View === -1 ? '-' : novel.view_change.toLocaleString()}
                           </td>
                           <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : `${(novel.like_to_view_ratio * 100).toFixed(2)}%`}</td>
-                          <td style={{ fontSize: '0.9rem' }}>{typeof novel.RetentionRate === 'number' ? `${(novel.RetentionRate * 100).toFixed(1)}%` : '-'}</td>
+                          <td style={{ fontSize: '0.9rem' }}>
+                            {currentDate && format(currentDate, 'yyyy-MM-dd') < '2025-10-15'
+                              ? '-'
+                              : (typeof novel.RetentionRate === 'number' ? `${(novel.RetentionRate * 100).toFixed(1)}%` : '-')
+                            }
+                          </td>
                           <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : (novel.Eps?.toLocaleString() ?? '-')}</td>
                           <td style={{ fontSize: '0.9rem' }}>
                             <div className="d-flex flex-wrap gap-1">
