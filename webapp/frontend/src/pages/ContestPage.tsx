@@ -668,31 +668,31 @@ const ContestPage = () => {
                       <th onClick={() => requestSort('Rank')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}>
                         <div className="d-flex align-items-center justify-content-center"><span>순위</span></div>
                       </th>
-                      <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}>
+                      <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '55px' }}>
                         <div className="d-flex align-items-center justify-content-center"><span>변동</span></div>
                       </th>
-                      <th style={{ fontSize: '0.85rem', minWidth: '180px', whiteSpace: 'normal' }}>
+                      <th style={{ fontSize: '0.85rem', whiteSpace: 'normal', minWidth: '180px' }}>
                         <span>제목</span>
                       </th>
-                      <th style={{ fontSize: '0.85rem', minWidth: '50px', textAlign: 'left' }}>
+                      <th style={{ fontSize: '0.85rem', textAlign: 'left', whiteSpace: 'normal', minWidth: '90px' }}>
                         <span>작가</span>
                       </th>
-                      <th onClick={() => requestSort('View')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '50px', textAlign: 'left' }}>
+                      <th onClick={() => requestSort('View')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '70px' }}>
                         <div className="d-flex align-items-center"><span>총 조회수</span></div>
                       </th>
-                      <th onClick={() => requestSort('view_change')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '50px', textAlign: 'left' }}>
+                      <th onClick={() => requestSort('view_change')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '70px' }}>
                         <div className="d-flex align-items-center"><span>일간 조회수</span></div>
                       </th>
-                      <th onClick={() => requestSort('like_to_view_ratio')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '60px', textAlign: 'left' }}>
+                      <th onClick={() => requestSort('like_to_view_ratio')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '50px' }}>
                         <div className="d-flex align-items-center"><span>추천비</span></div>
                       </th>
-                      <th onClick={() => requestSort('RetentionRate')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '60px', textAlign: 'left' }}>
+                      <th onClick={() => requestSort('RetentionRate')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '50px' }}>
                         <div className="d-flex align-items-center"><span>연독률</span></div>
                       </th>
-                      <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '40px', textAlign: 'left' }}>
+                      <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '30px' }}>
                         <div className="d-flex align-items-center"><span>회차</span></div>
                       </th>
-                      <th style={{ fontSize: '0.85rem', minWidth: '340px', textAlign: 'left' }}>태그</th>
+                      <th style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '300px' }}>태그</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -701,10 +701,10 @@ const ContestPage = () => {
                         <tr key={novel.ID} className={novel.View === -1 ? 'placeholder-row' : ''}>
                           <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Rank}</td>
                           <td className="text-center" style={{ fontSize: '0.9rem' }}><ViewChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></td>
-                          <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}>
+                          <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>
                             {novel.View === -1 ? `삭제된 소설 (${novel.ID})` : <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link>}
                           </td>
-                          <td style={{ fontSize: '0.9rem' }}>
+                          <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>
                             {novel.View === -1 ? '-' : (novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)'))}
                           </td>
                           <td style={{ fontSize: '0.9rem' }}>
@@ -737,7 +737,7 @@ const ContestPage = () => {
             </div>
 
             {/* Mobile Card View */}
-            <div className={`${mobileViewMode === 'card' ? 'd-block' : 'd-none'} d-md-none h-100 border rounded`} style={{ overflowY: 'auto' }}>
+            <div className={`${mobileViewMode === 'card' ? 'd-block' : 'd-none'} d-md-none h-100 border rounded`} style={{ overflowY: 'auto', overflowX: 'hidden' }}>
               <div className="p-1">
                 {processedNovels.length > 0 ? (
                   processedNovels.map((novel) => (
@@ -747,12 +747,20 @@ const ContestPage = () => {
                         <div className="flex-grow-1 me-2">
                           <div className="d-flex align-items-baseline gap-2">
                             <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Rank}위</span>
-                            <h5 className="mb-0 h6"><Link to={`/contests/${year}/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title}</Link></h5>
+                            <h5 className="mb-0 h6">
+                              {novel.View === -1 ? (
+                                <span className="text-muted">{`삭제된 소설 (${novel.ID})`}</span>
+                              ) : (
+                                <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title}</Link>
+                              )}
+                            </h5>
                           </div>
                           <div className="text-muted small mt-1">
-                            <span>{novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)')}</span>
-                            <span className="mx-1">·</span>
-                            <span>{novel.Eps}화</span>
+                            {novel.View !== -1 && (
+                              <span>{novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)')}</span>
+                            )}
+                            {novel.View !== -1 && <span className="mx-1">·</span>}
+                            <span>{novel.View === -1 ? '-' : `${novel.Eps}화`}</span>
                           </div>
                         </div>
                         <div className="flex-shrink-0 text-end"><ViewChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></div>
