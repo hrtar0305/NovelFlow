@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import boto3
 import decimal
 import json
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel, Field
@@ -133,64 +133,67 @@ class ContestNovelData(BaseModel):
 
 
 @app.get("/")
-def read_root():
+def read_root(response: Response):
     """
     루트 엔드포인트. API 서버가 동작하는지 확인하는 용도.
     """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return {"message": "Welcome to NP-Trend API"}
 
 @app.get("/api/ranks/latest-date", response_model=LatestDateResponse)
-def get_latest_date():
+def get_latest_date(response: Response):
     """
     데이터가 존재하는 가장 최근 날짜를 조회합니다.
     STATS#<date> 항목을 조회하여 가장 최근 날짜를 가져옵니다.
     """
     try:
-        response = table.query(
+        db_response = table.query(
             KeyConditionExpression=Key('ID').begins_with('STATS#'),
             ScanIndexForward=False, # Descending order by Date (Sort Key)
             Limit=1
         )
-        items = response.get('Items', [])
+        items = db_response.get('Items', [])
         if items:
+            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
             return LatestDateResponse(latest_date=items[0]['Date'])
         raise HTTPException(status_code=404, detail="No data found.")
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/dates", response_model=AvailableDatesResponse)
-def get_available_dates():
+def get_available_dates(response: Response):
     """
     데이터가 존재하는 모든 날짜 목록을 조회합니다.
     AVAILABLE_DATES 아이템에서 날짜 목록을 가져옵니다.
     """
     try:
-        response = table.get_item(
+        db_response = table.get_item(
             Key={
                 'ID': 'AVAILABLE_DATES',
                 'Date': 'ALL_DATES'
             }
         )
-        item = response.get('Item')
+        item = db_response.get('Item')
         if item and 'dates' in item:
+            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱 (latest-date와 동기화)
             return AvailableDatesResponse(available_dates=sorted(list(item['dates']), reverse=True))
         raise HTTPException(status_code=404, detail="No available dates found.")
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/ranks/novels/{date}", response_model=List[NovelRankData])
-def get_novels_by_date(date: str):
+def get_novels_by_date(date: str, response: Response):
     """
     특정 날짜의 모든 소설 랭킹 데이터를 조회하고, 직전 날짜와의 랭킹 변동을 포함합니다.
     DateRankIndex GSI를 사용하여 해당 날짜의 데이터를 가져옵니다.
     """
     try:
         # 1. 현재 날짜의 소설 랭킹 데이터 조회
-        current_day_response = table.query(
+        current_day_db_response = table.query(
             IndexName='DateRankIndex',
             KeyConditionExpression=Key('Date').eq(date)
         )
-        current_day_items = json.loads(json.dumps(current_day_response.get('Items', []), cls=DecimalEncoder))
+        current_day_items = json.loads(json.dumps(current_day_db_response.get('Items', []), cls=DecimalEncoder))
 
         if not current_day_items:
             raise HTTPException(status_code=404, detail="No data found for the given date.")
@@ -201,11 +204,11 @@ def get_novels_by_date(date: str):
         previous_date = previous_date_dt.strftime('%Y-%m-%d')
 
         # 3. 직전 날짜의 소설 랭킹 데이터 조회
-        previous_day_response = table.query(
+        previous_day_db_response = table.query(
             IndexName='DateRankIndex',
             KeyConditionExpression=Key('Date').eq(previous_date)
         )
-        previous_day_items = json.loads(json.dumps(previous_day_response.get('Items', []), cls=DecimalEncoder))
+        previous_day_items = json.loads(json.dumps(previous_day_db_response.get('Items', []), cls=DecimalEncoder))
 
         # 4. 직전 날짜 랭킹 맵 생성 (novel_id -> rank)
         previous_ranks_map = {item['ID']: item['Ranking'] for item in previous_day_items}
@@ -222,25 +225,28 @@ def get_novels_by_date(date: str):
             else:
                 item['rank_change'] = 'New' # 신규 진입
 
+        # 데이터는 하루에 한 번 바뀌므로 길게 캐싱 가능
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return current_day_items
 
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/novels/{novel_id}/latest", response_model=NovelDetails)
-def get_latest_novel_details(novel_id: str):
+def get_latest_novel_details(novel_id: str, response: Response):
     """
     특정 소설의 가장 최근 전체 데이터를 조회합니다.
     """
     try:
-        response = table.query(
+        db_response = table.query(
             KeyConditionExpression=Key('ID').eq(novel_id),
             ScanIndexForward=False,
             Limit=1
         )
-        items = response.get('Items', [])
+        items = db_response.get('Items', [])
         if items:
             latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
+            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
             return latest_item
         else:
             raise HTTPException(status_code=404, detail="Novel not found")
@@ -248,7 +254,7 @@ def get_latest_novel_details(novel_id: str):
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/trends/novels/{novel_id}", response_model=List[Dict[str, Any]])
-def get_novel_trend(novel_id: str, start_date: str, end_date: str):
+def get_novel_trend(novel_id: str, start_date: str, end_date: str, response: Response):
     """
     특정 소설의 기간별 데이터 트렌드를 조회합니다.
     데이터가 없는 날짜는 `Ranking: null`로 채워서 반환합니다.
@@ -259,10 +265,10 @@ def get_novel_trend(novel_id: str, start_date: str, end_date: str):
         end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
 
         # DynamoDB에서 해당 기간의 실제 데이터 조회
-        response = table.query(
+        db_response = table.query(
             KeyConditionExpression=Key('ID').eq(novel_id) & Key('Date').between(start_date_dt.strftime('%Y-%m-%d'), end_date_dt.strftime('%Y-%m-%d'))
         )
-        items = json.loads(json.dumps(response.get('Items', []), cls=DecimalEncoder))
+        items = json.loads(json.dumps(db_response.get('Items', []), cls=DecimalEncoder))
 
         # Get title from the first available item (if any)
         novel_title = items[0].get('Title', 'Unknown Title') if items else 'Unknown Title'
@@ -287,38 +293,40 @@ def get_novel_trend(novel_id: str, start_date: str, end_date: str):
                 })
             current_date += timedelta(days=1)
 
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return padded_data
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/trends/novels/{novel_id}/available-dates", response_model=AvailableDatesResponse)
-def get_novel_available_dates(novel_id: str):
+def get_novel_available_dates(novel_id: str, response: Response):
     """
     특정 소설의 데이터가 존재하는 모든 날짜 목록을 조회합니다.
     비용 최소화를 위해 Date 속성만 프로젝션합니다.
     """
     try:
-        response = table.query(
+        db_response = table.query(
             KeyConditionExpression=Key('ID').eq(novel_id),
             ProjectionExpression='#d',
             ExpressionAttributeNames={'#d': 'Date'}
         )
         # DynamoDB는 날짜(SK)를 기준으로 자동 정렬하여 반환합니다.
-        items = response.get('Items', [])
+        items = db_response.get('Items', [])
         dates = [item['Date'] for item in items]
+        response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
         return AvailableDatesResponse(available_dates=dates)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/ranks/tags/{date}", response_model=List[TagRankData])
-def get_tags_by_date(date: str):
+def get_tags_by_date(date: str, response: Response):
     """
     특정 날짜의 태그 랭킹 데이터를 조회합니다.
     """
     try:
-        response = table.get_item(Key={'ID': f"STATS#{date}", 'Date': date})
-        item = response.get('Item')
+        db_response = table.get_item(Key={'ID': f"STATS#{date}", 'Date': date})
+        item = db_response.get('Item')
         if not item:
             raise HTTPException(status_code=404, detail="No tag statistics found for the given date.")
 
@@ -346,13 +354,14 @@ def get_tags_by_date(date: str):
         for i, item in enumerate(sorted_data):
             item['Rank'] = i + 1
 
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return sorted_data
 
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/authors/{author_id}", response_model=List[NovelDetails])
-async def get_author_novels(author_id: str):
+async def get_author_novels(author_id: str, response: Response):
     if author_id == "0":
         raise HTTPException(status_code=404, detail="Author not found")
     try:
@@ -368,57 +377,60 @@ async def get_author_novels(author_id: str):
     latest_novels = []
     for novel_id in novel_ids:
         try:
-            response = table.query(
+            db_response = table.query(
                 KeyConditionExpression=Key('ID').eq(novel_id),
                 ScanIndexForward=False,
                 Limit=1
             )
-            if response.get('Items'):
-                item = json.loads(json.dumps(response['Items'][0], cls=DecimalEncoder))
+            if db_response.get('Items'):
+                item = json.loads(json.dumps(db_response['Items'][0], cls=DecimalEncoder))
                 latest_novels.append(item)
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"DynamoDB query failed for novel {novel_id}: {e}")
+    response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
     return latest_novels
 
 @app.get("/api/contests/{year}/latest-date", response_model=LatestDateResponse)
-def get_contest_latest_date(year: int):
+def get_contest_latest_date(year: int, response: Response):
     """
     공모전 데이터가 존재하는 가장 최근 날짜를 조회합니다.
     """
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
     try:
-        response = contest_table.get_item(
+        db_response = contest_table.get_item(
             Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
         )
-        item = response.get('Item')
+        item = db_response.get('Item')
         if item and 'dates' in item and item['dates']:
             latest_date = sorted(list(item['dates']), reverse=True)[0]
+            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
             return LatestDateResponse(latest_date=latest_date)
         raise HTTPException(status_code=404, detail="No latest date found for contest.")
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/contests/{year}/available-dates", response_model=AvailableDatesResponse)
-def get_contest_available_dates(year: int):
+def get_contest_available_dates(year: int, response: Response):
     """
     공모전 데이터가 존재하는 모든 날짜 목록을 조회합니다.
     """
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
     try:
-        response = contest_table.get_item(
+        db_response = contest_table.get_item(
             Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
         )
-        item = response.get('Item')
+        item = db_response.get('Item')
         if item and 'dates' in item:
+            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱 (latest-date와 동기화)
             return AvailableDatesResponse(available_dates=sorted(list(item['dates']), reverse=True))
         raise HTTPException(status_code=404, detail="No available dates found for contest.")
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/contests/{year}/{date}", response_model=List[ContestNovelData])
-def get_contest_data_by_date(year: int, date: str):
+def get_contest_data_by_date(year: int, date: str, response: Response):
     """
     지정된 연도의 특정 날짜 공모전 소설 데이터를 조회합니다.
     """
@@ -435,12 +447,12 @@ def get_contest_data_by_date(year: int, date: str):
         }
 
         while True:
-            response = contest_table.query(**query_args)
-            items = response.get('Items', [])
+            db_response = contest_table.query(**query_args)
+            items = db_response.get('Items', [])
             all_items.extend(items)
             
-            if 'LastEvaluatedKey' in response:
-                query_args['ExclusiveStartKey'] = response['LastEvaluatedKey']
+            if 'LastEvaluatedKey' in db_response:
+                query_args['ExclusiveStartKey'] = db_response['LastEvaluatedKey']
             else:
                 break
 
@@ -456,6 +468,7 @@ def get_contest_data_by_date(year: int, date: str):
             item['view_change'] = 0
             item['is_new'] = False
 
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return current_day_items
 
     except ClientError as e:
@@ -465,7 +478,7 @@ def get_contest_data_by_date(year: int, date: str):
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/contests/{year}/novels/{novel_id}/latest", response_model=ContestNovelData)
-def get_latest_contest_novel_details(year: int, novel_id: str):
+def get_latest_contest_novel_details(year: int, novel_id: str, response: Response):
     """
     특정 공모전 소설의 가장 최근 전체 데이터를 조회합니다.
     """
@@ -473,18 +486,19 @@ def get_latest_contest_novel_details(year: int, novel_id: str):
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
 
     try:
-        response = contest_table.query(
+        db_response = contest_table.query(
             KeyConditionExpression=Key('ID').eq(novel_id),
             ScanIndexForward=False,
             Limit=1
         )
-        items = response.get('Items', [])
+        items = db_response.get('Items', [])
         if items:
             latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
             # 프론트엔드에서 필요한 필드 추가
             latest_item['Rank'] = latest_item.get('Rank', 0)
             latest_item['view_change'] = 0
             latest_item['is_new'] = False
+            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
             return latest_item
         else:
             raise HTTPException(status_code=404, detail="Contest novel not found")
@@ -492,7 +506,7 @@ def get_latest_contest_novel_details(year: int, novel_id: str):
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/trends/contests/{year}/novels/{novel_id}", response_model=List[Dict[str, Any]])
-def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date: str):
+def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date: str, response: Response):
     """
     특정 공모전 소설의 기간별 데이터 트렌드를 조회합니다.
     데이터가 없는 날짜는 null 값으로 채워서 반환합니다.
@@ -505,10 +519,10 @@ def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date:
         end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
 
         # DynamoDB에서 해당 기간의 실제 데이터 조회
-        response = contest_table.query(
+        db_response = contest_table.query(
             KeyConditionExpression=Key('ID').eq(novel_id) & Key('Date').between(start_date_dt.strftime('%Y-%m-%d'), end_date_dt.strftime('%Y-%m-%d'))
         )
-        items = json.loads(json.dumps(response.get('Items', []), cls=DecimalEncoder))
+        items = json.loads(json.dumps(db_response.get('Items', []), cls=DecimalEncoder))
 
         novel_title = items[0].get('Title', 'Unknown Title') if items else 'Unknown Title'
 
@@ -538,13 +552,14 @@ def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date:
                 })
             current_date += timedelta(days=1)
 
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return padded_data
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/contests/{year}/ranks/tags/{date}", response_model=List[TagRankData])
-def get_contest_tags_by_date(year: int, date: str):
+def get_contest_tags_by_date(year: int, date: str, response: Response):
     """
     특정 날짜의 공모전 태그 랭킹 데이터를 조회합니다.
     """
@@ -552,8 +567,8 @@ def get_contest_tags_by_date(year: int, date: str):
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
 
     try:
-        response = contest_table.get_item(Key={'ID': f"TAG_STATS#{date}", 'Date': date})
-        item = response.get('Item')
+        db_response = contest_table.get_item(Key={'ID': f"TAG_STATS#{date}", 'Date': date})
+        item = db_response.get('Item')
         if not item:
             raise HTTPException(status_code=404, detail="No tag statistics found for the given date.")
 
@@ -577,12 +592,13 @@ def get_contest_tags_by_date(year: int, date: str):
         
         for i, item in enumerate(sorted_data):
             item['Rank'] = i + 1
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return sorted_data
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/trends/tags/analysis")
-def analyze_tag_trends(start_date: str, end_date: str):
+def analyze_tag_trends(start_date: str, end_date: str, response: Response):
     """
     지정된 기간 동안의 태그 트렌드를 분석하여 카테고리별로 반환합니다.
     """
@@ -602,7 +618,7 @@ def analyze_tag_trends(start_date: str, end_date: str):
         # DynamoDB batch_get_item은 한 번에 최대 100개의 아이템만 요청할 수 있으므로, 100개씩 나누어 처리합니다.
         for i in range(0, len(keys_to_get), 100):
             chunk = keys_to_get[i:i + 100]
-            response = dynamodb.batch_get_item(
+            db_response = dynamodb.batch_get_item(
                 RequestItems={
                     table.name: {
                         'Keys': chunk,
@@ -611,7 +627,7 @@ def analyze_tag_trends(start_date: str, end_date: str):
                     }
                 }
             )
-            all_items_raw.extend(response.get('Responses', {}).get(table.name, []))
+            all_items_raw.extend(db_response.get('Responses', {}).get(table.name, []))
 
         items = json.loads(json.dumps(all_items_raw, cls=DecimalEncoder))
         
@@ -735,6 +751,7 @@ def analyze_tag_trends(start_date: str, end_date: str):
                 if category_list is not final_response['stable_popular'] and category_list is not final_response['volatile_tags']:
                     tag_data.pop('total_score_series', None)
 
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return final_response
 
     except Exception as e:
