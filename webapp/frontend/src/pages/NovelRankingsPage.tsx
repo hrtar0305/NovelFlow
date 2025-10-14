@@ -253,7 +253,9 @@ const NovelRankingsPage = () => {
 
   const handleTagSelect = (tag: string) => {
     startTransition(() => {
-      setSelectedTags(prev => prev.includes(tag) ? prev : [...prev, tag]);
+      setSelectedTags(prev => 
+        prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+      );
     });
   };
 
@@ -525,9 +527,7 @@ const NovelRankingsPage = () => {
             <div>
               <div className="d-flex flex-wrap gap-1 p-2 bg-light border rounded" style={{ minHeight: '40px', maxHeight: '60px', overflowY: 'auto' }}>
                   {selectedTags.map(tag => (
-                      <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm" onClick={() => handleTagDeselect(tag)} className="rounded-pill tag-button-compact">
-                          {tag} <span className="fw-bold ms-1">X</span>
-                      </Button>
+                      <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm" onClick={() => handleTagDeselect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>
                   ))}
               </div>
                   <hr className="my-2" />

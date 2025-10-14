@@ -347,7 +347,9 @@ const ContestPage = () => {
 
   const handleTagSelect = (tag: string) => {
     startTransition(() => {
-      setSelectedTags(prev => prev.includes(tag) ? prev : [...prev, tag]);
+      setSelectedTags(prev => 
+        prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+      );
     });
   };
 
@@ -622,9 +624,7 @@ const ContestPage = () => {
               <div>
                 <div className="d-flex flex-wrap gap-1 p-2 bg-light border rounded" style={{ minHeight: '40px', maxHeight: '60px', overflowY: 'auto' }}>
                     {selectedTags.map(tag => (
-                        <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm" onClick={() => handleTagDeselect(tag)} className="rounded-pill tag-button-compact">
-                            {tag} <span className="fw-bold ms-1">X</span>
-                        </Button>
+                      <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm" onClick={() => handleTagDeselect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>
                     ))}
                 </div>
                     <hr className="my-2" />
@@ -723,11 +723,7 @@ const ContestPage = () => {
                           <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : (novel.Eps?.toLocaleString() ?? '-')}</td>
                           <td style={{ fontSize: '0.9rem' }}>
                             <div className="d-flex flex-wrap gap-1">
-                              {(novel.Tags || []).map(tag => (
-                                <Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" className="rounded-pill" onClick={() => startTransition(() => setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]))}>
-                                  {tag}
-                                </Button>
-                              ))}
+                              {(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" className="rounded-pill" onClick={() => handleTagSelect(tag)}>{tag}</Button>))}
                             </div>
                           </td>
                         </tr>
@@ -763,7 +759,7 @@ const ContestPage = () => {
                       </div>
                       {novel.Tags && novel.Tags.length > 0 && (
                         <div className="pt-2 border-top">
-                          <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => startTransition(() => setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]))} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
+                          <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
                         </div>
                       )}
                     </Card.Body>
