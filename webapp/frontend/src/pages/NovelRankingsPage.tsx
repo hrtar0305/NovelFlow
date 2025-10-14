@@ -144,8 +144,9 @@ const NovelRankingsPage = () => {
   const [activeMinEps, setActiveMinEps] = useState<number | null>(null);
   const [activeMaxEps, setActiveMaxEps] = useState<number | null>(null);
 
-  const [showFilters, setShowFilters] = useState(window.innerWidth >= 768); // md breakpoint
+  const [showFilters, setShowFilters] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
+  const [shouldRenderFilters, setShouldRenderFilters] = useState(false);
 
   // --- DATA DERIVATION & FILTERING LOGIC ---
   useEffect(() => {
@@ -447,13 +448,24 @@ const NovelRankingsPage = () => {
         <Link to="/data-collection-info" className="ms-2 subtle-link">(데이터 수집 방식)</Link>
       </p>
 
-      <Row className="mb-1 align-items-center justify-content-between mobile-ranking-controls-row">
-        <Col xs="auto">
+      <Row className="mb-2 align-items-center justify-content-between mobile-ranking-controls-row">
+        <Col className="d-flex align-items-center gap-2">
           <CalendarPicker
             selectedDate={optimisticDate || date}
             onDateChange={handleDateChange}
             availableDates={availableDatesSet}
           />
+          <Button
+            onClick={() => setShowFilters(!showFilters)}
+            aria-controls="filters-collapse-content"
+            aria-expanded={showFilters}
+            variant="outline-secondary" size="sm"
+            className="d-flex align-items-center"
+          >
+            <Funnel className="me-1" />
+            <span className="d-none d-md-inline">필터</span>
+            {showFilters ? <ChevronUp className="ms-1" /> : <ChevronDown className="ms-1" />}
+          </Button>
         </Col>
         <Col xs="auto" className="d-md-none">
           <ButtonGroup size="sm">
@@ -463,22 +475,16 @@ const NovelRankingsPage = () => {
         </Col>
       </Row>
 
-      <Button
-        onClick={() => setShowFilters(!showFilters)}
-        aria-controls="filters-collapse-content"
-        aria-expanded={showFilters}
-        variant="outline-secondary" size="sm"
-        className="d-flex d-md-none justify-content-between align-items-center w-100"
-      >
-        <span className="d-inline-flex align-items-center"><Funnel className="me-2" />필터 및 검색 옵션</span>
-        {showFilters ? <ChevronUp /> : <ChevronDown />}
-      </Button>
-
       {/* --- Filter UI --- */}
-      <div className="mb-1">
-        <Collapse in={showFilters}>
-          <div id="filters-collapse-content" className="px-3 py-2 border rounded">
-          <NovelFilterControls onFilterChange={handleFilterChange} />
+      <Collapse 
+        in={showFilters} 
+        onExiting={() => setShouldRenderFilters(false)}
+      >
+        {/* The div wrapper is necessary for Collapse to measure dimensions correctly */}
+        <div id="filters-collapse-content">
+          {(showFilters || shouldRenderFilters) && (
+            <div className="px-3 py-2 border rounded mb-2">
+              <NovelFilterControls onFilterChange={handleFilterChange} />
           <hr className="my-2"/>
           {/* Tag Filter Row */}
           <div className="d-flex flex-wrap align-items-center justify-content-between mb-2">
@@ -524,8 +530,8 @@ const NovelRankingsPage = () => {
                       </Button>
                   ))}
               </div>
-              <hr className="my-2"/>
-              <TagFilter unselectedTags={unselectedTags} onTagSelect={handleTagSelect} />
+                  <hr className="my-2" />
+                  <TagFilter unselectedTags={unselectedTags} onTagSelect={handleTagSelect} />
             </div>
           ) : (
             <div>
@@ -544,9 +550,10 @@ const NovelRankingsPage = () => {
               </div>
             </div>
           )}
-          </div>
-        </Collapse>
-      </div>
+            </div>
+          )}
+        </div>
+      </Collapse>
 
       {error && <Alert variant="danger" className="mt-2">{error}</Alert>}
       

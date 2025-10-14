@@ -137,7 +137,7 @@ const ContestPage = () => {
   const [availableDates, setAvailableDates] = useState<Set<string>>(new Set());
 
   // --- FILTERING STATE ---
-  const [showFilters, setShowFilters] = useState(window.innerWidth >= 768);
+  const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMinEps, setActiveMinEps] = useState<number | null>(null);
   const [activeMaxEps, setActiveMaxEps] = useState<number | null>(null);
@@ -150,6 +150,7 @@ const ContestPage = () => {
   const [filterError, setFilterError] = useState<string | null>(null);
   const advancedRuleInputRef = useRef<HTMLTextAreaElement>(null);
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
+  const [shouldRenderFilters, setShouldRenderFilters] = useState(false);
 
   useEffect(() => {
     const yearNum = parseInt(year || '0', 10);
@@ -508,7 +509,7 @@ const ContestPage = () => {
         우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
       </p>
 
-      <Nav variant="tabs" className="mb-3">
+      <Nav variant="tabs" className="mb-2">
         <Nav.Item>
           <Nav.Link as={NavLink} to={`/contests/${year}/${dateParam || ''}`} end>소설 랭킹</Nav.Link>
         </Nav.Item>
@@ -525,6 +526,17 @@ const ContestPage = () => {
               onDateChange={handleDateChange}
               availableDates={availableDates}
             />
+          </div>
+          <div className="flex-shrink-0">
+            <Button
+              onClick={() => setShowFilters(!showFilters)}
+              aria-controls="filters-collapse-content"
+              aria-expanded={showFilters}
+              variant="outline-secondary" size="sm"
+              className="d-flex align-items-center"
+            >
+              <Funnel className="me-1" /><span className="d-none d-md-inline">필터</span>{showFilters ? <ChevronUp className="ms-1" /> : <ChevronDown className="ms-1" />}
+            </Button>
           </div>
           {/* Desktop: Show alert to the right of the date picker */}
           <div className="d-none d-md-block">
@@ -563,15 +575,14 @@ const ContestPage = () => {
         </Col>
       </Row>
 
-      <Button onClick={() => setShowFilters(!showFilters)} aria-controls="filters-collapse-content" aria-expanded={showFilters} variant="outline-secondary" size="sm" className="d-flex d-md-none justify-content-between align-items-center w-100">
-        <span className="d-inline-flex align-items-center"><Funnel className="me-2" />필터 및 검색 옵션</span>
-        {showFilters ? <ChevronUp /> : <ChevronDown />}
-      </Button>
-
-      <div className="mb-1">
-        <Collapse in={showFilters}>
-          <div id="filters-collapse-content" className="px-3 py-2 border rounded">
-            <ContestNovelFilterControls onFilterChange={handleFilterChange} />
+      <Collapse 
+        in={showFilters}
+        onExiting={() => setShouldRenderFilters(false)}
+      >
+        <div id="filters-collapse-content">
+          {(showFilters || shouldRenderFilters) && (
+            <div className="px-3 py-2 border rounded mb-2">
+              <ContestNovelFilterControls onFilterChange={handleFilterChange} />
             <hr className="my-2"/>
             <div className="d-flex flex-wrap align-items-center justify-content-between mb-2">
               <div className="d-flex align-items-center gap-2">
@@ -616,8 +627,8 @@ const ContestPage = () => {
                         </Button>
                     ))}
                 </div>
-                <hr className="my-2"/>
-                <TagFilter unselectedTags={unselectedTags} onTagSelect={handleTagSelect} />
+                    <hr className="my-2" />
+                    <TagFilter unselectedTags={unselectedTags} onTagSelect={handleTagSelect} />
               </div>
             ) : (
               <div>
@@ -636,9 +647,10 @@ const ContestPage = () => {
                 </div>
               </div>
             )}
+            </div>
+          )}
           </div>
-        </Collapse>
-      </div>
+      </Collapse>
 
       {/* 작품 목록 테이블 */}
       <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>

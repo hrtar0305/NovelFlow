@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useTransition } from 'react';
 import { Container, Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert, Dropdown, Nav } from 'react-bootstrap';
-import { ArrowUp, ArrowDown, ArrowDownUp } from 'react-bootstrap-icons';
+import { ArrowUp, ArrowDown, ArrowDownUp, InfoCircle } from 'react-bootstrap-icons';
 import { useParams, useNavigate, NavLink } from 'react-router-dom';
 import { format, parseISO, isValid } from 'date-fns';
 import { getContestTagRankingsByDate, getContestAvailableDates } from '../services/api';
@@ -90,12 +90,25 @@ const ContestTagRankingsPage = () => {
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [isPending, startTransition] = useTransition();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [chartHeight, setChartHeight] = useState(400);
 
   const { year, date: dateParam } = useParams<{ year: string; date?: string }>();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setChartHeight(180);
+      } else {
+        // 뷰포트 높이의 30%를 사용하되, 최소 200px, 최대 500px로 제한
+        const calculatedHeight = Math.max(200, Math.min(500, window.innerHeight * 0.30));
+        setChartHeight(calculatedHeight);
+      }
+    };
+
+    handleResize(); // 초기 로드 시 실행
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -270,8 +283,12 @@ const ContestTagRankingsPage = () => {
             font-size: 0.8rem;
           }
         }
+        .page-height-manager {
+          /* Default height for PC, which user confirmed is good */
+          height: calc(100dvh - 56px);
+        }
       `}</style>
-        <Container className="py-3 py-md-4 d-flex flex-column" style={{ height: isMobile ? 'calc(100dvh - 56px)' : 'auto' }}>
+        <Container className="py-3 py-md-4 d-flex flex-column page-height-manager">
         <div className="d-flex align-items-center gap-2 mb-2">
           <h1 className="h2 mb-0 fs-page-title">우주최강 공모전</h1>
           <Dropdown onSelect={handleYearChange}>
@@ -284,9 +301,27 @@ const ContestTagRankingsPage = () => {
               ))}
             </Dropdown.Menu>
           </Dropdown>
+          <OverlayTrigger
+            trigger="click"
+            rootClose
+            placement="bottom"
+            overlay={
+              <BootstrapTooltip id="contest-description-tooltip">
+                우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
+              </BootstrapTooltip>
+            }
+          >
+            <span className="d-md-none" style={{ cursor: 'pointer' }}>
+              <InfoCircle />
+            </span>
+          </OverlayTrigger>
         </div>
 
-        <Nav variant="tabs" className="mb-3">
+        <p className="text-muted mb-3 d-none d-md-block">
+          우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
+        </p>
+        
+        <Nav variant="tabs" className="mb-2">
           <Nav.Item>
             <Nav.Link as={NavLink} to={`/contests/${year}/${dateParam || ''}`} end>소설 랭킹</Nav.Link>
           </Nav.Item>
@@ -295,7 +330,7 @@ const ContestTagRankingsPage = () => {
           </Nav.Item>
         </Nav>
         
-        <Row className="mb-2 align-items-center justify-content-between">
+        <Row className="mb-1 align-items-center justify-content-between">
           <Col xs="auto">
             <CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} />
           </Col>
@@ -307,7 +342,7 @@ const ContestTagRankingsPage = () => {
           </Col>
         </Row>
 
-        <div className="mb-2" style={{ maxWidth: '400px' }}>
+        <div className="mb-1" style={{ maxWidth: '400px' }}>
           <TagSearchControl onSearchChange={handleSearchChange} />
         </div>
 
@@ -346,15 +381,15 @@ const ContestTagRankingsPage = () => {
                 )}
               </div>
 
-              <div className={`${mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'} ${isMobile ? 'd-flex flex-column flex-grow-1' : ''}`} style={isMobile ? { minHeight: 0 } : {}}>
-                <div className="custom-table-wrapper mb-2" style={{ position: 'relative', backgroundColor: 'white', maxHeight: isMobile ? undefined : '500px', flex: isMobile ? '1 1 auto' : undefined, minHeight: isMobile ? 0 : undefined, overflowY: 'auto', opacity: isPending ? 0.7 : 1 }}>
+              <div className={`${mobileViewMode === 'table' ? 'd-flex' : 'd-none d-md-flex'} flex-column flex-grow-1`} style={{ minHeight: 0 }}>
+                <div className="custom-table-wrapper mb-2" style={{ position: 'relative', backgroundColor: 'white', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', opacity: isPending ? 0.7 : 1, display: 'flex', flexDirection: 'column' }}>
                   {isPending && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}><Spinner animation="border" /></div>}
                   <Table responsive="md" hover className="custom-table">
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'white' }}>
                       <tr>
                         <th style={{ fontSize: '0.85rem', width: '100px' }}><span>순위</span></th>
                         <th style={{ fontSize: '0.85rem' }}>태그</th>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>선형 점수</span>{getSortIndicator('score_linear')}</div></th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>선형 점수</span>{getSortIndicator('score_linear')}</div></th></OverlayTrigger> 
                         <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'선형 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>평균 선형 점수</span>{getSortIndicator('avg_linear')}</div></th></OverlayTrigger>
                         <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / 순위'로 계산하여, 1위에 가까울수록 기하급수적으로 높은 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>역순위 점수</span>{getSortIndicator('score_inverse')}</div></th></OverlayTrigger>
                         <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'역순위 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>평균 역순위 점수</span>{getSortIndicator('avg_inverse')}</div></th></OverlayTrigger>
@@ -381,7 +416,8 @@ const ContestTagRankingsPage = () => {
                   </Table>
                 </div>
 
-                <div style={{ flexShrink: 0 }}> <Card>
+                <div style={{ flexShrink: 0 }}>
+                  <Card>
                   <Card.Header>
                     <Row className="align-items-center g-2">
                       <Col><h5 className={`mb-0 ${isMobile ? 'h6' : ''}`}>태그 포지셔닝 맵</h5></Col>
@@ -394,7 +430,7 @@ const ContestTagRankingsPage = () => {
                     </Row>
                   </Card.Header>
                   <Card.Body>
-                    <ResponsiveContainer width="100%" height={isMobile ? 180 : 400}>
+                    <ResponsiveContainer width="100%" height={chartHeight}>
                         <ScatterChart margin={isMobile ? { top: 10, right: 10, bottom: -10, left: -20 } : { top: 20, right: 20, bottom: 20, left: 0 }}>
                             <CartesianGrid />
                             <XAxis type="number" dataKey="count" name="등장 횟수" unit="회" domain={xDomain} allowDecimals={false} tick={{ fontSize: isMobile ? 10 : undefined }} />
@@ -406,8 +442,9 @@ const ContestTagRankingsPage = () => {
                         </ScatterChart>
                     </ResponsiveContainer>
                     {!isMobile && <ColorLegend />}
-                  </Card.Body>
-                </Card></div>
+                    </Card.Body>
+                  </Card>
+                </div>
               </div>
             </div>
           ) : (

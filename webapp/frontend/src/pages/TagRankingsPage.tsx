@@ -92,12 +92,25 @@ const TagRankingsPage = () => {
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [isPending, startTransition] = useTransition();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [chartHeight, setChartHeight] = useState(400);
 
   const { date: dateParam } = useParams();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setChartHeight(180);
+      } else {
+        // 뷰포트 높이의 30%를 사용하되, 최소 200px, 최대 500px로 제한
+        const calculatedHeight = Math.max(200, Math.min(500, window.innerHeight * 0.30));
+        setChartHeight(calculatedHeight);
+      }
+    };
+
+    handleResize(); // 초기 로드 시 실행
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -166,7 +179,7 @@ const TagRankingsPage = () => {
       const fetchedDates: string[] = response.data.available_dates || [];
       setAvailableDatesSet(new Set(fetchedDates));
       if (!dateParam && fetchedDates.length > 0) {
-        const latestDate = fetchedDates.sort().pop();
+        const latestDate = fetchedDates[0]; // Already sorted descending
         if (latestDate) navigate(`/tags/rankings/${latestDate}`, { replace: true });
       }
     });
@@ -185,18 +198,7 @@ const TagRankingsPage = () => {
     setLoading(true);
     setError(null);
     getTagRankingsByDate(format(date, 'yyyy-MM-dd')).then(response => {
-      const data = response.data;
-      if (Array.isArray(data)) {
-        setTags(data);
-      } else {
-        setTags([]);
-        if (data && data.message) {
-          // 데이터가 없다는 메시지는 에러는 아니므로 콘솔에만 표시
-          console.log(data.message);
-        } else if (data && data.error) {
-          setError('태그 랭킹을 불러오는 데 실패했습니다.');
-        }
-      }
+      setTags(response.data || []);
     }).catch(_err => {
       setError('태그 랭킹을 불러오는 데 실패했습니다.');
       setTags([]);
@@ -240,15 +242,8 @@ const TagRankingsPage = () => {
   }, [tags, sortConfig, searchTerm]);
 
   const chartData = useMemo(() => {
-    // 차트 데이터는 항상 '선형 점수'를 기준으로 생성합니다.
     const itemsWithAvgs = tags.map(tag => ({ ...tag, avg_linear: tag.count > 0 ? tag.score_linear / tag.count : 0 }));
-    const sortedForChart = [...itemsWithAvgs].sort((a, b) => {
-      const aValue = a.score_linear;
-      const bValue = b.score_linear;
-      if (aValue < bValue) return 1;
-      if (aValue > bValue) return -1;
-      return a.tag.localeCompare(b.tag);
-    });
+    const sortedForChart = [...itemsWithAvgs].sort((a, b) => b.score_linear - a.score_linear || a.tag.localeCompare(b.tag));
     const rankedForChart = sortedForChart.map((tag, index) => ({ ...tag, Rank: index + 1 }));
     return rankedForChart.slice(0, topN);
   }, [tags, topN]);
@@ -285,8 +280,12 @@ const TagRankingsPage = () => {
         tr.highlight-row {
             background-color: #e9ecef !important;
         }
+        .page-height-manager {
+          /* Default height for PC, which user confirmed is good */
+          height: calc(100dvh - 56px);
+        }
       `}</style>
-        <Container className="py-3 py-md-4 d-flex flex-column" style={{ height: isMobile ? 'calc(100dvh - 56px)' : 'auto' }}>
+        <Container className="py-3 py-md-4 d-flex flex-column page-height-manager">
         <div className="d-flex align-items-center gap-2 mb-2">
           <h1 className="h2 mb-0 fs-page-title">태그 랭킹</h1>
           <OverlayTrigger
@@ -304,7 +303,7 @@ const TagRankingsPage = () => {
         </div>
         <p className="text-muted mb-3 d-none d-md-block">소설 랭킹을 기반으로 태그별 점수를 계산하여 랭킹을 보여줍니다. 날짜를 선택하여 과거 랭킹을 조회할 수 있습니다.</p>
         
-        <Row className="mb-2 align-items-center justify-content-between">
+        <Row className="mb-1 align-items-center justify-content-between">
           <Col xs="auto">
             <CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} />
           </Col>
@@ -316,7 +315,7 @@ const TagRankingsPage = () => {
           </Col>
         </Row>
 
-        <div className="mb-2" style={{ maxWidth: '400px' }}>
+        <div className="mb-1" style={{ maxWidth: '400px' }}>
           <TagSearchControl onSearchChange={handleSearchChange} />
         </div>
 
@@ -325,7 +324,7 @@ const TagRankingsPage = () => {
         
         {!loading && !error && (
           tags.length > 0 ? (
-            <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>
+            <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>              
               {/* Mobile Card View */}
               <div className="d-md-none">
                 {mobileViewMode === 'card' && (
@@ -356,19 +355,14 @@ const TagRankingsPage = () => {
                 )}
               </div>
 
-              {/* Table and Map Container (Visible on PC and Mobile-Table-Mode) */}
-              <div className={`${mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'} ${isMobile ? 'd-flex flex-column flex-grow-1' : ''}`} style={isMobile ? { minHeight: 0 } : {}}>
+              <div className={`${mobileViewMode === 'table' ? 'd-flex' : 'd-none d-md-flex'} flex-column flex-grow-1`} style={{ minHeight: 0 }}>
                 {/* Table */}
-                <div className="custom-table-wrapper mb-2" style={{ position: 'relative', backgroundColor: 'white', maxHeight: isMobile ? undefined : '500px', flex: isMobile ? '1 1 auto' : undefined, minHeight: isMobile ? 0 : undefined, overflowY: 'auto', opacity: isPending ? 0.7 : 1 }}>
-                  {isPending && (
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
-                      <Spinner animation="border" />
-                    </div>
-                  )}
+                <div className="custom-table-wrapper mb-2" style={{ position: 'relative', backgroundColor: 'white', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', opacity: isPending ? 0.7 : 1, display: 'flex', flexDirection: 'column' }}>
+                  {isPending && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}><Spinner animation="border" /></div>}
                   <Table responsive="md" hover className="custom-table">
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'white' }}>
                       <tr>
-                        <th style={{ fontSize: '0.85rem', width: '100px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>순위</span></div></th>
+                        <th style={{ fontSize: '0.85rem', width: '100px' }}><span>순위</span></th>
                         <th style={{ fontSize: '0.85rem' }}>태그</th>
                         <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>선형 점수</span>{getSortIndicator('score_linear')}</div></th></OverlayTrigger>
                         <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'선형 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>평균 선형 점수</span>{getSortIndicator('avg_linear')}</div></th></OverlayTrigger>
@@ -380,42 +374,32 @@ const TagRankingsPage = () => {
                       </tr>
                     </thead>
                     <tbody onMouseLeave={handleTableMouseLeave}>
-                      {processedTags.length > 0 ? (
-                        processedTags.map((tag: Tag) => (
-                            <tr key={tag.tag} data-tag={tag.tag} onMouseEnter={handleMouseEnter} style={{ cursor: 'pointer' }}>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.Rank}</td>
-                              <td className="fw-bold" style={{ fontSize: '0.9rem' }}>{tag.tag}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.score_linear.toFixed(2)}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.avg_linear.toFixed(2)}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.score_inverse.toFixed(2)}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.avg_inverse.toFixed(2)}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.score_log.toFixed(2)}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.avg_log.toFixed(2)}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{tag.count}</td>
-                            </tr>
-                          ))
-                      ) : (
-                        <tr><td colSpan={9} className="text-center py-4">검색 결과가 없습니다.</td></tr>
-                      )}
+                      {processedTags.map((tag: Tag) => (
+                          <tr key={tag.tag} data-tag={tag.tag} onMouseEnter={handleMouseEnter} style={{ cursor: 'pointer' }}>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.Rank}</td>
+                            <td className="fw-bold" style={{ fontSize: '0.9rem' }}>{tag.tag}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.score_linear.toFixed(2)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_linear.toFixed(2)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.score_inverse.toFixed(4)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_inverse.toFixed(4)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.score_log.toFixed(4)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_log.toFixed(4)}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{tag.count}</td>
+                          </tr>
+                        ))}
                     </tbody>
                   </Table>
                 </div>
 
-                {/* Map */}
-                <div style={{ flexShrink: 0 }}> <Card>
+                <div style={{ flexShrink: 0 }}>
+                  <Card>
                   <Card.Header>
                     <Row className="align-items-center g-2">
-                      <Col>
-                        <h5 className={`mb-0 ${isMobile ? 'h6' : ''}`}>태그 포지셔닝 맵</h5>
-                      </Col>
-                      {!isMobile && (
-                        <Col xs="auto">
-                          <span className="text-muted" style={{ fontSize: '0.875rem' }}>*선형 점수 기준</span>
-                        </Col>
-                      )}
+                      <Col><h5 className={`mb-0 ${isMobile ? 'h6' : ''}`}>태그 포지셔닝 맵</h5></Col>
+                      {!isMobile && <Col xs="auto"><span className="text-muted" style={{ fontSize: '0.875rem' }}>*선형 점수 기준</span></Col>}
                       <Col xs="auto">
                         <ButtonGroup size="sm">
-                          {topNOptions.map((option: number) => (
+                          {topNOptions.map(option => (
                             <Button 
                               key={option} 
                               variant={topN === option ? 'primary' : 'outline-secondary'} 
@@ -428,7 +412,7 @@ const TagRankingsPage = () => {
                     </Row>
                   </Card.Header>
                   <Card.Body>
-                    <ResponsiveContainer width="100%" height={isMobile ? 180 : 400}>
+                    <ResponsiveContainer width="100%" height={chartHeight}>
                         <ScatterChart margin={isMobile ? { top: 10, right: 10, bottom: -10, left: -20 } : { top: 20, right: 20, bottom: 20, left: 0 }}>
                             <CartesianGrid />
                             <XAxis 
@@ -455,8 +439,9 @@ const TagRankingsPage = () => {
                         </ScatterChart>
                     </ResponsiveContainer>
                     {!isMobile && <ColorLegend />}
-                  </Card.Body>
-                </Card></div>
+                    </Card.Body>
+                  </Card>
+                </div>
               </div>
             </div>
           ) : (
