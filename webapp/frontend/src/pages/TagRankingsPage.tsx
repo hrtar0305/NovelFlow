@@ -303,7 +303,7 @@ const TagRankingsPage = () => {
         </div>
         <p className="text-muted mb-3 d-none d-md-block">소설 랭킹을 기반으로 태그별 점수를 계산하여 랭킹을 보여줍니다. 날짜를 선택하여 과거 랭킹을 조회할 수 있습니다.</p>
         
-        <Row className="mb-1 align-items-center justify-content-between">
+        <Row className="mb-1 align-items-center justify-content-between mobile-ranking-controls-row">
           <Col xs="auto">
             <CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} />
           </Col>

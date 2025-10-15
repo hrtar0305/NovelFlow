@@ -450,7 +450,7 @@ const NovelRankingsPage = () => {
         <Link to="/data-collection-info" className="ms-2 subtle-link">(데이터 수집 방식)</Link>
       </p>
 
-      <Row className="mb-2 align-items-center justify-content-between mobile-ranking-controls-row">
+      <Row className="mb-1 align-items-center justify-content-between mobile-ranking-controls-row">
         <Col className="d-flex align-items-center gap-2">
           <CalendarPicker
             selectedDate={optimisticDate || date}
@@ -485,7 +485,7 @@ const NovelRankingsPage = () => {
         {/* The div wrapper is necessary for Collapse to measure dimensions correctly */}
         <div id="filters-collapse-content">
           {(showFilters || shouldRenderFilters) && (
-            <div className="px-3 py-2 border rounded mb-2">
+            <div className="px-3 py-2 border rounded mb-1">
               <NovelFilterControls onFilterChange={handleFilterChange} />
           <hr className="my-2"/>
           {/* Tag Filter Row */}

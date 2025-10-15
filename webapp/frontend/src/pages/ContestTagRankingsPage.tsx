@@ -330,7 +330,7 @@ const ContestTagRankingsPage = () => {
           </Nav.Item>
         </Nav>
         
-        <Row className="mb-1 align-items-center justify-content-between">
+        <Row className="mb-1 align-items-center justify-content-between mobile-ranking-controls-row">
           <Col xs="auto">
             <CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} />
           </Col>

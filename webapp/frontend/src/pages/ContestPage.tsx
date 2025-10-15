@@ -520,7 +520,7 @@ const ContestPage = () => {
         </Nav.Item>
       </Nav>
 
-      <Row className="mb-2 align-items-center mobile-ranking-controls-row">
+      <Row className="mb-1 align-items-center mobile-ranking-controls-row">
         <Col className="d-flex align-items-center gap-2">
           <div className="flex-shrink-0">
             <CalendarPicker
@@ -583,7 +583,7 @@ const ContestPage = () => {
       >
         <div id="filters-collapse-content">
           {(showFilters || shouldRenderFilters) && (
-            <div className="px-3 py-2 border rounded mb-2">
+            <div className="px-3 py-2 border rounded mb-1">
               <ContestNovelFilterControls onFilterChange={handleFilterChange} />
             <hr className="my-2"/>
             <div className="d-flex flex-wrap align-items-center justify-content-between mb-2">

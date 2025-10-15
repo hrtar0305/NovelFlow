@@ -76,8 +76,8 @@ To handle a larger and growing number of contest novels (1,800+), a more advance
     -   **Fan-Out**: Reads a master list of novel IDs from S3 and sends each ID as an individual message to a **Task SQS Queue**. This "fan-out" process decouples task distribution from the main workflow.
 
 2.  **Scalable Parallel Parsing (`parser` Lambda)**
-    -   **Trigger**: This Lambda is triggered directly by messages arriving in the "Task SQS Queue", with a batch size of 100.
-    -   **Controlled Concurrency**: Lambda's **Reserved Concurrency** is set to a specific number (e.g., 20) to balance processing speed and server load, while the batch size is increased (e.g., 100) for cost-effective processing.
+    -   **Trigger**: This Lambda is triggered directly by messages arriving in the "Task SQS Queue", with a batch size of 80.
+    -   **Controlled Concurrency**: Lambda's **Reserved Concurrency** is set to a specific number (e.g., 30) to balance processing speed and server load, while the batch size is increased (e.g., 100) for cost-effective processing.
     -   **Robust Parsing**: Uses lightweight `requests` and `BeautifulSoup` for fast and efficient data scraping. It includes logic to fetch first/latest episode information for retention rate calculation.
     -   **Error Handling**:
         -   For permanent errors (e.g., a novel is now private or a parsing error occurs), a placeholder item is generated.
