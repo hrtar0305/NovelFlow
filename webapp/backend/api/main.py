@@ -154,7 +154,7 @@ def get_latest_date(response: Response):
         )
         items = db_response.get('Items', [])
         if items:
-            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return LatestDateResponse(latest_date=items[0]['Date'])
         raise HTTPException(status_code=404, detail="No data found.")
     except ClientError as e:
@@ -175,7 +175,7 @@ def get_available_dates(response: Response):
         )
         item = db_response.get('Item')
         if item and 'dates' in item:
-            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱 (latest-date와 동기화)
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return AvailableDatesResponse(available_dates=sorted(list(item['dates']), reverse=True))
         raise HTTPException(status_code=404, detail="No available dates found.")
     except ClientError as e:
@@ -246,7 +246,7 @@ def get_latest_novel_details(novel_id: str, response: Response):
         items = db_response.get('Items', [])
         if items:
             latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
-            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return latest_item
         else:
             raise HTTPException(status_code=404, detail="Novel not found")
@@ -314,7 +314,7 @@ def get_novel_available_dates(novel_id: str, response: Response):
         # DynamoDB는 날짜(SK)를 기준으로 자동 정렬하여 반환합니다.
         items = db_response.get('Items', [])
         dates = [item['Date'] for item in items]
-        response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
+        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
         return AvailableDatesResponse(available_dates=dates)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -387,7 +387,7 @@ async def get_author_novels(author_id: str, response: Response):
                 latest_novels.append(item)
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"DynamoDB query failed for novel {novel_id}: {e}")
-    response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
+    response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
     return latest_novels
 
 @app.get("/api/contests/{year}/latest-date", response_model=LatestDateResponse)
@@ -404,7 +404,7 @@ def get_contest_latest_date(year: int, response: Response):
         item = db_response.get('Item')
         if item and 'dates' in item and item['dates']:
             latest_date = sorted(list(item['dates']), reverse=True)[0]
-            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return LatestDateResponse(latest_date=latest_date)
         raise HTTPException(status_code=404, detail="No latest date found for contest.")
     except ClientError as e:
@@ -423,7 +423,7 @@ def get_contest_available_dates(year: int, response: Response):
         )
         item = db_response.get('Item')
         if item and 'dates' in item:
-            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱 (latest-date와 동기화)
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return AvailableDatesResponse(available_dates=sorted(list(item['dates']), reverse=True))
         raise HTTPException(status_code=404, detail="No available dates found for contest.")
     except ClientError as e:
@@ -498,7 +498,7 @@ def get_latest_contest_novel_details(year: int, novel_id: str, response: Respons
             latest_item['Rank'] = latest_item.get('Rank', 0)
             latest_item['view_change'] = 0
             latest_item['is_new'] = False
-            response.headers["Cache-Control"] = "public, max-age=300" # 5분 캐싱
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return latest_item
         else:
             raise HTTPException(status_code=404, detail="Contest novel not found")
