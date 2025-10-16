@@ -29,7 +29,7 @@ class Config:
     DEFAULT_ACTION_TIMEOUT = 30000      # 30 seconds
 
     # Novelpia URLs & Settings
-    BASE_URL = "https://novelpia.com/page/youth_policy"
+    BASE_URL = "https://novelpia.com/mybook"
     RANK_MORE_URL = "https://novelpia.com/proc/rank_more"
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
     MAX_INTERNAL_RETRIES = 10
@@ -85,8 +85,6 @@ def _perform_login(page, username, password, execution_id):
     """Handles the login process on Novelpia."""
     _log(logging.INFO, execution_id, "Performing login...")
     page.goto(Config.BASE_URL, wait_until="commit")
-    page.locator(Config.Selectors.TOGGLE_MENU).click()
-    page.locator(Config.Selectors.ADULT_SWITCH).click()
     page.locator(Config.Selectors.LOGIN_EMAIL).fill(username)
     page.locator(Config.Selectors.LOGIN_PASSWORD).fill(password)
     page.on("dialog", lambda dialog: dialog.accept())
