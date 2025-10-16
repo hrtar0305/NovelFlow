@@ -152,7 +152,6 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
       {isNovelDetailPage && (
         <div className="w-100 mt-1 datepicker-help-text-container">
             <p className="text-muted mb-0">데이터가 수집되지 않은 날짜는 비활성화됩니다.</p>
-            <p className="text-muted mb-0">해당 소설 데이터가 존재하는 날짜에는 동그라미가 표시됩니다.</p>
         </div>
       )}
     </Form>

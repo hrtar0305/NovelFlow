@@ -128,8 +128,9 @@ class ContestNovelData(BaseModel):
     Tags: List[str] = Field(default_factory=list)
     RetentionRate: Optional[float] = None # 연독률
     Rank: Optional[int] = None  # Calculated rank based on view_change
-    view_change: int = Field(0, description="조회수 변동. 프론트엔드에서 계산됨.")
-    is_new: bool = Field(False, description="신규 진입 여부. 프론트엔드에서 계산됨.")
+    view_change: int = Field(0, description="일일 조회수 변동")
+    rank_change: Optional[Any] = Field(None, description="랭킹 변동. 숫자 또는 'New'")
+    is_new: bool = Field(False, description="신규 진입 여부")
 
 
 @app.get("/")
@@ -253,8 +254,8 @@ def get_latest_novel_details(novel_id: str, response: Response):
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-@app.get("/api/trends/novels/{novel_id}", response_model=List[Dict[str, Any]])
-def get_novel_trend(novel_id: str, start_date: str, end_date: str, response: Response):
+@app.get("/api/trends/novels/{novel_id}/{start_date}/{end_date}", response_model=List[Dict[str, Any]])
+def get_novel_trend(novel_id: str, start_date: str, end_date: str, response: Response, _: Optional[str] = Query(None)):
     """
     특정 소설의 기간별 데이터 트렌드를 조회합니다.
     데이터가 없는 날짜는 `Ranking: null`로 채워서 반환합니다.
@@ -438,6 +439,18 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
 
+    # Get available dates directly from DynamoDB to find the previous date efficiently
+    available_dates_list = []
+    try:
+        dates_response = contest_table.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'})
+        dates_item = dates_response.get('Item')
+        if dates_item and 'dates' in dates_item:
+            # The list is already sorted descending in the database item
+            available_dates_list = sorted(list(dates_item['dates']), reverse=True)
+    except ClientError as e:
+        available_dates_list = []
+        logger.warning(f"Could not fetch available dates for contest: {e}")
+
     try:
         # 1. Get current day's data with pagination
         all_items = []
@@ -461,13 +474,48 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
         if not current_day_items:
             raise HTTPException(status_code=404, detail="No data found for the given date.")
 
-        # The 'rank' is now pre-calculated. We just need to add placeholder fields
-        # for the frontend to calculate daily changes.
-        for item in current_day_items:
-            # Add placeholder fields that frontend will calculate
-            item['view_change'] = 0
-            item['is_new'] = False
+        # 2. Find previous date and get its data
+        previous_day_items = []
+        try:
+            current_date_index = available_dates_list.index(date)
+            if current_date_index + 1 < len(available_dates_list):
+                previous_date = available_dates_list[current_date_index + 1]
+                
+                prev_query_args = {
+                    'IndexName': 'DateViewIndex',
+                    'KeyConditionExpression': Key('Date').eq(previous_date)
+                }
+                prev_all_items = []
+                while True:
+                    prev_db_response = contest_table.query(**prev_query_args)
+                    prev_items_chunk = prev_db_response.get('Items', [])
+                    prev_all_items.extend(prev_items_chunk)
+                    if 'LastEvaluatedKey' in prev_db_response:
+                        prev_query_args['ExclusiveStartKey'] = prev_db_response['LastEvaluatedKey']
+                    else:
+                        break
+                previous_day_items = json.loads(json.dumps(prev_all_items, cls=DecimalEncoder))
+        except (ValueError, IndexError):
+            # If current date not in list or it's the oldest, there's no previous date.
+            pass
 
+        previous_day_map = {item['ID']: item for item in previous_day_items}
+
+        for item in current_day_items:
+            previous_item = previous_day_map.get(item['ID'])
+            item['view_change'] = (item.get('View', 0) or 0) - (previous_item.get('View', 0) or 0) if previous_item else (item.get('View', 0) or 0)
+
+            item['is_new'] = False # 기본값 설정
+            if previous_item and previous_item.get('Rank') is not None:
+                # 이전 날짜에 순위 데이터가 있는 경우
+                previous_rank = previous_item['Rank']
+                current_rank = item.get('Rank')
+                # 현재 날짜에 순위가 없는 경우를 대비 (이론상 발생하지 않음)
+                item['rank_change'] = previous_rank - current_rank if current_rank is not None else 'New'
+                if item['rank_change'] == 'New': item['is_new'] = True
+            else:
+                # 이전 날짜에 데이터가 없거나 순위가 없는 경우 'New'로 처리
+                item['rank_change'] = 'New'
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return current_day_items
 
@@ -505,8 +553,28 @@ def get_latest_contest_novel_details(year: int, novel_id: str, response: Respons
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-@app.get("/api/trends/contests/{year}/novels/{novel_id}", response_model=List[Dict[str, Any]])
-def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date: str, response: Response):
+@app.get("/api/trends/contests/{year}/novels/{novel_id}/available-dates", response_model=AvailableDatesResponse)
+def get_contest_novel_available_dates(year: int, novel_id: str, response: Response):
+    """
+    특정 공모전 소설의 데이터가 존재하는 모든 날짜 목록을 조회합니다.
+    """
+    if year != 2025:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    try:
+        db_response = contest_table.query(
+            KeyConditionExpression=Key('ID').eq(novel_id),
+            ProjectionExpression='#d',
+            ExpressionAttributeNames={'#d': 'Date'}
+        )
+        items = db_response.get('Items', [])
+        dates = [item['Date'] for item in items]
+        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
+        return AvailableDatesResponse(available_dates=dates)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/trends/contests/{year}/novels/{novel_id}/{start_date}/{end_date}", response_model=List[Dict[str, Any]])
+def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date: str, response: Response, _: Optional[str] = Query(None)):
     """
     특정 공모전 소설의 기간별 데이터 트렌드를 조회합니다.
     데이터가 없는 날짜는 null 값으로 채워서 반환합니다.
@@ -597,8 +665,8 @@ def get_contest_tags_by_date(year: int, date: str, response: Response):
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
-@app.get("/api/trends/tags/analysis")
-def analyze_tag_trends(start_date: str, end_date: str, response: Response):
+@app.get("/api/trends/tags/analysis/{start_date}/{end_date}")
+def analyze_tag_trends(start_date: str, end_date: str, response: Response, _: Optional[str] = Query(None)):
     """
     지정된 기간 동안의 태그 트렌드를 분석하여 카테고리별로 반환합니다.
     """
@@ -737,11 +805,11 @@ def analyze_tag_trends(start_date: str, end_date: str, response: Response):
         
         # Remove temporary total_score before returning
         final_response = {
-            "rising_trend": rising_tags,
-            "falling_trend": falling_tags,
-            "stable_popular": stable_popular_tags,
-            "volatile_tags": volatile_tags,
-            "noteworthy": noteworthy_tags
+            "rising_trend": rising_tags or [],
+            "falling_trend": falling_tags or [],
+            "stable_popular": stable_popular_tags or [],
+            "volatile_tags": volatile_tags or [],
+            "noteworthy": noteworthy_tags or []
         }
 
         for category_list in final_response.values():

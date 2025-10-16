@@ -103,6 +103,7 @@ export const useNovelData = (novelId: string | undefined) => {
     if (!novelId) return;
 
     setLoading(true);
+    setError(null);
     Promise.all([
         getAvailableDates(), 
         getNovelAvailableDates(novelId),
@@ -126,8 +127,8 @@ export const useNovelData = (novelId: string | undefined) => {
         setDetails(detailsResponse.data);
 
         if (novelDateObjects.length > 0) {
-            const novelMostRecentDate = novelDateObjects[novelDateObjects.length - 1];
             const novelOldestDate = novelDateObjects[0];
+            const novelMostRecentDate = novelDateObjects[novelDateObjects.length - 1];
 
             const sevenDaysAgo = subDays(novelMostRecentDate, 6);
             const initialStartDate = startOfDay(sevenDaysAgo.getTime() < novelOldestDate.getTime() ? novelOldestDate : sevenDaysAgo);

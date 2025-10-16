@@ -92,6 +92,7 @@ const TagRankingsPage = () => {
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [isPending, startTransition] = useTransition();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const hasFetchedDates = useRef(false);
   const [chartHeight, setChartHeight] = useState(400);
 
   const { date: dateParam } = useParams();
@@ -169,41 +170,50 @@ const TagRankingsPage = () => {
 
   const handleDateChange = (newDate: Date | null) => {
     if (newDate && (!date || format(newDate, 'yyyy-MM-dd') !== format(date, 'yyyy-MM-dd'))) {
-      setLoading(true);
       navigate(`/tags/rankings/${format(newDate, 'yyyy-MM-dd')}`);
     }
   };
 
   useEffect(() => {
-    getAvailableDates().then(response => {
-      const fetchedDates: string[] = response.data.available_dates || [];
-      setAvailableDatesSet(new Set(fetchedDates));
-      if (!dateParam && fetchedDates.length > 0) {
-        const latestDate = fetchedDates[0]; // Already sorted descending
-        if (latestDate) navigate(`/tags/rankings/${latestDate}`, { replace: true });
+    if (hasFetchedDates.current) return;
+    hasFetchedDates.current = true;
+
+    const fetchAvailableDates = async () => {
+      try {
+        const response = await getAvailableDates();
+        const fetchedDates: string[] = response.data.available_dates || [];
+        setAvailableDatesSet(new Set(fetchedDates));
+      } catch (err) {
+        setError("조회 가능한 날짜 목록을 불러오는 데 실패했습니다.");
       }
-    });
-  }, [dateParam, navigate]);
+    };
+    fetchAvailableDates();
+  }, []); // Run only once
 
   useEffect(() => {
-    if (dateParam && isValid(parseISO(dateParam))) {
-      setDate(parseISO(dateParam));
-    } else if (dateParam) {
-        navigate('/tags/rankings', {replace: true});
+    if (availableDatesSet.size === 0) return;
+
+    if (dateParam && isValid(parseISO(dateParam)) && availableDatesSet.has(dateParam)) {
+      const fetchRankings = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          setDate(parseISO(dateParam));
+          const response = await getTagRankingsByDate(dateParam);
+          setTags(response.data || []);
+        } catch (_err) {
+          setError('태그 랭킹을 불러오는 데 실패했습니다.');
+          setTags([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchRankings();
+    } else {
+      const latestDate = Array.from(availableDatesSet)[0];
+      if (latestDate) navigate(`/tags/rankings/${latestDate}`, { replace: true });
     }
-  }, [dateParam, navigate]);
-
-  useEffect(() => {
-    if (!date) return;
-    setLoading(true);
-    setError(null);
-    getTagRankingsByDate(format(date, 'yyyy-MM-dd')).then(response => {
-      setTags(response.data || []);
-    }).catch(_err => {
-      setError('태그 랭킹을 불러오는 데 실패했습니다.');
-      setTags([]);
-    }).finally(() => setLoading(false));
-  }, [date]);
+  }, [dateParam, navigate, availableDatesSet]); // Keep availableDatesSet here
 
   const processedTags = useMemo(() => {
     let sortableItems = tags.map(tag => ({

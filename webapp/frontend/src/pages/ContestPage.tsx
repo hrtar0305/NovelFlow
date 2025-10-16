@@ -2,34 +2,36 @@ import React, { useState, useEffect, useMemo, useCallback, useTransition, useRef
 import { useParams, Link, useNavigate, NavLink } from 'react-router-dom';
 import { Table, Spinner, Alert, Container, Card, Row, Col, Button, Collapse, Dropdown, ButtonGroup, InputGroup, Form, OverlayTrigger, Tooltip, Nav } from 'react-bootstrap';
 import { Funnel, ChevronUp, ChevronDown, InfoCircle, ArrowUpShort, ArrowDownShort, ExclamationCircleFill } from 'react-bootstrap-icons';
-import { getContestDataByDate, getContestLatestDate, getContestAvailableDates } from '../services/api';
+import { getContestDataByDate, getContestAvailableDates } from '../services/api';
 import ContestNovelFilterControls from '../components/ContestNovelFilterControls';
 import CalendarPicker from '../components/CalendarPicker';
 import { format, parseISO, isValid } from 'date-fns';
 import TagFilter from '../components/TagFilter';
 
 // --- HELPER COMPONENTS ---
-const ViewChangeIndicator: React.FC<{ value: number | 'New' | undefined, isNew: boolean }> = ({ value, isNew }) => {
+const RankChangeIndicator: React.FC<{ value: number | 'New' | undefined, isNew: boolean }> = ({ value, isNew }) => {
     const containerClasses = "d-inline-flex align-items-center justify-content-center rank-change-badge px-2";
-    const commonStyle = { width: '52px', height: '25px', borderRadius: '0.375rem' };
+    const commonStyle = { width: '42px', height: '25px', borderRadius: '0.375rem' };
 
     return (
         <div style={{ margin: '0 auto' }}>
             {(() => {
                 if (isNew) return <span className={`${containerClasses} rank-up`} style={commonStyle}>New</span>;
-                if (typeof value !== 'number') return <span className={`${containerClasses} rank-same`} style={commonStyle}>-</span>;
-
-                if (value > 0) {
+                if (value === undefined || value === 0 || typeof value !== 'number') {
+                    return <span className={`${containerClasses} rank-same`} style={commonStyle}>-</span>;
+                }
+                // 백엔드에서 (이전 순위 - 현재 순위)로 계산하므로, 양수 값이 순위 상승입니다.
+                if (value > 0) { // Rank Up
                     return <span className={`${containerClasses} rank-up`} style={commonStyle}>
                         <ArrowUpShort size={12} viewBox="3 3 10 10" className="flex-shrink-0" />
                         <span style={{ lineHeight: 1 }}>{value.toLocaleString()}</span>
                     </span>;
-                } else if (value < 0) {
-                    return <span className={`${containerClasses} rank-down`} style={commonStyle}>
+                }
+                // 음수 값은 순위 하락입니다.
+                return <span className={`${containerClasses} rank-down`} style={commonStyle}>
                         <ArrowDownShort size={12} viewBox="3 3 10 10" className="flex-shrink-0" />
                         <span style={{ lineHeight: 1 }}>{Math.abs(value).toLocaleString()}</span>
                     </span>;
-                }
                 return <span className={`${containerClasses} rank-same`} style={commonStyle}>-</span>;
             })()}
         </div>
@@ -51,8 +53,8 @@ interface ContestNovel {
   Date: string;
   Rank: number;
   view_change: number;
-  rank_change: number;
   like_to_view_ratio: number;
+  rank_change?: number | 'New';
   is_new: boolean;
 }
 
@@ -128,7 +130,6 @@ const ContestPage = () => {
   const navigate = useNavigate();
 
   const [novels, setNovels] = useState<ContestNovel[]>([]);
-  const [novelsWithViewChange, setNovelsWithViewChange] = useState<ContestNovel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: keyof ContestNovel; direction: 'ascending' | 'descending' } | null>({ key: 'Rank', direction: 'ascending' });
@@ -152,87 +153,66 @@ const ContestPage = () => {
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [shouldRenderFilters, setShouldRenderFilters] = useState(false);
 
+  const fetchTracker = useRef({ dates: false, rankings: '' });
+
   useEffect(() => {
+    // 1. Fetch available dates only when the year changes.
     const yearNum = parseInt(year || '0', 10);
     if (!yearNum) return;
 
-    const fetchInitialDate = async () => {
+    if (fetchTracker.current.dates) return;
+    fetchTracker.current.dates = true;
+
+    const fetchAvailableDates = async () => {
       try {
         const datesResponse = await getContestAvailableDates(yearNum);
         const fetchedDates = new Set<string>(datesResponse.data.available_dates || []);
         setAvailableDates(fetchedDates);
-
-        if (dateParam && isValid(parseISO(dateParam)) && fetchedDates.has(dateParam)) {
-          setCurrentDate(parseISO(dateParam));
-        } else {
-          const latestDateResponse = await getContestLatestDate(yearNum);
-          const latestDateStr = latestDateResponse.data.latest_date;
-          if (latestDateStr) {
-            navigate(`/contests/${year}/${latestDateStr}`, { replace: true });
-          } else {
-            throw new Error("조회 가능한 공모전 데이터가 없습니다.");
-          }
-        }
       } catch (err) {
-        setError("공모전 데이터를 불러오는 데 실패했습니다.");
-        setLoading(false);
+        setError("조회 가능한 공모전 날짜 목록을 불러오는 데 실패했습니다.");
       }
     };
-    fetchInitialDate();
-  }, [year, dateParam, navigate]);
+    fetchAvailableDates();
+  }, [year]);
+
+  useEffect(() => {
+    // 2. Set current date or redirect based on available dates and dateParam.
+    if (availableDates.size === 0) return; // Wait until available dates are fetched.
+
+    if (dateParam && isValid(parseISO(dateParam)) && availableDates.has(dateParam)) {
+      setCurrentDate(parseISO(dateParam));
+    } else {
+      const latestDate = Array.from(availableDates)[0]; // Already sorted descending
+      if (latestDate) navigate(`/contests/${year}/${latestDate}`, { replace: true });
+      else setError("조회 가능한 공모전 데이터가 없습니다.");
+    }
+  }, [year, dateParam, navigate, availableDates]); // availableDates dependency is necessary here
 
   useEffect(() => {
     if (!currentDate || !year) return;
+
+    const currentDateStr = format(currentDate, 'yyyy-MM-dd');
+    // Prevent re-fetching for the same date
+    if (fetchTracker.current.rankings === currentDateStr) return;
+    fetchTracker.current.rankings = currentDateStr;
 
     const fetchContestDataForDate = async () => {
       setLoading(true);
       setError(null);
       try {
-        const currentDateStr = format(currentDate, 'yyyy-MM-dd');
-        const currentDataPromise = getContestDataByDate(parseInt(year, 10), currentDateStr);
-
-        const availableDatesArray = Array.from(availableDates).sort();
-        const currentIndex = availableDatesArray.indexOf(currentDateStr);
-        let previousDataPromise = Promise.resolve({ data: [] });
-        if (currentIndex > 0) {
-          const previousDateStr = availableDatesArray[currentIndex - 1];
-          previousDataPromise = getContestDataByDate(parseInt(year, 10), previousDateStr);
-        }
-
-        const [currentResponse, previousResponse] = await Promise.all([currentDataPromise, previousDataPromise]);
+        const response = await getContestDataByDate(parseInt(year, 10), currentDateStr);
         
-        const currentData: ContestNovel[] = Array.isArray(currentResponse.data) ? currentResponse.data : [];
-        const previousData: ContestNovel[] = Array.isArray(previousResponse.data) ? previousResponse.data : [];
-
-        setNovels(currentData);
-
-        const previousDataMap = new Map<string, ContestNovel>(previousData.map(n => [n.ID, n]));
-        const processedData = currentData.map((novel: ContestNovel) => {
-          const previousNovelData = previousDataMap.get(novel.ID);
-          
-          let view_change = 0;
-          let rank_change = 0;
-          let is_new = true;
-
-          if (previousNovelData) {
-            view_change = (novel.View ?? 0) - (previousNovelData.View ?? 0);
-            rank_change = (previousNovelData.Rank ?? Infinity) - (novel.Rank ?? Infinity);
-            is_new = false;
-          } else {
-            view_change = novel.View ?? 0;
-            is_new = true;
-          }
-
+        const dataWithRatios = response.data.map((novel: any) => {
           const like_to_view_ratio = (novel.View && novel.View > 0) ? (novel.Like ?? 0) / novel.View : 0;
-
-          return { ...novel, view_change, rank_change, is_new, like_to_view_ratio };
+          const is_new = novel.rank_change === 'New';
+          return { ...novel, like_to_view_ratio, is_new };
         });
-        setNovelsWithViewChange(processedData);
+
+        setNovels(dataWithRatios);
 
       } catch (err: any) {
         setError(err.response?.data?.detail || '공모전 데이터를 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
         setNovels([]);
-        setNovelsWithViewChange([]);
       } finally {
         setLoading(false);
       }
@@ -251,7 +231,7 @@ const ContestPage = () => {
   }, [novels]);
 
   const processedNovels = useMemo(() => {
-    let filteredItems = [...novelsWithViewChange];
+    let filteredItems = [...novels];
     setFilterError(null);
 
     // 1. Tag Filtering
@@ -324,7 +304,7 @@ const ContestPage = () => {
     }
 
     return filteredItems;
-  }, [novelsWithViewChange, sortConfig, isAdvancedMode, selectedTags, filterMode, activeAdvancedRule, searchTerm, activeMinEps, activeMaxEps]);
+  }, [novels, sortConfig, isAdvancedMode, selectedTags, filterMode, activeAdvancedRule, searchTerm, activeMinEps, activeMaxEps]);
 
   const unselectedTags = useMemo(() => 
     allAvailableTags.filter(tag => !selectedTags.includes(tag)),
@@ -418,7 +398,6 @@ const ContestPage = () => {
 
   const handleDateChange = (newDate: Date | null) => {
     if (newDate && year) {
-      setLoading(true);
       navigate(`/contests/${year}/${format(newDate, 'yyyy-MM-dd')}`);
     }
   };
@@ -700,7 +679,7 @@ const ContestPage = () => {
                       processedNovels.map((novel) => (
                         <tr key={novel.ID} className={novel.View === -1 ? 'placeholder-row' : ''}>
                           <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Rank}</td>
-                          <td className="text-center" style={{ fontSize: '0.9rem' }}><ViewChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></td>
+                          <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></td>
                           <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>
                             {novel.View === -1 ? `삭제된 소설 (${novel.ID})` : <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link>}
                           </td>
@@ -763,7 +742,7 @@ const ContestPage = () => {
                             <span>{novel.View === -1 ? '-' : `${novel.Eps}화`}</span>
                           </div>
                         </div>
-                        <div className="flex-shrink-0 text-end"><ViewChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></div>
+                        <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></div>
                       </div>
                       {novel.Tags && novel.Tags.length > 0 && (
                         <div className="pt-2 border-top">

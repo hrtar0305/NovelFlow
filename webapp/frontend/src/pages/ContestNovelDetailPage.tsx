@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useParams } from 'react-router-dom';
 import { Container, Spinner, Alert, Modal } from 'react-bootstrap';
 import { useContestNovelData } from '../hooks/useContestNovelData';
+import { parseISO } from 'date-fns';
 import ContestNovelDetailsCard from './ContestNovelDetailsCard';
 import DateRangePicker from '../components/novel/DateRangePicker';
 
@@ -27,7 +28,6 @@ const ContestNovelDetailPage = () => {
     error,
     minDate,
     maxDate,
-    availableDates,
     novelAvailableDatesSet,
     fetchTrendData,
   } = useContestNovelData(year, novelId);
@@ -81,7 +81,14 @@ const ContestNovelDetailPage = () => {
           
           <div className="mt-1 date-range-picker-container">
             <h4 className="mb-2 fs-section-title-mobile">지표별 상세 추이</h4>
-            <DateRangePicker startDate={startDate} endDate={endDate} minDate={minDate} maxDate={maxDate} availableDates={availableDates} novelAvailableDatesSet={novelAvailableDatesSet} onStartDateChange={handleStartDateChange} onEndDateChange={handleEndDateChange} isNovelDetailPage={true} />
+            <DateRangePicker 
+              startDate={startDate} 
+              endDate={endDate} 
+              minDate={minDate} maxDate={maxDate} 
+              availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))} 
+              novelAvailableDatesSet={novelAvailableDatesSet} 
+              onStartDateChange={handleStartDateChange} onEndDateChange={handleEndDateChange} isNovelDetailPage={true}
+              showNovelDataIndicator={false} />
           </div>
 
           <div className="mt-2 position-relative">

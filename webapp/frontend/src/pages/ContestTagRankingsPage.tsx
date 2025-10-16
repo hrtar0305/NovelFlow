@@ -90,6 +90,7 @@ const ContestTagRankingsPage = () => {
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [isPending, startTransition] = useTransition();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const hasFetchedDates = useRef(false);
   const [chartHeight, setChartHeight] = useState(400);
 
   const { year, date: dateParam } = useParams<{ year: string; date?: string }>();
@@ -163,7 +164,6 @@ const ContestTagRankingsPage = () => {
 
   const handleDateChange = (newDate: Date | null) => {
     if (newDate && year && (!date || format(newDate, 'yyyy-MM-dd') !== format(date, 'yyyy-MM-dd'))) {
-      setLoading(true);
       navigate(`/contests/${year}/tags/rankings/${format(newDate, 'yyyy-MM-dd')}`);
     }
   };
@@ -172,37 +172,47 @@ const ContestTagRankingsPage = () => {
     const yearNum = parseInt(year || '0', 10);
     if (!yearNum) return;
 
-    getContestAvailableDates(yearNum).then(response => {
-      const fetchedDates: string[] = response.data.available_dates || [];
-      setAvailableDatesSet(new Set(fetchedDates));
-      if (!dateParam && fetchedDates.length > 0) {
-        const latestDate = fetchedDates[0]; // Already sorted descending
-        if (latestDate) navigate(`/contests/${year}/tags/rankings/${latestDate}`, { replace: true });
+    if (hasFetchedDates.current) return;
+    hasFetchedDates.current = true;
+
+    const fetchAvailableDates = async () => {
+      try {
+        const response = await getContestAvailableDates(yearNum);
+        const fetchedDates: string[] = response.data.available_dates || [];
+        setAvailableDatesSet(new Set(fetchedDates));
+      } catch (err) {
+        setError("조회 가능한 날짜 목록을 불러오는 데 실패했습니다.");
       }
-    });
-  }, [year, dateParam, navigate]);
+    };
+    fetchAvailableDates();
+  }, [year]); // Refetch if year changes
 
   useEffect(() => {
-    if (dateParam && isValid(parseISO(dateParam))) {
-      setDate(parseISO(dateParam));
-    } else if (dateParam) {
-        navigate(`/contests/${year}/tags/rankings`, {replace: true});
+    if (availableDatesSet.size === 0 || !year) return;
+
+    if (dateParam && isValid(parseISO(dateParam)) && availableDatesSet.has(dateParam)) {
+      const fetchRankings = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          setDate(parseISO(dateParam));
+          const response = await getContestTagRankingsByDate(parseInt(year, 10), dateParam);
+          setTags(response.data || []);
+        } catch (_err) {
+          setError('태그 랭킹을 불러오는 데 실패했습니다.');
+          setTags([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchRankings();
+    } else {
+      const latestDate = Array.from(availableDatesSet)[0];
+      if (latestDate) {
+        navigate(`/contests/${year}/tags/rankings/${latestDate}`, { replace: true });
+      }
     }
-  }, [dateParam, navigate, year]);
-
-  useEffect(() => {
-    const yearNum = parseInt(year || '0', 10);
-    if (!date || !yearNum) return;
-
-    setLoading(true);
-    setError(null);
-    getContestTagRankingsByDate(yearNum, format(date, 'yyyy-MM-dd')).then(response => {
-      setTags(response.data || []);
-    }).catch(_err => {
-      setError('태그 랭킹을 불러오는 데 실패했습니다.');
-      setTags([]);
-    }).finally(() => setLoading(false));
-  }, [date, year]);
+  }, [year, dateParam, navigate, availableDatesSet]); // Keep availableDatesSet here
 
   const processedTags = useMemo(() => {
     let sortableItems = tags.map(tag => ({

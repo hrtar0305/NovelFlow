@@ -21,16 +21,11 @@ export const getTagTrends = (startDate: string, endDate: string) => {
 
 
 export const analyzeTagTrends = (startDate: string, endDate: string) => {
-  return apiClient.get(`/api/trends/tags/analysis`, {
-    params: {
-      start_date: startDate,
-      end_date: endDate,
-    },
-  });
+  return apiClient.get(`/api/trends/tags/analysis/${startDate}/${endDate}`);
 };
 
 export const getNovelTrend = (novelId: string, startDate: string, endDate: string) => {
-  return apiClient.get(`/api/trends/novels/${novelId}`, { params: { start_date: startDate, end_date: endDate } });
+  return apiClient.get(`/api/trends/novels/${novelId}/${startDate}/${endDate}`);
 };
 
 export const getNovelAvailableDates = (novelId: string) => {
@@ -71,13 +66,12 @@ export const getLatestContestNovelDetails = (year: number, novelId: string) => {
   return axios.get(`${API_BASE_URL}/api/contests/${year}/novels/${novelId}/latest`);
 };
 
+export const getContestNovelAvailableDates = (year: number, novelId: string) => {
+  return axios.get(`${API_BASE_URL}/api/trends/contests/${year}/novels/${novelId}/available-dates`);
+};
+
 export const getContestNovelTrend = (year: number, novelId: string, startDate: string, endDate: string) => {
-  return axios.get(`${API_BASE_URL}/api/trends/contests/${year}/novels/${novelId}`, {
-    params: {
-      start_date: startDate,
-      end_date: endDate,
-    },
-  });
+  return axios.get(`${API_BASE_URL}/api/trends/contests/${year}/novels/${novelId}/${startDate}/${endDate}`);
 };
 
 export const getContestTagRankingsByDate = (year: number, date: string) => {

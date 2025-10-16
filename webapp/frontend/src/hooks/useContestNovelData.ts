@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getLatestContestNovelDetails, getContestNovelTrend, getContestAvailableDates } from '../services/api';
+import { getLatestContestNovelDetails, getContestNovelTrend, getContestAvailableDates, getContestNovelAvailableDates } from '../services/api';
 import { format, subDays, parseISO, startOfDay } from 'date-fns';
 
 interface ContestTrendData {
@@ -65,9 +65,6 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
         Score: null,     // Score 속성 추가
       }));
       setTrendData(mappedData);
-      
-      const novelDates = new Set<string>(response.data.filter((d: any) => d.View !== null).map((d: any) => d.Date));
-      setNovelAvailableDatesSet(novelDates);
     } catch {
       setError('트렌드 데이터를 불러오는 데 실패했습니다.');
       setTrendData([]);
@@ -82,28 +79,41 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
     const yearNum = parseInt(year, 10);
     setLoading(true);
     Promise.all([
-        getContestAvailableDates(yearNum),
-        getLatestContestNovelDetails(yearNum, novelId)
-    ]).then(([datesRes, detailsRes]) => {
-        const allDates = (datesRes.data.available_dates || []).map((d: string) => parseISO(d));
-        setAvailableDates(allDates);
+        getContestAvailableDates(yearNum), // 전체 공모전 기간 날짜를 가져옵니다.
+        getLatestContestNovelDetails(yearNum, novelId),
+        getContestNovelAvailableDates(yearNum, novelId) // 소설의 데이터 보유 날짜 전체를 가져옵니다.
+    ]).then(([contestDatesRes, detailsRes, novelDatesRes]) => {
+        const contestDates = (contestDatesRes.data.available_dates || []).sort((a: string, b: string) => a.localeCompare(b));
+        setAvailableDates(contestDates.map((d: string) => parseISO(d)));
 
-        // details 객체의 Rank를 Ranking으로 매핑하여 데이터 구조의 일관성을 유지합니다.
+        const novelDates = new Set<string>(novelDatesRes.data.available_dates || []);
+        setNovelAvailableDatesSet(novelDates);
+
         const detailsData = detailsRes.data;
         if (detailsData) {
             detailsData.Ranking = detailsData.Rank;
         }
         setDetails(detailsData);
 
-        if (allDates.length > 0) {
-            const lastDate = allDates[0];
-            const firstAvailableDate = allDates[allDates.length - 1];
-            setMinDate(firstAvailableDate);
-            setMaxDate(lastDate);
+        if (contestDates.length > 0) {
+            const contestFirstDate = parseISO(contestDates[0]);
+            const contestLastDate = parseISO(contestDates[contestDates.length - 1]);
+            setMinDate(contestFirstDate);
+            setMaxDate(contestLastDate);
 
-            const sevenDaysAgo = subDays(lastDate, 6);
-            const initialStartDate = startOfDay(sevenDaysAgo < firstAvailableDate ? firstAvailableDate : sevenDaysAgo);
-            const initialEndDate = startOfDay(lastDate);
+            // 초기 날짜 범위는 소설의 마지막 데이터 날짜를 기준으로 설정합니다.
+            // `detailsData.Date`가 가장 최근 날짜를 담고 있습니다.
+            const novelLastDateStr = detailsData?.Date;
+            if (!novelLastDateStr) {
+                setError('소설의 최근 데이터 날짜를 찾을 수 없습니다.');
+                setLoading(false);
+                return;
+            }
+            const novelLastDate = parseISO(novelLastDateStr);
+            const sevenDaysAgo = subDays(novelLastDate, 6);
+            const initialStartDate = startOfDay(sevenDaysAgo < contestFirstDate ? contestFirstDate : sevenDaysAgo);
+            const initialEndDate = startOfDay(novelLastDate);
+
             setStartDate(initialStartDate);
             setEndDate(initialEndDate);
             fetchTrendData(initialStartDate, initialEndDate);

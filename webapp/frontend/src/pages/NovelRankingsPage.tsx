@@ -147,6 +147,7 @@ const NovelRankingsPage = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [shouldRenderFilters, setShouldRenderFilters] = useState(false);
+  const hasFetchedDates = useRef(false);
 
   // --- DATA DERIVATION & FILTERING LOGIC ---
   useEffect(() => {
@@ -330,78 +331,60 @@ const NovelRankingsPage = () => {
 
   // --- DATE HANDLING ---
   useEffect(() => {
-    const fetchAndSetDate = async () => {
-      try {
-        const datesResponse = await getAvailableDates();
+    // 1. Fetch available dates only once on mount
+    if (hasFetchedDates.current) return;
+    hasFetchedDates.current = true;
 
-        const fetchedDates: string[] = datesResponse.data.available_dates || [];
-
-        if (fetchedDates.length > 0) {
-            setAvailableDatesSet(new Set(fetchedDates));
-            if (dateParam) {
-                const parsedDate = parseISO(dateParam);
-                if (isValid(parsedDate) && fetchedDates.includes(dateParam)) {
-                    setDate(parsedDate);
-                } else {
-                    const latestDate = fetchedDates[0];
-                    if (latestDate) navigate(`/novels/rankings/${latestDate}`, { replace: true });
-                }
-            } else {
-                const latestDate = fetchedDates[0];
-                if (latestDate) navigate(`/novels/rankings/${latestDate}`, { replace: true });
-            }
-        } else {
-            setError("랭킹 데이터가 아직 없습니다. 데이터 수집 후 다시 시도해주세요.");
-            setLoading(false);
-        }
-      } catch (err) {
-        setError('조회 가능한 날짜를 불러오는 데 실패했습니다.');
-        setLoading(false);
-      }
-    };
-    fetchAndSetDate();
-  }, [dateParam, navigate]);
-
-  useEffect(() => {
-    if (!date) {
-        return;
-    }
-
-    const fetchRankings = async () => {
-      setLoading(true);
-      setOptimisticDate(null);
-      setError(null);
-      setSelectedTags([]);
-      setActiveAdvancedRule('');
-      setAdvancedRule('');
-      setSearchTerm('');
-      setActiveMinEps(null);
-      setActiveMaxEps(null);
-      try {
-        const formattedDate = format(date, 'yyyy-MM-dd');
-        const response = await getNovelRankingsByDate(formattedDate);
-        setRankings(response.data.message ? [] : response.data);
-      } catch (err) {
-        setError('랭킹을 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-        setRankings([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRankings();
-  }, [date]);
-
-  const handleDateChange = async (newDate: Date | null) => {
-    if (newDate && (!date || format(newDate, 'yyyy-MM-dd') !== format(date, 'yyyy-MM-dd'))) {
-      setLoading(true);
+    const fetchAvailableDates = async () => {
       try {
         const datesResponse = await getAvailableDates();
         const fetchedDates: string[] = datesResponse.data.available_dates || [];
         setAvailableDatesSet(new Set(fetchedDates));
       } catch (err) {
-        // In case of error, we just proceed with navigation
+        // Don't set a blocking error here, let the next effect handle it.
+        console.error('Failed to fetch available dates:', err);
+        setLoading(false);
       }
+    };
+    fetchAvailableDates();
+  }, []);
+
+  useEffect(() => {
+    // 2. Handle dateParam changes: redirect or fetch rankings
+    if (availableDatesSet.size === 0) return; // Wait for available dates to be fetched
+
+    if (dateParam && isValid(parseISO(dateParam)) && availableDatesSet.has(dateParam)) {
+      const fetchRankings = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const parsedDate = parseISO(dateParam);
+          setDate(parsedDate);
+          const response = await getNovelRankingsByDate(dateParam);
+          setRankings(response.data.message ? [] : response.data);
+        } catch (err) {
+          setError('랭킹을 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+          setRankings([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchRankings();
+    } else {
+      // If dateParam is invalid or missing, redirect to the latest date
+      const latestDate = Array.from(availableDatesSet)[0];
+      if (latestDate) {
+        navigate(`/novels/rankings/${latestDate}`, { replace: true });
+      } else {
+        setError("랭킹 데이터가 아직 없습니다. 데이터 수집 후 다시 시도해주세요.");
+        setRankings([]);
+        setLoading(false);
+      }
+    }
+  }, [dateParam, navigate, availableDatesSet]); // Keep availableDatesSet here to react to its update
+
+  const handleDateChange = async (newDate: Date | null) => {
+    if (newDate && (!date || format(newDate, 'yyyy-MM-dd') !== format(date, 'yyyy-MM-dd'))) {
       setOptimisticDate(newDate);
       navigate(`/novels/rankings/${format(newDate, 'yyyy-MM-dd')}`);
     }

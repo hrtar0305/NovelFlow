@@ -33,7 +33,6 @@ const NovelDetailPage = () => {
     error,
     minDate,
     maxDate,
-    availableDates,
     novelAvailableDatesSet,
     fetchNovelData,
   } = useNovelData(novelId);
@@ -105,12 +104,11 @@ const NovelDetailPage = () => {
               endDate={endDate}
               minDate={minDate}
               maxDate={maxDate}
-              availableDates={availableDates}
+              availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))}
               novelAvailableDatesSet={novelAvailableDatesSet}
               onStartDateChange={handleStartDateChange}
-              onEndDateChange={handleEndDateChange}
-              isNovelDetailPage={true}
-            />
+              onEndDateChange={handleEndDateChange} 
+              isNovelDetailPage={true} showNovelDataIndicator={false} />
           </div>
 
           <div className="mt-2 position-relative">

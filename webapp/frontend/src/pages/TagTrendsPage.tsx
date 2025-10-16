@@ -45,7 +45,7 @@ const TagCategoryCard: React.FC<{
   const [topN, setTopN] = useState(5);
   const topNOptions = [5, 10, 20];
 
-  const displayedTags = tags.slice(0, topN);
+  const displayedTags = (tags || []).slice(0, topN);
 
   return (
     <Card className="h-100 shadow-sm tag-category-card">
@@ -91,39 +91,6 @@ const TagTrendsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchAvailableDates = async () => {
-      try {
-        const response = await getAvailableDates();
-        const dates: string[] = response.data.available_dates || [];
-        setAvailableDates(new Set(dates));
-
-        if (dates.length > 0) {
-          const lastDate = new Date(dates[0]); // Assuming dates are sorted descending
-          const sevenDaysAgo = subDays(lastDate, 6);
-          const firstAvailableDate = new Date(dates[dates.length - 1]);
-
-          setEndDate(lastDate);
-          setStartDate(sevenDaysAgo < firstAvailableDate ? firstAvailableDate : sevenDaysAgo);
-        }
-      } catch (err) {
-        setError('데이터 제공 날짜를 불러오는 데 실패했습니다.');
-      }
-    };
-    fetchAvailableDates();
-  }, []);
-
-  useEffect(() => {
-    if (startDate && endDate) {
-      handleAnalysis();
-    }
-  }, [startDate, endDate]);
-
-  const handleDateRangeChange = (start: Date | null, end: Date | null) => {
-    setStartDate(start);
-    setEndDate(end);
-  };
-
   const handleAnalysis = async () => {
     if (!startDate || !endDate) {
       setError('시작일과 종료일을 모두 선택해주세요.');
@@ -152,6 +119,38 @@ const TagTrendsPage: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const response = await getAvailableDates();
+        const dates: string[] = response.data.available_dates || [];
+        setAvailableDates(new Set(dates));
+
+        if (dates.length > 0) {
+          const lastDate = new Date(dates[0]);
+          const sevenDaysAgo = subDays(lastDate, 6);
+          const firstAvailableDate = new Date(dates[dates.length - 1]);
+
+          const initialEndDate = lastDate;
+          const initialStartDate = sevenDaysAgo < firstAvailableDate ? firstAvailableDate : sevenDaysAgo;
+
+          setStartDate(initialStartDate);
+          setEndDate(initialEndDate);
+        }
+      } catch (err) {
+        setError('데이터 제공 날짜를 불러오는 데 실패했습니다.');
+      }
+    };
+    fetchInitialData();
+  }, []);
+
+  useEffect(() => {
+    if (startDate && endDate) {
+      handleAnalysis();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
 
   const renderTooltip = (props: any, data: TagAnalysisResult, category: keyof AnalysisReport) => {
     
@@ -351,8 +350,13 @@ const TagTrendsPage: React.FC = () => {
         <DateRangePicker
             startDate={startDate}
             endDate={endDate}
-            onStartDateChange={(date) => handleDateRangeChange(date, null)}
-            onEndDateChange={(date) => handleDateRangeChange(startDate, date)}
+            onStartDateChange={(date) => {
+              setStartDate(date);
+              setEndDate(null); // 시작 날짜 변경 시 종료 날짜 초기화
+            }}
+            onEndDateChange={(date) => {
+              setEndDate(date);
+            }}
             availableDates={Array.from(availableDates).map(d => new Date(d))}
             novelAvailableDatesSet={new Set()} // TagTrendsPage에서는 필요 없으므로 빈 Set 전달
             isNovelDetailPage={false}
