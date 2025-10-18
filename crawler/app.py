@@ -6,7 +6,7 @@ import requests
 import time
 from datetime import datetime
 from pytz import timezone
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, expect
 from bs4 import BeautifulSoup
 
 # --- Basic Setup ---
@@ -37,7 +37,9 @@ class Config:
 
     # CSS Selectors
     class Selectors:
-        BANNER_CLOSE = "div.detail-modal-background.show .layer-close-x3"
+        BANNER_CLOSE_SELECTORS = [
+            "div.event-plus-close"
+        ]
         TOGGLE_MENU = "#toggle-menu"
         ADULT_SWITCH = "#pc-sidemenu img.switch-adult"
         LOGIN_EMAIL = "#login_box input[name='email']"
@@ -93,14 +95,27 @@ def _perform_login(page, username, password, execution_id):
 
 def _ensure_adult_mode(page, execution_id):
     """Checks and enables adult mode if it's off."""
-    alt_text = page.locator(Config.Selectors.ADULT_SWITCH).get_attribute('alt')
-    if alt_text == '일반':
+    # Locate the switch once to check its initial state.
+    adult_switch_locator = page.locator(Config.Selectors.ADULT_SWITCH)
+    
+    # --- Defensive Banner Closing ---
+    # Try to close any known banners that might be overlaying the UI.
+    for i, selector in enumerate(Config.Selectors.BANNER_CLOSE_SELECTORS):
+        try:
+            banner_close_button = page.locator(selector)
+            if banner_close_button.is_visible(timeout=2000):
+                _log(logging.INFO, execution_id, f"Overlay banner #{i+1} detected. Attempting to close.")
+                banner_close_button.click(timeout=5000)
+        except PlaywrightTimeoutError:
+            pass # Banner not found, which is fine.
+
+    if adult_switch_locator.get_attribute('alt') == '일반':
+        _log(logging.INFO, execution_id, "Adult mode is OFF. Enabling via UI click...")
         page.locator(Config.Selectors.TOGGLE_MENU).click()
-        switch_locator = page.locator(Config.Selectors.ADULT_SWITCH)
-        switch_locator.wait_for(state='visible')
-        switch_locator.click()
-        page.wait_for_load_state("domcontentloaded")
-        _log(logging.INFO, execution_id, "Adult mode enabled.")
+        adult_switch_locator.click()
+        _log(logging.INFO, execution_id, "Switch clicked. Waiting for UI to update...")
+        expect(page.locator(Config.Selectors.ADULT_SWITCH)).to_have_attribute('alt', '성인', timeout=20000)
+        _log(logging.INFO, execution_id, "Verification successful. Adult mode is now ON.")
     else:
         _log(logging.INFO, execution_id, "Adult mode is already ON.")
 
