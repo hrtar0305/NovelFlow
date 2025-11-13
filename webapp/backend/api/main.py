@@ -3,6 +3,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'package'))
 
+import logging
 import boto3
 import decimal
 import json
@@ -14,6 +15,10 @@ from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
+
+# 로거 설정
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # FastAPI 애플리케이션 인스턴스 생성
 app = FastAPI()
@@ -43,6 +48,16 @@ handler = Mangum(app)
 dynamodb = boto3.resource('dynamodb', region_name='ap-northeast-2')
 table = dynamodb.Table('NovelRanks')
 contest_table = dynamodb.Table('ContestStats2025')
+
+# 본선 진출작
+FINALIST_IDS_STR = os.environ.get('FINALIST_IDS_2025')
+
+if FINALIST_IDS_STR:
+    FINALIST_IDS_2025 = set(FINALIST_IDS_STR.split(','))
+    logger.info(f"Loaded {len(FINALIST_IDS_2025)} finalist IDs.")
+else:
+    FINALIST_IDS_2025 = set()
+    logger.warning("FINALIST_IDS_2025 environment variable not set or empty.")
 
 # DynamoDB의 Decimal 타입을 JSON으로 직렬화하기 위한 헬퍼 클래스
 class DecimalEncoder(json.JSONEncoder):
@@ -130,8 +145,8 @@ class ContestNovelData(BaseModel):
     Rank: Optional[int] = None  # Calculated rank based on view_change
     view_change: int = Field(0, description="일일 조회수 변동")
     rank_change: Optional[Any] = Field(None, description="랭킹 변동. 숫자 또는 'New'")
+    is_finalist: bool = Field(False, description="본선 진출작 여부")
     is_new: bool = Field(False, description="신규 진입 여부")
-
 
 @app.get("/")
 def read_root(response: Response):
@@ -439,7 +454,7 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
 
-    # Get available dates directly from DynamoDB to find the previous date efficiently
+    finalist_ids = FINALIST_IDS_2025
     available_dates_list = []
     try:
         dates_response = contest_table.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'})
@@ -503,8 +518,8 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
 
         for item in current_day_items:
             previous_item = previous_day_map.get(item['ID'])
+            item['is_finalist'] = item['ID'] in finalist_ids
             item['view_change'] = (item.get('View', 0) or 0) - (previous_item.get('View', 0) or 0) if previous_item else (item.get('View', 0) or 0)
-
             item['is_new'] = False # 기본값 설정
             if previous_item and previous_item.get('Rank') is not None:
                 # 이전 날짜에 순위 데이터가 있는 경우
