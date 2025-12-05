@@ -49,15 +49,22 @@ dynamodb = boto3.resource('dynamodb', region_name='ap-northeast-2')
 table = dynamodb.Table('NovelRanks')
 contest_table = dynamodb.Table('ContestStats2025')
 
-# 본선 진출작
-FINALIST_IDS_STR = os.environ.get('FINALIST_IDS_2025')
+# 2025 공모전 수상작 ID 로드
+def load_ids_from_env(var_name):
+    ids_str = os.environ.get(var_name)
+    if ids_str:
+        return set(ids_str.split(','))
+    return set()
 
-if FINALIST_IDS_STR:
-    FINALIST_IDS_2025 = set(FINALIST_IDS_STR.split(','))
-    logger.info(f"Loaded {len(FINALIST_IDS_2025)} finalist IDs.")
-else:
-    FINALIST_IDS_2025 = set()
-    logger.warning("FINALIST_IDS_2025 environment variable not set or empty.")
+# 우선순위 순서대로 상을 정의합니다.
+AWARD_WINNERS_2025 = {
+    "대상": load_ids_from_env('GRAND_PRIZE_IDS_2025'),
+    "최우수상": load_ids_from_env('TOP_EXCELLENCE_AWARD_IDS_2025'),
+    "탑툰상": load_ids_from_env('TOPTOON_AWARD_IDS_2025'),
+    "우수상": load_ids_from_env('WINNER_AWARD_IDS_2025'),
+    "특별상": load_ids_from_env('SPECIAL_AWARD_IDS_2025'),
+    "본선": load_ids_from_env('FINALIST_IDS_2025')
+}
 
 # DynamoDB의 Decimal 타입을 JSON으로 직렬화하기 위한 헬퍼 클래스
 class DecimalEncoder(json.JSONEncoder):
@@ -145,7 +152,7 @@ class ContestNovelData(BaseModel):
     Rank: Optional[int] = None  # Calculated rank based on view_change
     view_change: int = Field(0, description="일일 조회수 변동")
     rank_change: Optional[Any] = Field(None, description="랭킹 변동. 숫자 또는 'New'")
-    is_finalist: bool = Field(False, description="본선 진출작 여부")
+    award: Optional[str] = Field(None, description="수상 내역 (예: 대상, 최우수상, 본선 진출)")
     is_new: bool = Field(False, description="신규 진입 여부")
 
 @app.get("/")
@@ -454,7 +461,6 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
 
-    finalist_ids = FINALIST_IDS_2025
     available_dates_list = []
     try:
         dates_response = contest_table.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'})
@@ -518,7 +524,12 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
 
         for item in current_day_items:
             previous_item = previous_day_map.get(item['ID'])
-            item['is_finalist'] = item['ID'] in finalist_ids
+            item['award'] = None
+            # 상위 등급부터 순서대로 확인하여 가장 높은 상 하나만 할당
+            for award_name, ids_set in AWARD_WINNERS_2025.items():
+                if item['ID'] in ids_set:
+                    item['award'] = award_name
+                    break
             item['view_change'] = (item.get('View', 0) or 0) - (previous_item.get('View', 0) or 0) if previous_item else (item.get('View', 0) or 0)
             item['is_new'] = False # 기본값 설정
             if previous_item and previous_item.get('Rank') is not None:
@@ -557,6 +568,12 @@ def get_latest_contest_novel_details(year: int, novel_id: str, response: Respons
         items = db_response.get('Items', [])
         if items:
             latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
+            # 수상 내역 추가
+            latest_item['award'] = None
+            for award_name, ids_set in AWARD_WINNERS_2025.items():
+                if latest_item['ID'] in ids_set:
+                    latest_item['award'] = award_name
+                    break
             # 프론트엔드에서 필요한 필드 추가
             latest_item['Rank'] = latest_item.get('Rank', 0)
             latest_item['view_change'] = 0

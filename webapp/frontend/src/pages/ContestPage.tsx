@@ -38,6 +38,48 @@ const RankChangeIndicator: React.FC<{ value: number | 'New' | undefined, isNew: 
     );
 };
 
+const renderAwardBadge = (award: string | null | undefined) => {
+  if (!award) {
+    return null;
+  }
+
+  const style: React.CSSProperties = {
+    height: '25px',
+    borderRadius: '0.375rem',
+    paddingLeft: '0.3rem',
+    paddingRight: '0.3rem',
+    fontSize: '0.8rem', // 글자 크기 조정
+    color: 'white',
+    border: 'none', // 테두리 제거
+  };
+  let badgeText = award;
+
+  switch (award) {
+    case '대상':
+      style.backgroundColor = '#d4af37'; 
+      break;
+    case '최우수상':
+      style.backgroundColor = '#4682b4';
+      break;
+    case '탑툰상':
+      style.backgroundColor = '#c71585';
+      break;
+    case '우수상':
+      style.backgroundColor = '#20b2aa';
+      break;
+    case '특별상':
+      style.backgroundColor = '#5f9ea0'; 
+      break;
+    case '본선':
+      style.backgroundColor = '#778899';
+      break;
+    default:
+      return null;
+  }
+
+  // d-inline-flex와 align-items-center를 사용하여 높이가 고정된 배지 내부에서 텍스트를 세로 중앙 정렬합니다.
+  return <Badge bg="" style={style} className="fw-bold d-inline-flex align-items-center">{badgeText}</Badge>;
+};
 // --- TYPE DEFINITIONS ---
 interface ContestNovel {
   ID: string;
@@ -56,7 +98,7 @@ interface ContestNovel {
   like_to_view_ratio: number;
   rank_change?: number | 'New';
   is_new: boolean;
-  is_finalist: boolean;
+  award?: string | null;
 }
 
 // --- ADVANCED FILTER PARSER (from NovelRankingsPage) ---
@@ -144,7 +186,7 @@ const ContestPage = () => {
   const [activeMinEps, setActiveMinEps] = useState<number | null>(null);
   const [activeMaxEps, setActiveMaxEps] = useState<number | null>(null);
   const [allAvailableTags, setAllAvailableTags] = useState<string[]>([]);
-  const [showOnlyFinalists, setShowOnlyFinalists] = useState(false);
+  const [showOnlyWinners, setShowOnlyWinners] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<'include-or' | 'include-and' | 'exclude'>('include-and');
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
@@ -236,9 +278,9 @@ const ContestPage = () => {
     let filteredItems = [...novels];
     setFilterError(null);
 
-    // 0. Finalist Filtering
-    if (showOnlyFinalists) {
-      filteredItems = filteredItems.filter(novel => novel.is_finalist);
+    // 0. Award Winner Filtering
+    if (showOnlyWinners) {
+      filteredItems = filteredItems.filter(novel => !!novel.award);
     }
 
     // 1. Tag Filtering
@@ -311,7 +353,7 @@ const ContestPage = () => {
     }
 
     return filteredItems;
-  }, [novels, sortConfig, isAdvancedMode, selectedTags, filterMode, activeAdvancedRule, searchTerm, activeMinEps, activeMaxEps, showOnlyFinalists]);
+  }, [novels, sortConfig, isAdvancedMode, selectedTags, filterMode, activeAdvancedRule, searchTerm, activeMinEps, activeMaxEps, showOnlyWinners]);
 
   const unselectedTags = useMemo(() => 
     allAvailableTags.filter(tag => !selectedTags.includes(tag)),
@@ -532,10 +574,10 @@ const ContestPage = () => {
           <div className="flex-shrink-0">
             <Form.Check 
               type="switch"
-              id="finalist-switch"
-              label={<><span className="d-none d-md-inline">본선 진출작만 보기</span><span className="d-inline d-md-none">본선작</span></>}
-              checked={showOnlyFinalists}
-              onChange={(e) => startTransition(() => setShowOnlyFinalists(e.target.checked))}
+              id="winner-switch"
+              label={<><span className="d-none d-md-inline">수상작만 보기</span><span className="d-inline d-md-none">수상작</span></>}
+              checked={showOnlyWinners}
+              onChange={(e) => startTransition(() => setShowOnlyWinners(e.target.checked))}
               className="fs-sm-control"
             />
           </div>
@@ -670,11 +712,14 @@ const ContestPage = () => {
                       <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '55px' }}>
                         <div className="d-flex align-items-center justify-content-center"><span>변동</span></div>
                       </th>
+                      <th style={{ fontSize: '0.85rem', width: '70px', textAlign: 'center' }}>
+                        <span>수상</span>
+                      </th>
                       <th style={{ fontSize: '0.85rem', whiteSpace: 'normal', minWidth: '180px' }}>
                         <span>제목</span>
                       </th>
                       <th style={{ fontSize: '0.85rem', textAlign: 'left', whiteSpace: 'normal', minWidth: '90px' }}>
-                        <span>작가</span>
+                        <span>작가</span> 
                       </th>
                       <th onClick={() => requestSort('View')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '70px' }}>
                         <div className="d-flex align-items-center"><span>총 조회수</span></div>
@@ -700,16 +745,12 @@ const ContestPage = () => {
                         <tr key={novel.ID} className={`${novel.View === -1 ? 'placeholder-row' : ''}`}>
                           <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Rank}</td>
                           <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></td>
+                          <td className="text-center align-middle">
+                            {renderAwardBadge(novel.award)}
+                          </td>
                           <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }} className="align-middle">
                             {novel.View === -1 ? `삭제된 소설 (${novel.ID})` : (
-                              <div className="d-flex align-items-center">
-                                {novel.is_finalist && (
-                                  <Badge bg="" className="me-2 fw-bold" style={{ backgroundColor: '#cff4fc', color: '#055160', fontSize: '0.8rem', padding: '0.3em 0.4em' }}>
-                                    본선
-                                  </Badge>
-                                )}
-                                <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link>
-                              </div>
+                              <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link>
                             )}
                           </td>
                           <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>
@@ -737,7 +778,7 @@ const ContestPage = () => {
                         </tr>
                       ))
                     ) : (
-                      <tr><td colSpan={10} className="text-center py-4">현재 필터와 일치하는 결과가 없습니다.</td></tr>
+                      <tr><td colSpan={11} className="text-center py-4">현재 필터와 일치하는 결과가 없습니다.</td></tr>
                     )}
                   </tbody>
                 </Table>
@@ -753,21 +794,19 @@ const ContestPage = () => {
                     <Card.Body className="p-2">
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <div className="flex-grow-1 me-2">
-                          <div className="d-flex align-items-baseline gap-2">
-                            <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Rank}위</span>
-                            <h5 className="mb-0 h6 d-flex align-items-center" style={{ wordBreak: 'break-all' }}>
-                              {novel.is_finalist && (
-                                <Badge bg="" className="me-1 fw-bold" style={{ backgroundColor: '#cff4fc', color: '#055160', fontSize: '0.85rem', padding: '0.15em 0.5em' }}>
-                                  본선
-                                </Badge>
-                              )}
+                          <div className="d-flex align-items-center gap-2">
+                            <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Rank}위</span> 
+                            <div className="d-flex align-items-center">
+                              {renderAwardBadge(novel.award)} 
+                            </div>
+                          </div>
+                          <h5 className="mb-0 h6 mt-1" style={{ wordBreak: 'break-all' }}>
                               {novel.View === -1 ? (
                                 <span className="text-muted">{`삭제된 소설 (${novel.ID})`}</span>
                               ) : (
                                 <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title || '(제목 없음)'}</Link>
                               )}
-                            </h5>
-                          </div>
+                          </h5>
                           <div className="text-muted small mt-1">
                             {novel.View !== -1 && (
                               <span>{novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)')}</span>

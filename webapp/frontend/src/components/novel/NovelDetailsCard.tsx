@@ -4,16 +4,17 @@ import { Card, Badge } from 'react-bootstrap';
 
 interface NovelDetails {
   ID: string;
-  Title: string;
-  AuthorName: string;
-  AuthorID: string;
-  Synopsis: string;
-  Tags: string[];
-  View: number;
-  Like: number;
-  Fav: number;
-  Alr: number;
-  Eps: number;
+  Title?: string | null;
+  AuthorName?: string | null;
+  AuthorID?: string | null;
+  Synopsis?: string | null;
+  Tags?: string[];
+  View?: number | null;
+  Like?: number | null;
+  Fav?: number | null;
+  Alr?: number | null;
+  Eps?: number | null;
+  award?: string | null;
 }
 
 interface NovelDetailsCardProps {
@@ -47,7 +48,7 @@ const NovelDetailsCard: React.FC<NovelDetailsCardProps> = ({ details }) => {
     <Card className="mb-3">
       <Card.Header className="novel-card-header">
         <div className="d-flex align-items-baseline gap-1">
-          <h5 className="mb-0 fw-bold fs-novel-title">{details.Title}</h5>
+          <h5 className="mb-0 fw-bold fs-novel-title">{details.Title || '(제목 없음)'}</h5>
           <a href={`https://novelpia.com/novel/${details.ID.includes('#') ? details.ID.split('#')[1] : details.ID}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -57,12 +58,12 @@ const NovelDetailsCard: React.FC<NovelDetailsCardProps> = ({ details }) => {
           </a>
         </div>
         <div className="text-muted">
-          <Link to={`/authors/${details.AuthorID}`} className="fw-bold fs-author-name">{details.AuthorName}</Link>
+          <Link to={`/authors/${details.AuthorID}`} className="fw-bold fs-author-name">{details.AuthorName || '(작자 미상)'}</Link>
         </div>
       </Card.Header>
       <Card.Body className="novel-card-body">
         <div className="d-flex flex-wrap gap-1 mb-1">
-          {details.Tags.map(tag => (
+          {(details.Tags || []).map(tag => (
             <Badge pill bg="info" text="dark" className="fw-bold fs-tag-badge" key={tag}>
               #{tag}
             </Badge>
@@ -71,23 +72,23 @@ const NovelDetailsCard: React.FC<NovelDetailsCardProps> = ({ details }) => {
 
         <div className="d-flex flex-wrap justify-content-around justify-content-md-start text-center mb-2 gap-3 gap-md-4">
           <div>
-            <strong className="fs-stat">{isMobile ? formatStatNumber(details.View) : details.View.toLocaleString()}</strong>
+            <strong className="fs-stat">{isMobile ? formatStatNumber(details.View || 0) : (details.View || 0).toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.65rem'}}>조회</div>
           </div>
           <div>
-            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Like) : details.Like.toLocaleString()}</strong>
+            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Like || 0) : (details.Like || 0).toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.65rem'}}>추천</div>
           </div>
           <div>
-            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Fav) : details.Fav.toLocaleString()}</strong>
+            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Fav || 0) : (details.Fav || 0).toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.65rem'}}>선호</div>
           </div>
           <div>
-            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Alr) : details.Alr.toLocaleString()}</strong>
+            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Alr || 0) : (details.Alr || 0).toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.65rem'}}>알람</div>
           </div>
           <div>
-            <strong className="fs-stat">{details.Eps.toLocaleString()}</strong>
+            <strong className="fs-stat">{(details.Eps || 0).toLocaleString()}</strong>
             <div className="text-muted" style={{fontSize: '0.65rem'}}>회차</div>
           </div>
         </div>
