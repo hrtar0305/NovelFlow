@@ -1,8 +1,3 @@
-# Copyright (c) 2025 Paohkin
-#
-# This software is released under the MIT License.
-# https://opensource.org/licenses/MIT
-
 import json
 import os
 import logging

@@ -1,9 +1,3 @@
-/*
- * Copyright (c) 2025 Paohkin
- *
- * This software is released under the MIT License.
- * https://opensource.org/licenses/MIT
- */
 import React, { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
 import { InfoCircle } from 'react-bootstrap-icons';

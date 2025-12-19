@@ -137,4 +137,4 @@ Several measures are in place to ensure the reliability, integrity, and timeline
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE.md).
