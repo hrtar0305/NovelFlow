@@ -3,6 +3,16 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'package'))
 
+# 로컬 개발 환경: .env 파일이 있으면 환경 변수로 로드 (이미 설정된 값은 덮어쓰지 않음)
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 import logging
 import boto3
 import decimal
@@ -211,12 +221,20 @@ def get_novels_by_date(date: str, response: Response):
     DateRankIndex GSI를 사용하여 해당 날짜의 데이터를 가져옵니다.
     """
     try:
-        # 1. 현재 날짜의 소설 랭킹 데이터 조회
-        current_day_db_response = table.query(
-            IndexName='DateRankIndex',
-            KeyConditionExpression=Key('Date').eq(date)
-        )
-        current_day_items = json.loads(json.dumps(current_day_db_response.get('Items', []), cls=DecimalEncoder))
+        # 1. 현재 날짜의 소설 랭킹 데이터 조회 (페이지네이션 처리)
+        all_current_items = []
+        query_args = {
+            'IndexName': 'DateRankIndex',
+            'KeyConditionExpression': Key('Date').eq(date)
+        }
+        while True:
+            current_day_db_response = table.query(**query_args)
+            all_current_items.extend(current_day_db_response.get('Items', []))
+            if 'LastEvaluatedKey' in current_day_db_response:
+                query_args['ExclusiveStartKey'] = current_day_db_response['LastEvaluatedKey']
+            else:
+                break
+        current_day_items = json.loads(json.dumps(all_current_items, cls=DecimalEncoder))
 
         if not current_day_items:
             raise HTTPException(status_code=404, detail="No data found for the given date.")
@@ -226,12 +244,20 @@ def get_novels_by_date(date: str, response: Response):
         previous_date_dt = current_date_dt - timedelta(days=1)
         previous_date = previous_date_dt.strftime('%Y-%m-%d')
 
-        # 3. 직전 날짜의 소설 랭킹 데이터 조회
-        previous_day_db_response = table.query(
-            IndexName='DateRankIndex',
-            KeyConditionExpression=Key('Date').eq(previous_date)
-        )
-        previous_day_items = json.loads(json.dumps(previous_day_db_response.get('Items', []), cls=DecimalEncoder))
+        # 3. 직전 날짜의 소설 랭킹 데이터 조회 (페이지네이션 처리)
+        all_previous_items = []
+        prev_query_args = {
+            'IndexName': 'DateRankIndex',
+            'KeyConditionExpression': Key('Date').eq(previous_date)
+        }
+        while True:
+            previous_day_db_response = table.query(**prev_query_args)
+            all_previous_items.extend(previous_day_db_response.get('Items', []))
+            if 'LastEvaluatedKey' in previous_day_db_response:
+                prev_query_args['ExclusiveStartKey'] = previous_day_db_response['LastEvaluatedKey']
+            else:
+                break
+        previous_day_items = json.loads(json.dumps(all_previous_items, cls=DecimalEncoder))
 
         # 4. 직전 날짜 랭킹 맵 생성 (novel_id -> rank)
         previous_ranks_map = {item['ID']: item['Ranking'] for item in previous_day_items}

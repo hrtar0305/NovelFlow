@@ -35,9 +35,6 @@ data/
 # Deployment artifacts
 *.zip
 
-# Gemini context file
-GEMINI.md
-
 # Custom ignores
 todo.md
 
@@ -52,6 +49,7 @@ webapp/frontend/node_modules/
 webapp/frontend/.env
 webapp/frontend/.env.*
 !webapp/frontend/.env.example
+webapp/backend/.env
 
 # Build output
 webapp/frontend/dist/
