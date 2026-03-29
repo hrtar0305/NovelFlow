@@ -3,6 +3,7 @@ import boto3
 import csv
 import io
 import logging
+import math
 import os
 import time
 
@@ -18,7 +19,7 @@ class Config:
     LOOP_TIMEOUT_SECONDS = 270
     CSV_HEADERS = [
         "Date", "Ranking", "ID", "Score", "Title", "AuthorName", "AuthorID",
-        "View", "Like", "Fav", "Alr", "Eps", "Tags", "Synopsis"
+        "View", "Like", "Fav", "Alr", "Eps", "Tags", "Synopsis", "RetentionRate"
     ]
 
 if not Config.S3_BUCKET_NAME or not Config.SQS_QUEUE_URL:
@@ -68,11 +69,25 @@ def _validate_data(execution_id, collected_data, target_count):
         raise ValueError(error_message)
     _log(logging.INFO, execution_id, "Validation successful.")
 
+def _calculate_retention_rate(item):
+    """Calculates the geometric-mean per-episode retention rate."""
+    first_view = item.get("FirstEpView", -1)
+    latest_view = item.get("TargetLatestEpView", -1)
+    first_num = item.get("FirstEpNum", -1)
+    latest_num = item.get("TargetLatestEpNum", -1)
+    episode_diff = latest_num - first_num
+    if episode_diff > 0 and first_view > 0 and latest_view >= 0:
+        return round(math.pow(latest_view / first_view, 1 / episode_diff), 4)
+    return None
+
 def _upload_csv_to_s3(s3_client, execution_id, data, date):
-    """Sorts data, creates a CSV, and uploads it to S3."""
+    """Sorts data, calculates RetentionRate, creates a CSV, and uploads it to S3."""
     data.sort(key=lambda x: x.get('Ranking', 0))
+    for item in data:
+        rate = _calculate_retention_rate(item)
+        item["RetentionRate"] = rate if rate is not None else ""
     csv_buffer = io.StringIO()
-    writer = csv.DictWriter(csv_buffer, fieldnames=Config.CSV_HEADERS)
+    writer = csv.DictWriter(csv_buffer, fieldnames=Config.CSV_HEADERS, extrasaction='ignore')
     writer.writeheader()
     writer.writerows(data)
 

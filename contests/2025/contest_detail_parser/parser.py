@@ -63,9 +63,9 @@ def _create_placeholder_item(novel_id, crawl_date, reason="N/A"):
         "TargetLatestEpView": -1, "TargetLatestEpNum": -1
     }
 
-def _get_episode_list_html(session, novel_id, sort_order):
+def _get_episode_list_html(session, novel_id, sort_order, page=0):
     """Fetches the episode list HTML for a given sort order."""
-    payload = {"novel_no": novel_id, "sort": sort_order, "page": 0}
+    payload = {"novel_no": novel_id, "sort": sort_order, "page": page}
     headers = {"Referer": Config.NOVEL_URL_TEMPLATE.format(novel_id), "X-Requested-With": "XMLHttpRequest"}
     response = session.post(Config.EPISODE_LIST_URL, data=payload, headers=headers, timeout=10)
     response.raise_for_status()
@@ -199,24 +199,30 @@ def parse_contest_novel_details_batch(event, context):
                             latest_ep_id = None
                             latest_ep_num = -1
                             try:
-                                html_latest_ep = _get_episode_list_html(session, novel_id, 'UP')
-                                soup_latest = BeautifulSoup(html_latest_ep, 'html.parser')
-                                for ep_info_div in soup_latest.select(Config.Selectors.EPISODE_INFO_DIV):
-                                    ep_num_el = ep_info_div.select_one(Config.Selectors.EPISODE_NUMBER)
-                                    ep_date_el = ep_info_div.select_one(Config.Selectors.EPISODE_UPLOAD_DATE)
+                                for page_num in range(3):
+                                    html_latest_ep = _get_episode_list_html(session, novel_id, 'UP', page=page_num)
+                                    soup_latest = BeautifulSoup(html_latest_ep, 'html.parser')
+                                    ep_divs = soup_latest.select(Config.Selectors.EPISODE_INFO_DIV)
+                                    if not ep_divs:
+                                        break
+                                    for ep_info_div in ep_divs:
+                                        ep_num_el = ep_info_div.select_one(Config.Selectors.EPISODE_NUMBER)
+                                        ep_date_el = ep_info_div.select_one(Config.Selectors.EPISODE_UPLOAD_DATE)
 
-                                    if (ep_num_el and ep_date_el and
-                                        re.match(r"^EP\.\s*\d+$", ep_num_el.get_text(strip=True)) and
-                                        re.match(r"^\d{2}\.\d{2}\.\d{2}$", ep_date_el.get_text(strip=True))):
-                                        
-                                        view_span = ep_info_div.select_one(Config.Selectors.EPISODE_VIEW_COUNT_SPAN)
-                                        if view_span:
-                                            class_str = ' '.join(view_span.get('class', []))
-                                            match = re.search(r'novel_count_view_(\d+)', class_str)
-                                            if match:
-                                                latest_ep_id = match.group(1)
-                                                latest_ep_num = _parse_int_from_raw_text(ep_num_el.get_text(strip=True), "EP.")
-                                                break
+                                        if (ep_num_el and ep_date_el and
+                                            re.match(r"^EP\.\s*\d+$", ep_num_el.get_text(strip=True)) and
+                                            re.match(r"^\d{2}\.\d{2}\.\d{2}$", ep_date_el.get_text(strip=True))):
+
+                                            view_span = ep_info_div.select_one(Config.Selectors.EPISODE_VIEW_COUNT_SPAN)
+                                            if view_span:
+                                                class_str = ' '.join(view_span.get('class', []))
+                                                match = re.search(r'novel_count_view_(\d+)', class_str)
+                                                if match:
+                                                    latest_ep_id = match.group(1)
+                                                    latest_ep_num = _parse_int_from_raw_text(ep_num_el.get_text(strip=True), "EP.")
+                                                    break
+                                    if latest_ep_id:
+                                        break
                             except requests.exceptions.RequestException:
                                 _log(logging.WARNING, execution_id, "Failed to fetch latest episode list.", novel_id=novel_id)
 

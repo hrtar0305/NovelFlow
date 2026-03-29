@@ -86,6 +86,16 @@ def process_csv_row(item):
             except (ValueError, TypeError) as e:
                 logger.error(f"Could not convert {key} to int for value {item[key]}.")
                 raise e
+
+    # Convert RetentionRate to Decimal (empty string means data unavailable — omit the field)
+    if item.get('RetentionRate'):
+        try:
+            item['RetentionRate'] = Decimal(item['RetentionRate'])
+        except (ValueError, TypeError) as e:
+            logger.error(f"Could not convert RetentionRate to Decimal for value {item['RetentionRate']}.")
+            raise e
+    else:
+        item.pop('RetentionRate', None)
     
     # Keep ID and AuthorID as strings
     item['ID'] = str(item['ID'])

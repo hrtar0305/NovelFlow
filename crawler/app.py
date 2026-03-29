@@ -2,6 +2,7 @@ import boto3
 import logging
 import json
 import os
+import re
 import requests
 import time
 from datetime import datetime
@@ -32,6 +33,8 @@ class Config:
     BASE_URL = "https://novelpia.com/mybook"
     RANK_MORE_URL = "https://novelpia.com/proc/rank_more"
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
+    EPISODE_LIST_URL = "https://novelpia.com/proc/episode_list"
+    NOVEL_PROC_URL = "https://novelpia.com/proc/novel"
     MAX_INTERNAL_RETRIES = 10
     SEOUL_TIMEZONE = timezone('Asia/Seoul')
 
@@ -54,6 +57,12 @@ class Config:
         INFO_SPANS = "div.info-count2 span.gray-txt"
         TAGS = "div.mobile_hidden p.writer-tag span.tag"
         SYNOPSIS = "div.synopsis-story"
+
+        # For episode list
+        EPISODE_INFO_DIV = "div.ep_style2"
+        EPISODE_UPLOAD_DATE = "b"
+        EPISODE_NUMBER = "span:first-child"
+        EPISODE_VIEW_COUNT_SPAN = "span.episode_count_view"
 
 if not Config.SQS_QUEUE_URL:
     raise ValueError("Environment variable SQS_QUEUE_URL must be set.")
@@ -290,13 +299,42 @@ def get_ranking_list(event, context):
 # =====================================================================================
 # LAMBDA HANDLER 2: Parse Novel Details
 # =====================================================================================
+def _get_episode_list_html(session, novel_id, sort_order, page=0):
+    """Fetches the episode list HTML for a given sort order ('DOWN'=oldest first, 'UP'=newest first)."""
+    payload = {"novel_no": novel_id, "sort": sort_order, "page": page}
+    headers = {"Referer": Config.NOVEL_URL_TEMPLATE.format(novel_id), "X-Requested-With": "XMLHttpRequest"}
+    response = session.post(Config.EPISODE_LIST_URL, data=payload, headers=headers, timeout=10)
+    response.raise_for_status()
+    return response.text
+
+def _get_episode_view_counts(session, novel_id, episode_ids, execution_id):
+    """Fetches view counts for a list of episode IDs via /proc/novel."""
+    if not episode_ids:
+        return {}
+    episode_arr_values = [f"episode_count_view novel_count_view_{eid}" for eid in episode_ids]
+    payload = [("novel_no", novel_id), ("cmd", "get_episode_count_view")]
+    for val in episode_arr_values:
+        payload.append(("episode_arr[]", val))
+    headers = {"Referer": Config.NOVEL_URL_TEMPLATE.format(novel_id), "X-Requested-With": "XMLHttpRequest"}
+    response = session.post(Config.NOVEL_PROC_URL, data=payload, headers=headers, timeout=10)
+    response.raise_for_status()
+    if not response.text.strip():
+        return {}
+    try:
+        data = response.json()
+        return {item['episode_no']: int(item['count_view'].replace(',', '')) for item in data.get('list', [])}
+    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        _log(logging.WARNING, execution_id, f"Failed to parse /proc/novel response: {e}", novel_id=novel_id)
+        return {}
+
 def _create_placeholder_item(novel_info, reason="N/A"):
     """Creates a placeholder dictionary for a failed novel parse."""
     return {
         "Date": novel_info['date'], "Ranking": novel_info['ranking'], "ID": novel_info['id'],
         "Score": novel_info['score'], "Title": f"N/A ({reason})", "AuthorName": "N/A",
         "AuthorID": "0", "View": 0, "Like": 0, "Fav": 0, "Alr": 0, "Eps": 0,
-        "Tags": [], "Synopsis": ""
+        "Tags": [], "Synopsis": "",
+        "FirstEpView": -1, "FirstEpNum": -1, "TargetLatestEpView": -1, "TargetLatestEpNum": -1,
     }
 
 def _validate_item(item, novel_id):
@@ -306,6 +344,7 @@ def _validate_item(item, novel_id):
         "Date": str, "Ranking": int, "ID": str, "Score": int, "Title": str, "AuthorName": str,
         "AuthorID": str, "View": int, "Like": int, "Fav": int, "Alr": int, "Eps": int,
         "Tags": list, "Synopsis": str,
+        "FirstEpView": int, "FirstEpNum": int, "TargetLatestEpView": int, "TargetLatestEpNum": int,
     }
     for field, expected_type in expected_types.items():
         value = item.get(field)
@@ -340,8 +379,11 @@ def parse_novel_details(event, context):
             item_to_send = _create_placeholder_item(novel_info, reason="RetryFailed")
             status = "PLACEHOLDER_CREATED"
         else:
+            session = requests.Session()
+            session.headers.update({"User-Agent": Config.USER_AGENT})
+
             novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
-            response = requests.get(novel_url, headers={"User-Agent": Config.USER_AGENT}, timeout=10)
+            response = session.get(novel_url, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -365,8 +407,78 @@ def parse_novel_details(event, context):
                     "Alr": _parse_int_from_raw_text(info_count2[1].get_text(strip=True)),
                     "Eps": _parse_int_from_raw_text(info_count2[2].get_text(strip=True), "회차"),
                     "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
-                    "Synopsis": soup.select_one(Config.Selectors.SYNOPSIS).get_text(separator='\n', strip=True)
+                    "Synopsis": soup.select_one(Config.Selectors.SYNOPSIS).get_text(separator='\n', strip=True),
+                    "FirstEpView": -1, "FirstEpNum": -1,
+                    "TargetLatestEpView": -1, "TargetLatestEpNum": -1,
                 }
+
+                # Fetch episode data for retention rate calculation
+                if item["Eps"] > 0:
+                    first_ep_id = None
+                    first_ep_num = -1
+                    try:
+                        html_first = _get_episode_list_html(session, novel_id, 'DOWN')
+                        soup_first = BeautifulSoup(html_first, 'html.parser')
+                        for ep_div in soup_first.select(Config.Selectors.EPISODE_INFO_DIV):
+                            ep_num_el = ep_div.select_one(Config.Selectors.EPISODE_NUMBER)
+                            ep_date_el = ep_div.select_one(Config.Selectors.EPISODE_UPLOAD_DATE)
+                            if (ep_num_el and ep_date_el and
+                                    re.match(r"^EP\.\s*\d+$", ep_num_el.get_text(strip=True)) and
+                                    re.match(r"^\d{2}\.\d{2}\.\d{2}$", ep_date_el.get_text(strip=True))):
+                                view_span = ep_div.select_one(Config.Selectors.EPISODE_VIEW_COUNT_SPAN)
+                                if view_span:
+                                    m = re.search(r'novel_count_view_(\d+)', ' '.join(view_span.get('class', [])))
+                                    if m:
+                                        first_ep_id = m.group(1)
+                                        first_ep_num = int(re.search(r'\d+', ep_num_el.get_text(strip=True)).group())
+                                        break
+                    except requests.exceptions.RequestException as ep_e:
+                        _log(logging.WARNING, execution_id, f"Failed to fetch first episode list: {ep_e}", novel_id=novel_id)
+
+                    if first_ep_id:
+                        latest_ep_id = None
+                        latest_ep_num = -1
+                        try:
+                            for page_num in range(3):
+                                html_latest = _get_episode_list_html(session, novel_id, 'UP', page=page_num)
+                                soup_latest = BeautifulSoup(html_latest, 'html.parser')
+                                ep_divs = soup_latest.select(Config.Selectors.EPISODE_INFO_DIV)
+                                if not ep_divs:
+                                    break
+                                for ep_div in ep_divs:
+                                    ep_num_el = ep_div.select_one(Config.Selectors.EPISODE_NUMBER)
+                                    ep_date_el = ep_div.select_one(Config.Selectors.EPISODE_UPLOAD_DATE)
+                                    if (ep_num_el and ep_date_el and
+                                            re.match(r"^EP\.\s*\d+$", ep_num_el.get_text(strip=True)) and
+                                            re.match(r"^\d{2}\.\d{2}\.\d{2}$", ep_date_el.get_text(strip=True))):
+                                        view_span = ep_div.select_one(Config.Selectors.EPISODE_VIEW_COUNT_SPAN)
+                                        if view_span:
+                                            m = re.search(r'novel_count_view_(\d+)', ' '.join(view_span.get('class', [])))
+                                            if m:
+                                                latest_ep_id = m.group(1)
+                                                latest_ep_num = int(re.search(r'\d+', ep_num_el.get_text(strip=True)).group())
+                                                break
+                                if latest_ep_id:
+                                    break
+                        except requests.exceptions.RequestException as ep_e:
+                            _log(logging.WARNING, execution_id, f"Failed to fetch latest episode list: {ep_e}", novel_id=novel_id)
+
+                        if latest_ep_id and first_ep_id != latest_ep_id:
+                            view_counts = _get_episode_view_counts(session, novel_id, [first_ep_id, latest_ep_id], execution_id)
+                            first_ep_id_int = int(first_ep_id)
+                            latest_ep_id_int = int(latest_ep_id)
+                            if first_ep_id_int in view_counts and latest_ep_id_int in view_counts:
+                                item["FirstEpView"] = view_counts[first_ep_id_int]
+                                item["FirstEpNum"] = first_ep_num
+                                item["TargetLatestEpView"] = view_counts[latest_ep_id_int]
+                                item["TargetLatestEpNum"] = latest_ep_num
+                            else:
+                                _log(logging.WARNING, execution_id, "Could not retrieve view counts for both episodes.", novel_id=novel_id)
+                        elif latest_ep_id and first_ep_id == latest_ep_id:
+                            _log(logging.INFO, execution_id, "Novel has only one valid episode. Skipping retention data.", novel_id=novel_id)
+                else:
+                    _log(logging.INFO, execution_id, "Novel has 0 episodes. Skipping retention data.", novel_id=novel_id)
+
                 _validate_item(item, novel_id)
                 item_to_send = item
                 status = "SUCCESS"
