@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Container, Spinner, Alert, Modal } from 'react-bootstrap';
 import { useContestNovelData } from '../hooks/useContestNovelData';
 import { parseISO } from 'date-fns';
-import ContestNovelDetailsCard from './ContestNovelDetailsCard';
+import ContestNovelDetailsCard from '../components/ContestNovelDetailsCard';
 import DateRangePicker from '../components/novel/DateRangePicker';
 
 const SmallMultiplesChart = lazy(() => import('../components/novel/SmallMultiplesChart'));

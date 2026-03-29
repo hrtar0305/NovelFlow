@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, useTransition } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Table, Spinner, Alert, Form, Row, Col, Button, InputGroup, ButtonGroup, Container, Dropdown, OverlayTrigger, Tooltip, Collapse, Card } from 'react-bootstrap';
 import { InfoCircle, ArrowUp, ArrowDown, ArrowDownUp, ArrowUpShort, ArrowDownShort, Funnel, ChevronUp, ChevronDown} from 'react-bootstrap-icons';
@@ -7,6 +8,7 @@ import { getNovelRankingsByDate, getAvailableDates } from '../services/api';
 import CalendarPicker from '../components/CalendarPicker';
 import NovelFilterControls from '../components/NovelFilterControls';
 import TagFilter from '../components/TagFilter';
+import { evaluateAdvancedRule } from '../utils/tagFilter';
 
 // --- TYPE DEFINITIONS ---
 interface Novel {
@@ -48,67 +50,6 @@ const RankChangeIndicator: React.FC<{ value: number | 'New' | undefined }> = ({ 
     );
 };
 
-// --- ADVANCED FILTER PARSER ---
-const evaluateAdvancedRule = (rule: string, tags: string[]): boolean => {
-  if (!rule.trim()) return true;
-  const tokens = rule.match(/\(|\)|\bAND\b|\bOR\b|\bNOT\b|[^\s()]+/gi) || [];
-  const outputQueue: string[] = [];
-  const operatorStack: string[] = [];
-  const precedence: { [key: string]: number } = { 'OR': 1, 'AND': 2, 'NOT': 3 };
-  const associativity: { [key: string]: string | undefined } = { 'NOT': 'Right' };
-  for (const token of tokens) {
-    const upperToken = token.toUpperCase();
-    if (upperToken === 'AND' || upperToken === 'OR' || upperToken === 'NOT') {
-      while (
-        operatorStack.length > 0 &&
-        operatorStack[operatorStack.length - 1] !== '(' &&
-        (precedence[operatorStack[operatorStack.length - 1].toUpperCase()] > precedence[upperToken] ||
-         (precedence[operatorStack[operatorStack.length - 1].toUpperCase()] === precedence[upperToken] && associativity[upperToken] !== 'Right'))
-      ) {
-        outputQueue.push(operatorStack.pop()!);
-      }
-      operatorStack.push(token);
-    } else if (token === '(') {
-      operatorStack.push(token);
-    } else if (token === ')') {
-      while (operatorStack.length > 0 && operatorStack[operatorStack.length - 1] !== '(') {
-        outputQueue.push(operatorStack.pop()!);
-      }
-      if (operatorStack.length === 0) throw new Error("Mismatched parentheses");
-      operatorStack.pop();
-    } else {
-      outputQueue.push(token);
-    }
-  }
-  while (operatorStack.length > 0) {
-    if (operatorStack[operatorStack.length - 1] === '(') throw new Error("Mismatched parentheses");
-    outputQueue.push(operatorStack.pop()!);
-  }
-  const evalStack: boolean[] = [];
-  for (const token of outputQueue) {
-    const upperToken = token.toUpperCase();
-    if (upperToken === 'AND') {
-      const b = evalStack.pop();
-      const a = evalStack.pop();
-      if (a === undefined || b === undefined) throw new Error("Invalid syntax");
-      evalStack.push(a && b);
-    } else if (upperToken === 'OR') {
-      const b = evalStack.pop();
-      const a = evalStack.pop();
-      if (a === undefined || b === undefined) throw new Error("Invalid syntax");
-      evalStack.push(a || b);
-    } else if (upperToken === 'NOT') {
-      const a = evalStack.pop();
-      if (a === undefined) throw new Error("Invalid syntax");
-      evalStack.push(!a);
-    } else {
-      evalStack.push(tags.some(t => t.toLowerCase() === token.toLowerCase()));
-    }
-  }
-  if (evalStack.length !== 1) throw new Error("Invalid syntax");
-  return evalStack[0];
-};
-
 const filterModeLabels: { [key: string]: string } = {
   'include-and': '태그 포함 (모두)',
   'include-or': '태그 포함 (일부)',
@@ -148,6 +89,8 @@ const NovelRankingsPage = () => {
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [shouldRenderFilters, setShouldRenderFilters] = useState(false);
   const hasFetchedDates = useRef(false);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const mobileScrollRef = useRef<HTMLDivElement>(null);
 
   // --- DATA DERIVATION & FILTERING LOGIC ---
   useEffect(() => {
@@ -238,7 +181,26 @@ const NovelRankingsPage = () => {
     return filteredItems;
   }, [rankings, sortConfig, isAdvancedMode, selectedTags, filterMode, activeAdvancedRule, searchTerm, activeMinEps, activeMaxEps]);
 
-  const unselectedTags = useMemo(() => 
+  const tableVirtualizer = useVirtualizer({
+    count: processedRankings.length,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => 53,
+    overscan: 5,
+  });
+
+  const mobileVirtualizer = useVirtualizer({
+    count: processedRankings.length,
+    getScrollElement: () => mobileScrollRef.current,
+    estimateSize: () => 110,
+    overscan: 3,
+  });
+
+  useEffect(() => {
+    tableScrollRef.current?.scrollTo({ top: 0 });
+    mobileScrollRef.current?.scrollTo({ top: 0 });
+  }, [processedRankings]);
+
+  const unselectedTags = useMemo(() =>
     allAvailableTags.filter(tag => !selectedTags.includes(tag)),
     [allAvailableTags, selectedTags]
   );
@@ -400,6 +362,11 @@ const NovelRankingsPage = () => {
     return sortConfig.direction === 'ascending' ? <ArrowUp size={14} className="text-primary" /> : <ArrowDown size={14} className="text-primary" />;
   };
 
+  const tableVirtualItems = tableVirtualizer.getVirtualItems();
+  const tablePaddingTop = tableVirtualItems[0]?.start ?? 0;
+  const tablePaddingBottom = tableVirtualizer.getTotalSize() - (tableVirtualItems.at(-1)?.end ?? 0);
+  const mobileVirtualItems = mobileVirtualizer.getVirtualItems();
+
   // --- RENDER ---
   return (
     <Container className="py-3 py-md-4 d-flex flex-column page-height-manager">
@@ -546,7 +513,7 @@ const NovelRankingsPage = () => {
           <Alert variant="info">해당 날짜의 랭킹 데이터가 없습니다.</Alert>
       )}
       {!loading && !error && rankings.length > 0 && (
-        <div className="custom-table-wrapper" style={{ flex: '1 1 auto', minHeight: 0, position: 'relative', overflowY: 'auto', backgroundColor: 'white', opacity: isPending ? 0.7 : 1 }}>
+        <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0, position: 'relative', opacity: isPending ? 0.7 : 1 }}>
           {isPending && (
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
               <Spinner animation="border" />
@@ -554,32 +521,52 @@ const NovelRankingsPage = () => {
           )}
           <>
             {/* Desktop & Mobile Table View */}
-            <div className={mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'}>
-              <Table hover className="custom-table novel-rankings-table">
+            <div ref={tableScrollRef} className={`custom-table-wrapper border rounded h-100 ${mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'}`} style={{ overflowY: 'auto', backgroundColor: 'white' }}>
+              <Table hover className="custom-table novel-rankings-table" style={{ tableLayout: 'fixed' }}>
+                <colgroup>
+                  <col style={{ width: '50px' }} />
+                  <col style={{ width: '55px' }} />
+                  <col style={{ width: '300px' }} />
+                  <col style={{ width: '110px' }} />
+                  <col style={{ width: '70px' }} />
+                  <col style={{ width: '55px' }} />
+                  <col style={{ width: '320px' }} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th onClick={() => requestSort('Ranking')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}><div className="d-flex align-items-center justify-content-center gap-1"><span>순위</span>{getSortIndicator('Ranking')}</div></th>
-                    <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}><div className="d-flex align-items-center justify-content-center gap-1"><span>변동</span>{getSortIndicator('rank_change')}</div></th>
-                    <th style={{ fontSize: '0.85rem', minWidth: '300px', whiteSpace: 'normal', textAlign: 'left' }}>제목</th>
-                    <th style={{ fontSize: '0.85rem', minWidth: '100px', textAlign: 'left' }}>작가</th>
-                    <th style={{ fontSize: '0.85rem', minWidth: '60px', textAlign: 'left' }}>점수</th>
-                    <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', minWidth: '40px', textAlign: 'left' }}><div className="d-flex align-items-center gap-1"><span>회차</span>{getSortIndicator('Eps')}</div></th>
-                    <th style={{ fontSize: '0.85rem', minWidth: '320px', textAlign: 'left' }}>태그</th>
+                    <th onClick={() => requestSort('Ranking')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem' }}><div className="d-flex align-items-center justify-content-center gap-1"><span>순위</span>{getSortIndicator('Ranking')}</div></th>
+                    <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem' }}><div className="d-flex align-items-center justify-content-center gap-1"><span>변동</span>{getSortIndicator('rank_change')}</div></th>
+                    <th style={{ fontSize: '0.85rem', whiteSpace: 'normal', textAlign: 'left' }}>제목</th>
+                    <th style={{ fontSize: '0.85rem', textAlign: 'left' }}>작가</th>
+                    <th style={{ fontSize: '0.85rem', textAlign: 'left' }}>점수</th>
+                    <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}><div className="d-flex align-items-center gap-1"><span>회차</span>{getSortIndicator('Eps')}</div></th>
+                    <th style={{ fontSize: '0.85rem', textAlign: 'left' }}>태그</th>
                   </tr>
                 </thead>
                 <tbody>
                   {processedRankings.length > 0 ? (
-                    processedRankings.map((novel) => (
-                      <tr key={novel.ID}>
-                        <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Ranking}</td>
-                        <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} /></td>
-                        <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}><Link to={`/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link></td>
-                        <td style={{ fontSize: '0.9rem' }}>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</td>
-                        <td style={{ fontSize: '0.9rem' }}>{novel.Score.toLocaleString()}</td>
-                        <td style={{ fontSize: '0.9rem' }}>{novel.Eps}</td>
-                        <td style={{ fontSize: '0.9rem' }}><div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill">{tag}</Button>))}</div></td>
-                      </tr>
-                    ))
+                    <>
+                      {tablePaddingTop > 0 && (
+                        <tr><td colSpan={7} style={{ height: `${tablePaddingTop}px`, padding: 0, border: 'none' }} /></tr>
+                      )}
+                      {tableVirtualItems.map((virtualRow) => {
+                        const novel = processedRankings[virtualRow.index];
+                        return (
+                          <tr key={novel.ID} data-index={virtualRow.index} ref={tableVirtualizer.measureElement}>
+                            <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Ranking}</td>
+                            <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} /></td>
+                            <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}><Link to={`/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link></td>
+                            <td style={{ fontSize: '0.9rem' }}>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{novel.Score.toLocaleString()}</td>
+                            <td style={{ fontSize: '0.9rem' }}>{novel.Eps}</td>
+                            <td style={{ fontSize: '0.9rem' }}><div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill">{tag}</Button>))}</div></td>
+                          </tr>
+                        );
+                      })}
+                      {tablePaddingBottom > 0 && (
+                        <tr><td colSpan={7} style={{ height: `${tablePaddingBottom}px`, padding: 0, border: 'none' }} /></tr>
+                      )}
+                    </>
                   ) : (
                     <tr><td colSpan={7} className="text-center py-4">현재 필터와 일치하는 결과가 없습니다.</td></tr>
                   )}
@@ -588,38 +575,48 @@ const NovelRankingsPage = () => {
             </div>
 
             {/* Mobile Card View */}
-            <div className={mobileViewMode === 'card' ? 'd-md-none' : 'd-none'}>
-              <div className="p-1">
-                {processedRankings.length > 0 ? (
-                  processedRankings.map((novel) => (
-                  <Card key={novel.ID} className="mb-1 shadow-sm">
-                    <Card.Body className="p-2">
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <div className="flex-grow-1 me-2">
-                          <div className="d-flex align-items-baseline gap-2">
-                            <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Ranking}위</span>
-                            <h5 className="mb-0 h6"><Link to={`/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title}</Link></h5>
-                          </div>
-                          <div className="text-muted small mt-1">
-                            <span>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</span>
-                            <span className="mx-1">·</span>
-                            <span>{novel.Eps}화</span>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} /></div>
+            <div ref={mobileScrollRef} className={mobileViewMode === 'card' ? 'd-md-none h-100 border rounded' : 'd-none'} style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+              {processedRankings.length > 0 ? (
+                <div style={{ height: `${mobileVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+                  {mobileVirtualItems.map((virtualRow) => {
+                    const novel = processedRankings[virtualRow.index];
+                    return (
+                      <div
+                        key={novel.ID}
+                        data-index={virtualRow.index}
+                        ref={mobileVirtualizer.measureElement}
+                        style={{ position: 'absolute', top: 0, left: '4px', right: '4px', paddingBottom: '4px', transform: `translateY(${virtualRow.start}px)` }}
+                      >
+                        <Card className="shadow-sm">
+                          <Card.Body className="p-2">
+                            <div className="d-flex justify-content-between align-items-start mb-2">
+                              <div className="flex-grow-1 me-2">
+                                <div className="d-flex align-items-baseline gap-2">
+                                  <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Ranking}위</span>
+                                  <h5 className="mb-0 h6"><Link to={`/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title}</Link></h5>
+                                </div>
+                                <div className="text-muted small mt-1">
+                                  <span>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</span>
+                                  <span className="mx-1">·</span>
+                                  <span>{novel.Eps}화</span>
+                                </div>
+                              </div>
+                              <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} /></div>
+                            </div>
+                            {novel.Tags && novel.Tags.length > 0 && (
+                              <div className="pt-2 border-top">
+                                <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
+                              </div>
+                            )}
+                          </Card.Body>
+                        </Card>
                       </div>
-                      {novel.Tags && novel.Tags.length > 0 && (
-                        <div className="pt-2 border-top">
-                          <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
-                        </div>
-                      )}
-                    </Card.Body>
-                  </Card>
-                  ))
-                ) : (
-                  <Alert variant="info" className="text-center m-0">현재 필터와 일치하는 결과가 없습니다.</Alert>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Alert variant="info" className="text-center m-1">현재 필터와 일치하는 결과가 없습니다.</Alert>
+              )}
             </div>
           </>
         </div>

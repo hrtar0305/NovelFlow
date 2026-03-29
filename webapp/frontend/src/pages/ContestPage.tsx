@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useTransition, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useParams, Link, useNavigate, NavLink } from 'react-router-dom';
 import { Table, Spinner, Alert, Container, Card, Row, Col, Button, Collapse, Dropdown, ButtonGroup, InputGroup, Form, OverlayTrigger, Tooltip, Nav, Badge } from 'react-bootstrap';
 import { Funnel, ChevronUp, ChevronDown, InfoCircle, ArrowUpShort, ArrowDownShort, ExclamationCircleFill } from 'react-bootstrap-icons';
@@ -7,6 +8,7 @@ import ContestNovelFilterControls from '../components/ContestNovelFilterControls
 import CalendarPicker from '../components/CalendarPicker';
 import { format, parseISO, isValid } from 'date-fns';
 import TagFilter from '../components/TagFilter';
+import { evaluateAdvancedRule } from '../utils/tagFilter';
 
 // --- HELPER COMPONENTS ---
 const RankChangeIndicator: React.FC<{ value: number | 'New' | undefined, isNew: boolean }> = ({ value, isNew }) => {
@@ -32,7 +34,6 @@ const RankChangeIndicator: React.FC<{ value: number | 'New' | undefined, isNew: 
                         <ArrowDownShort size={12} viewBox="3 3 10 10" className="flex-shrink-0" />
                         <span style={{ lineHeight: 1 }}>{Math.abs(value).toLocaleString()}</span>
                     </span>;
-                return <span className={`${containerClasses} rank-same`} style={commonStyle}>-</span>;
             })()}
         </div>
     );
@@ -101,67 +102,6 @@ interface ContestNovel {
   award?: string | null;
 }
 
-// --- ADVANCED FILTER PARSER (from NovelRankingsPage) ---
-const evaluateAdvancedRule = (rule: string, tags: string[]): boolean => {
-  if (!rule.trim()) return true;
-  const tokens = rule.match(/\(|\)|\bAND\b|\bOR\b|\bNOT\b|[^\s()]+/gi) || [];
-  const outputQueue: string[] = [];
-  const operatorStack: string[] = [];
-  const precedence: { [key: string]: number } = { 'OR': 1, 'AND': 2, 'NOT': 3 };
-  const associativity: { [key: string]: string | undefined } = { 'NOT': 'Right' };
-  for (const token of tokens) {
-    const upperToken = token.toUpperCase();
-    if (upperToken === 'AND' || upperToken === 'OR' || upperToken === 'NOT') {
-      while (
-        operatorStack.length > 0 &&
-        operatorStack[operatorStack.length - 1] !== '(' &&
-        (precedence[operatorStack[operatorStack.length - 1].toUpperCase()] > precedence[upperToken] ||
-         (precedence[operatorStack[operatorStack.length - 1].toUpperCase()] === precedence[upperToken] && associativity[upperToken] !== 'Right'))
-      ) {
-        outputQueue.push(operatorStack.pop()!);
-      }
-      operatorStack.push(token);
-    } else if (token === '(') {
-      operatorStack.push(token);
-    } else if (token === ')') {
-      while (operatorStack.length > 0 && operatorStack[operatorStack.length - 1] !== '(') {
-        outputQueue.push(operatorStack.pop()!);
-      }
-      if (operatorStack.length === 0) throw new Error("Mismatched parentheses");
-      operatorStack.pop();
-    } else {
-      outputQueue.push(token);
-    }
-  }
-  while (operatorStack.length > 0) {
-    if (operatorStack[operatorStack.length - 1] === '(') throw new Error("Mismatched parentheses");
-    outputQueue.push(operatorStack.pop()!);
-  }
-  const evalStack: boolean[] = [];
-  for (const token of outputQueue) {
-    const upperToken = token.toUpperCase();
-    if (upperToken === 'AND') {
-      const b = evalStack.pop();
-      const a = evalStack.pop();
-      if (a === undefined || b === undefined) throw new Error("Invalid syntax");
-      evalStack.push(a && b);
-    } else if (upperToken === 'OR') {
-      const b = evalStack.pop();
-      const a = evalStack.pop();
-      if (a === undefined || b === undefined) throw new Error("Invalid syntax");
-      evalStack.push(a || b);
-    } else if (upperToken === 'NOT') {
-      const a = evalStack.pop();
-      if (a === undefined) throw new Error("Invalid syntax");
-      evalStack.push(!a);
-    } else {
-      evalStack.push(tags.some(t => t.toLowerCase() === token.toLowerCase()));
-    }
-  }
-  if (evalStack.length !== 1) throw new Error("Invalid syntax");
-  return evalStack[0];
-};
-
 const filterModeLabels: { [key: string]: string } = {
   'include-and': '태그 포함 (모두)',
   'include-or': '태그 포함 (일부)',
@@ -194,6 +134,8 @@ const ContestPage = () => {
   const [activeAdvancedRule, setActiveAdvancedRule] = useState('');
   const [filterError, setFilterError] = useState<string | null>(null);
   const advancedRuleInputRef = useRef<HTMLTextAreaElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const mobileScrollRef = useRef<HTMLDivElement>(null);
   const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [shouldRenderFilters, setShouldRenderFilters] = useState(false);
 
@@ -355,7 +297,26 @@ const ContestPage = () => {
     return filteredItems;
   }, [novels, sortConfig, isAdvancedMode, selectedTags, filterMode, activeAdvancedRule, searchTerm, activeMinEps, activeMaxEps, showOnlyWinners]);
 
-  const unselectedTags = useMemo(() => 
+  const tableVirtualizer = useVirtualizer({
+    count: processedNovels.length,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => 53,
+    overscan: 5,
+  });
+
+  const mobileVirtualizer = useVirtualizer({
+    count: processedNovels.length,
+    getScrollElement: () => mobileScrollRef.current,
+    estimateSize: () => 130,
+    overscan: 3,
+  });
+
+  useEffect(() => {
+    tableScrollRef.current?.scrollTo({ top: 0 });
+    mobileScrollRef.current?.scrollTo({ top: 0 });
+  }, [processedNovels]);
+
+  const unselectedTags = useMemo(() =>
     allAvailableTags.filter(tag => !selectedTags.includes(tag)),
     [allAvailableTags, selectedTags]
   );
@@ -469,6 +430,11 @@ const ContestPage = () => {
     }
     return null;
   }, [currentDate]);
+
+  const tableVirtualItems = tableVirtualizer.getVirtualItems();
+  const tablePaddingTop = tableVirtualItems[0]?.start ?? 0;
+  const tablePaddingBottom = tableVirtualizer.getTotalSize() - (tableVirtualItems.at(-1)?.end ?? 0);
+  const mobileVirtualItems = mobileVirtualizer.getVirtualItems();
 
   return (
     <Container className="py-3 py-md-4 d-flex flex-column page-height-manager">
@@ -701,82 +667,111 @@ const ContestPage = () => {
           <>
             {/* Table View (Desktop or Mobile Table Mode) */}
             <div className={`${mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'} h-100`}>
-              <div className="custom-table-wrapper table-responsive border rounded h-100" style={{ overflow: 'auto', opacity: isPending ? 0.7 : 1 }}>
+              <div ref={tableScrollRef} className="custom-table-wrapper table-responsive border rounded h-100" style={{ overflow: 'auto', opacity: isPending ? 0.7 : 1 }}>
                 {isPending && <div className="position-absolute w-100 h-100 d-flex justify-content-center align-items-center" style={{ zIndex: 10, backgroundColor: 'rgba(255,255,255,0.5)' }}><Spinner animation="border" /></div>}
-                <Table hover className="custom-table novel-rankings-table contest-table">
+                <Table hover className="custom-table novel-rankings-table contest-table" style={{ tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: '50px' }} />
+                    <col style={{ width: '65px' }} />
+                    <col style={{ width: '80px' }} />
+                    <col style={{ width: '200px' }} />
+                    <col style={{ width: '110px' }} />
+                    <col style={{ width: '90px' }} />
+                    <col style={{ width: '90px' }} />
+                    <col style={{ width: '70px' }} />
+                    <col style={{ width: '70px' }} />
+                    <col style={{ width: '55px' }} />
+                    <col style={{ width: '300px' }} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th onClick={() => requestSort('Rank')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '40px' }}>
+                      <th onClick={() => requestSort('Rank')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem' }}>
                         <div className="d-flex align-items-center justify-content-center"><span>순위</span></div>
                       </th>
-                      <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem', width: '55px' }}>
+                      <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem' }}>
                         <div className="d-flex align-items-center justify-content-center"><span>변동</span></div>
                       </th>
-                      <th style={{ fontSize: '0.85rem', width: '70px', textAlign: 'center' }}>
+                      <th style={{ fontSize: '0.85rem', textAlign: 'center' }}>
                         <span>수상</span>
                       </th>
-                      <th style={{ fontSize: '0.85rem', whiteSpace: 'normal', minWidth: '180px' }}>
+                      <th style={{ fontSize: '0.85rem', whiteSpace: 'normal' }}>
                         <span>제목</span>
                       </th>
-                      <th style={{ fontSize: '0.85rem', textAlign: 'left', whiteSpace: 'normal', minWidth: '90px' }}>
-                        <span>작가</span> 
+                      <th style={{ fontSize: '0.85rem', textAlign: 'left', whiteSpace: 'normal' }}>
+                        <span>작가</span>
                       </th>
-                      <th onClick={() => requestSort('View')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '70px' }}>
+                      <th onClick={() => requestSort('View')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
                         <div className="d-flex align-items-center"><span>총 조회수</span></div>
                       </th>
-                      <th onClick={() => requestSort('view_change')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '70px' }}>
+                      <th onClick={() => requestSort('view_change')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
                         <div className="d-flex align-items-center"><span>일간 조회수</span></div>
                       </th>
-                      <th onClick={() => requestSort('like_to_view_ratio')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '50px' }}>
+                      <th onClick={() => requestSort('like_to_view_ratio')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
                         <div className="d-flex align-items-center"><span>추천비</span></div>
                       </th>
-                      <th onClick={() => requestSort('RetentionRate')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '50px' }}>
+                      <th onClick={() => requestSort('RetentionRate')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
                         <div className="d-flex align-items-center"><span>연독률</span></div>
                       </th>
-                      <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '30px' }}>
+                      <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
                         <div className="d-flex align-items-center"><span>회차</span></div>
                       </th>
-                      <th style={{ fontSize: '0.85rem', textAlign: 'left', minWidth: '300px' }}>태그</th>
+                      <th style={{ fontSize: '0.85rem', textAlign: 'left' }}>태그</th>
                     </tr>
                   </thead>
                   <tbody>
                     {processedNovels.length > 0 ? (
-                      processedNovels.map((novel) => (
-                        <tr key={novel.ID} className={`${novel.View === -1 ? 'placeholder-row' : ''}`}>
-                          <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Rank}</td>
-                          <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></td>
-                          <td className="text-center align-middle">
-                            {renderAwardBadge(novel.award)}
-                          </td>
-                          <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }} className="align-middle">
-                            {novel.View === -1 ? `삭제된 소설 (${novel.ID})` : (
-                              <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link>
-                            )}
-                          </td>
-                          <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>
-                            {novel.View === -1 ? '-' : (novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)'))}
-                          </td>
-                          <td style={{ fontSize: '0.9rem' }}>
-                            {novel.View === -1 ? '-' : (novel.View != null ? novel.View.toLocaleString() : '-')}
-                          </td>
-                          <td style={{ fontSize: '0.9rem' }}>
-                            {novel.View === -1 ? '-' : novel.view_change.toLocaleString()}
-                          </td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : `${(novel.like_to_view_ratio * 100).toFixed(2)}%`}</td>
-                          <td style={{ fontSize: '0.9rem' }}>
-                            {currentDate && format(currentDate, 'yyyy-MM-dd') < '2025-10-15'
-                              ? '-'
-                              : (typeof novel.RetentionRate === 'number' ? `${(novel.RetentionRate * 100).toFixed(1)}%` : '-')
-                            }
-                          </td>
-                          <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : (novel.Eps?.toLocaleString() ?? '-')}</td>
-                          <td style={{ fontSize: '0.9rem' }}>
-                            <div className="d-flex flex-wrap gap-1">
-                              {(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" className="rounded-pill" onClick={() => handleTagSelect(tag)}>{tag}</Button>))}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                      <>
+                        {tablePaddingTop > 0 && (
+                          <tr><td colSpan={11} style={{ height: `${tablePaddingTop}px`, padding: 0, border: 'none' }} /></tr>
+                        )}
+                        {tableVirtualItems.map((virtualRow) => {
+                          const novel = processedNovels[virtualRow.index];
+                          return (
+                            <tr
+                              key={novel.ID}
+                              data-index={virtualRow.index}
+                              ref={tableVirtualizer.measureElement}
+                              className={novel.View === -1 ? 'placeholder-row' : ''}
+                            >
+                              <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Rank}</td>
+                              <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></td>
+                              <td className="text-center align-middle">
+                                {renderAwardBadge(novel.award)}
+                              </td>
+                              <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }} className="align-middle">
+                                {novel.View === -1 ? `삭제된 소설 (${novel.ID})` : (
+                                  <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link>
+                                )}
+                              </td>
+                              <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>
+                                {novel.View === -1 ? '-' : (novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)'))}
+                              </td>
+                              <td style={{ fontSize: '0.9rem' }}>
+                                {novel.View === -1 ? '-' : (novel.View != null ? novel.View.toLocaleString() : '-')}
+                              </td>
+                              <td style={{ fontSize: '0.9rem' }}>
+                                {novel.View === -1 ? '-' : novel.view_change.toLocaleString()}
+                              </td>
+                              <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : `${(novel.like_to_view_ratio * 100).toFixed(2)}%`}</td>
+                              <td style={{ fontSize: '0.9rem' }}>
+                                {currentDate && format(currentDate, 'yyyy-MM-dd') < '2025-10-15'
+                                  ? '-'
+                                  : (typeof novel.RetentionRate === 'number' ? `${(novel.RetentionRate * 100).toFixed(1)}%` : '-')
+                                }
+                              </td>
+                              <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : (novel.Eps?.toLocaleString() ?? '-')}</td>
+                              <td style={{ fontSize: '0.9rem' }}>
+                                <div className="d-flex flex-wrap gap-1">
+                                  {(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" className="rounded-pill" onClick={() => handleTagSelect(tag)}>{tag}</Button>))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {tablePaddingBottom > 0 && (
+                          <tr><td colSpan={11} style={{ height: `${tablePaddingBottom}px`, padding: 0, border: 'none' }} /></tr>
+                        )}
+                      </>
                     ) : (
                       <tr><td colSpan={11} className="text-center py-4">현재 필터와 일치하는 결과가 없습니다.</td></tr>
                     )}
@@ -786,49 +781,59 @@ const ContestPage = () => {
             </div>
 
             {/* Mobile Card View */}
-            <div className={`${mobileViewMode === 'card' ? 'd-block' : 'd-none'} d-md-none h-100 border rounded`} style={{ overflowY: 'auto', overflowX: 'hidden' }}>
-              <div className="p-1">
-                {processedNovels.length > 0 ? (
-                  processedNovels.map((novel) => (
-                  <Card key={novel.ID} className="mb-1 shadow-sm">
-                    <Card.Body className="p-2">
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <div className="flex-grow-1 me-2">
-                          <div className="d-flex align-items-center gap-2">
-                            <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Rank}위</span> 
-                            <div className="d-flex align-items-center">
-                              {renderAwardBadge(novel.award)} 
+            <div ref={mobileScrollRef} className={`${mobileViewMode === 'card' ? 'd-block' : 'd-none'} d-md-none h-100 border rounded`} style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+              {processedNovels.length > 0 ? (
+                <div style={{ height: `${mobileVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+                  {mobileVirtualItems.map((virtualRow) => {
+                    const novel = processedNovels[virtualRow.index];
+                    return (
+                      <div
+                        key={novel.ID}
+                        data-index={virtualRow.index}
+                        ref={mobileVirtualizer.measureElement}
+                        style={{ position: 'absolute', top: 0, left: '4px', right: '4px', paddingBottom: '4px', transform: `translateY(${virtualRow.start}px)` }}
+                      >
+                        <Card className="shadow-sm">
+                          <Card.Body className="p-2">
+                            <div className="d-flex justify-content-between align-items-start mb-2">
+                              <div className="flex-grow-1 me-2">
+                                <div className="d-flex align-items-center gap-2">
+                                  <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Rank}위</span>
+                                  <div className="d-flex align-items-center">
+                                    {renderAwardBadge(novel.award)}
+                                  </div>
+                                </div>
+                                <h5 className="mb-0 h6 mt-1" style={{ wordBreak: 'break-all' }}>
+                                    {novel.View === -1 ? (
+                                      <span className="text-muted">{`삭제된 소설 (${novel.ID})`}</span>
+                                    ) : (
+                                      <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title || '(제목 없음)'}</Link>
+                                    )}
+                                </h5>
+                                <div className="text-muted small mt-1">
+                                  {novel.View !== -1 && (
+                                    <span>{novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)')}</span>
+                                  )}
+                                  {novel.View !== -1 && <span className="mx-1">·</span>}
+                                  <span>{novel.View === -1 ? '-' : `${novel.Eps}화`}</span>
+                                </div>
+                              </div>
+                              <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></div>
                             </div>
-                          </div>
-                          <h5 className="mb-0 h6 mt-1" style={{ wordBreak: 'break-all' }}>
-                              {novel.View === -1 ? (
-                                <span className="text-muted">{`삭제된 소설 (${novel.ID})`}</span>
-                              ) : (
-                                <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title || '(제목 없음)'}</Link>
-                              )}
-                          </h5>
-                          <div className="text-muted small mt-1">
-                            {novel.View !== -1 && (
-                              <span>{novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)')}</span>
+                            {novel.Tags && novel.Tags.length > 0 && (
+                              <div className="pt-2 border-top">
+                                <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
+                              </div>
                             )}
-                            {novel.View !== -1 && <span className="mx-1">·</span>}
-                            <span>{novel.View === -1 ? '-' : `${novel.Eps}화`}</span>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></div>
+                          </Card.Body>
+                        </Card>
                       </div>
-                      {novel.Tags && novel.Tags.length > 0 && (
-                        <div className="pt-2 border-top">
-                          <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
-                        </div>
-                      )}
-                    </Card.Body>
-                  </Card>
-                  ))
-                ) : (
-                  <Alert variant="info" className="text-center m-0">현재 필터와 일치하는 결과가 없습니다.</Alert>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Alert variant="info" className="text-center m-1">현재 필터와 일치하는 결과가 없습니다.</Alert>
+              )}
             </div>
           </>
         )}
