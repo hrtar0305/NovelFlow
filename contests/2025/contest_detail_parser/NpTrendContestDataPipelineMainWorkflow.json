@@ -5,7 +5,7 @@
     "FanOutTasksToSQS": {
       "Type": "Task",
       "Comment": "Reads novel IDs from S3 and sends them as individual messages to a Task SQS Queue.",
-      "Resource": "arn:aws:lambda:ap-northeast-2:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-get-id-list",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-get-id-list",
       "Parameters": {
         "execution_id.$": "$$.Execution.Name",
         "date.$": "$$.State.EnteredTime"
@@ -34,7 +34,7 @@
     "CheckIfDone": {
       "Type": "Task",
       "Comment": "Checks if the number of messages in the Result Queue matches the number of fanned-out tasks.",
-      "Resource": "arn:aws:lambda:ap-northeast-2:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-check-completion",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-check-completion",
       "Parameters": {
         "execution_id.$": "$$.Execution.Name",
         "fanned_out_count.$": "$.FanOutResult.fanned_out_count"
@@ -61,7 +61,7 @@
     "ConsolidateContestData": {
       "Type": "Task",
       "Comment": "Collects all messages from the Result SQS Queue, calculates metrics, and saves to DynamoDB.",
-      "Resource": "arn:aws:lambda:ap-northeast-2:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-consolidate-data",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-consolidate-data",
       "Parameters": {
         "execution_id.$": "$$.Execution.Name",
         "fanned_out_count.$": "$.FanOutResult.fanned_out_count"

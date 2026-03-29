@@ -109,7 +109,7 @@ def process_csv_row(item):
                     seen_tags.add(stripped_tag)
             item['Tags'] = ordered_unique_tags
             
-        except (ValueError, SyntaxError):
+        except (ValueError, SyntaxError) as e:
             logger.error(f"Could not process Tags field: {item.get('Tags')}. Error: {e}")
             raise e
     
