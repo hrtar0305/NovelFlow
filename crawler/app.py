@@ -307,6 +307,24 @@ def _get_episode_list_html(session, novel_id, sort_order, page=0):
     response.raise_for_status()
     return response.text
 
+def _parse_valid_episodes(soup):
+    """Returns list of (ep_id_str, ep_num_int) for all valid episodes in page soup.
+    Valid = EP.\\d+ format number + YY.MM.DD format date + novel_count_view class span present."""
+    result = []
+    for ep_div in soup.select(Config.Selectors.EPISODE_INFO_DIV):
+        ep_num_el = ep_div.select_one(Config.Selectors.EPISODE_NUMBER)
+        ep_date_el = ep_div.select_one(Config.Selectors.EPISODE_UPLOAD_DATE)
+        if (ep_num_el and ep_date_el and
+                re.match(r"^EP\.\s*\d+$", ep_num_el.get_text(strip=True)) and
+                re.match(r"^\d{2}\.\d{2}\.\d{2}$", ep_date_el.get_text(strip=True))):
+            view_span = ep_div.select_one(Config.Selectors.EPISODE_VIEW_COUNT_SPAN)
+            if view_span:
+                m = re.search(r'novel_count_view_(\d+)', ' '.join(view_span.get('class', [])))
+                if m:
+                    ep_num = int(re.search(r'\d+', ep_num_el.get_text(strip=True)).group())
+                    result.append((m.group(1), ep_num))
+    return result
+
 def _get_episode_view_counts(session, novel_id, episode_ids, execution_id):
     """Fetches view counts for a list of episode IDs via /proc/novel."""
     if not episode_ids:
@@ -409,73 +427,100 @@ def parse_novel_details(event, context):
                     "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
                     "Synopsis": soup.select_one(Config.Selectors.SYNOPSIS).get_text(separator='\n', strip=True),
                     "FirstEpView": -1, "FirstEpNum": -1,
+                    "Ep30View": -1, "Ep30Num": -1,
+                    "RecentBaseView": -1, "RecentBaseNum": -1,
                     "TargetLatestEpView": -1, "TargetLatestEpNum": -1,
                 }
 
                 # Fetch episode data for retention rate calculation
                 if item["Eps"] > 0:
-                    first_ep_id = None
-                    first_ep_num = -1
+                    early_valid_eps = []   # (ep_id_str, ep_num_int), sort=DOWN order (oldest first)
+                    recent_valid_eps = []  # (ep_id_str, ep_num_int), sort=UP order (newest first)
+
+                    # --- Early window: sort=DOWN, 최대 2페이지 ---
+                    # 페이지당 2개 기준, 유효 30개 확보.
+                    # 중복 ep_id 감지로 API 마지막 페이지 반복 반환 방어.
+                    early_seen_ids: set = set()
                     try:
-                        html_first = _get_episode_list_html(session, novel_id, 'DOWN')
-                        soup_first = BeautifulSoup(html_first, 'html.parser')
-                        for ep_div in soup_first.select(Config.Selectors.EPISODE_INFO_DIV):
-                            ep_num_el = ep_div.select_one(Config.Selectors.EPISODE_NUMBER)
-                            ep_date_el = ep_div.select_one(Config.Selectors.EPISODE_UPLOAD_DATE)
-                            if (ep_num_el and ep_date_el and
-                                    re.match(r"^EP\.\s*\d+$", ep_num_el.get_text(strip=True)) and
-                                    re.match(r"^\d{2}\.\d{2}\.\d{2}$", ep_date_el.get_text(strip=True))):
-                                view_span = ep_div.select_one(Config.Selectors.EPISODE_VIEW_COUNT_SPAN)
-                                if view_span:
-                                    m = re.search(r'novel_count_view_(\d+)', ' '.join(view_span.get('class', [])))
-                                    if m:
-                                        first_ep_id = m.group(1)
-                                        first_ep_num = int(re.search(r'\d+', ep_num_el.get_text(strip=True)).group())
-                                        break
+                        for page_num in range(2):
+                            html = _get_episode_list_html(session, novel_id, 'DOWN', page=page_num)
+                            soup_ep = BeautifulSoup(html, 'html.parser')
+                            if not soup_ep.select(Config.Selectors.EPISODE_INFO_DIV):
+                                break  # 진짜 빈 페이지
+                            parsed = _parse_valid_episodes(soup_ep)
+                            page_ids = {ep[0] for ep in parsed}
+                            if page_ids and page_ids.issubset(early_seen_ids):
+                                break  # 중복 페이지 — 마지막 페이지 반복 반환
+                            for ep in parsed:
+                                if ep[0] not in early_seen_ids:
+                                    early_valid_eps.append(ep)
+                                    early_seen_ids.add(ep[0])
+                            if len(early_valid_eps) >= 30:
+                                break
                     except requests.exceptions.RequestException as ep_e:
-                        _log(logging.WARNING, execution_id, f"Failed to fetch first episode list: {ep_e}", novel_id=novel_id)
+                        _log(logging.WARNING, execution_id, f"Failed to fetch early episode list: {ep_e}", novel_id=novel_id)
 
+                    # --- Recent window: sort=UP, 최대 5페이지 ---
+                    # Early의 2.5배 탐색: 최신화 앞에 BONUS + 역순 30개 확보.
+                    recent_seen_ids: set = set()
+                    try:
+                        for page_num in range(5):
+                            html = _get_episode_list_html(session, novel_id, 'UP', page=page_num)
+                            soup_ep = BeautifulSoup(html, 'html.parser')
+                            if not soup_ep.select(Config.Selectors.EPISODE_INFO_DIV):
+                                break  # 진짜 빈 페이지
+                            parsed = _parse_valid_episodes(soup_ep)
+                            page_ids = {ep[0] for ep in parsed}
+                            if page_ids and page_ids.issubset(recent_seen_ids):
+                                break  # 중복 페이지
+                            for ep in parsed:
+                                if ep[0] not in recent_seen_ids:
+                                    recent_valid_eps.append(ep)
+                                    recent_seen_ids.add(ep[0])
+                            if len(recent_valid_eps) >= 30:
+                                break
+                    except requests.exceptions.RequestException as ep_e:
+                        _log(logging.WARNING, execution_id, f"Failed to fetch recent episode list: {ep_e}", novel_id=novel_id)
+
+                    # --- 수집된 에피소드로 요청할 ID 목록 결정 ---
+                    first_ep_id = early_valid_eps[0][0] if early_valid_eps else None
+                    ep30_id = early_valid_eps[29][0] if len(early_valid_eps) >= 30 else None
+                    latest_ep_id = recent_valid_eps[0][0] if recent_valid_eps else None
+                    recent_base_id = recent_valid_eps[29][0] if len(recent_valid_eps) >= 30 else None
+
+                    # first가 있으면 배치 요청 실행. latest가 없거나 same-ep이어도 first는 저장.
                     if first_ep_id:
-                        latest_ep_id = None
-                        latest_ep_num = -1
-                        try:
-                            for page_num in range(3):
-                                html_latest = _get_episode_list_html(session, novel_id, 'UP', page=page_num)
-                                soup_latest = BeautifulSoup(html_latest, 'html.parser')
-                                ep_divs = soup_latest.select(Config.Selectors.EPISODE_INFO_DIV)
-                                if not ep_divs:
-                                    break
-                                for ep_div in ep_divs:
-                                    ep_num_el = ep_div.select_one(Config.Selectors.EPISODE_NUMBER)
-                                    ep_date_el = ep_div.select_one(Config.Selectors.EPISODE_UPLOAD_DATE)
-                                    if (ep_num_el and ep_date_el and
-                                            re.match(r"^EP\.\s*\d+$", ep_num_el.get_text(strip=True)) and
-                                            re.match(r"^\d{2}\.\d{2}\.\d{2}$", ep_date_el.get_text(strip=True))):
-                                        view_span = ep_div.select_one(Config.Selectors.EPISODE_VIEW_COUNT_SPAN)
-                                        if view_span:
-                                            m = re.search(r'novel_count_view_(\d+)', ' '.join(view_span.get('class', [])))
-                                            if m:
-                                                latest_ep_id = m.group(1)
-                                                latest_ep_num = int(re.search(r'\d+', ep_num_el.get_text(strip=True)).group())
-                                                break
-                                if latest_ep_id:
-                                    break
-                        except requests.exceptions.RequestException as ep_e:
-                            _log(logging.WARNING, execution_id, f"Failed to fetch latest episode list: {ep_e}", novel_id=novel_id)
+                        ep_ids_to_fetch = list(dict.fromkeys(
+                            eid for eid in [first_ep_id, ep30_id, recent_base_id, latest_ep_id] if eid
+                        ))
+                        view_counts = _get_episode_view_counts(session, novel_id, ep_ids_to_fetch, execution_id)
 
-                        if latest_ep_id and first_ep_id != latest_ep_id:
-                            view_counts = _get_episode_view_counts(session, novel_id, [first_ep_id, latest_ep_id], execution_id)
-                            first_ep_id_int = int(first_ep_id)
+                        first_ep_id_int = int(first_ep_id)
+                        if first_ep_id_int in view_counts:
+                            item["FirstEpView"] = view_counts[first_ep_id_int]
+                            item["FirstEpNum"] = early_valid_eps[0][1]
+                        else:
+                            _log(logging.WARNING, execution_id, "Could not retrieve view count for first episode.", novel_id=novel_id)
+
+                        if latest_ep_id and latest_ep_id != first_ep_id:
                             latest_ep_id_int = int(latest_ep_id)
-                            if first_ep_id_int in view_counts and latest_ep_id_int in view_counts:
-                                item["FirstEpView"] = view_counts[first_ep_id_int]
-                                item["FirstEpNum"] = first_ep_num
+                            if latest_ep_id_int in view_counts:
                                 item["TargetLatestEpView"] = view_counts[latest_ep_id_int]
-                                item["TargetLatestEpNum"] = latest_ep_num
-                            else:
-                                _log(logging.WARNING, execution_id, "Could not retrieve view counts for both episodes.", novel_id=novel_id)
-                        elif latest_ep_id and first_ep_id == latest_ep_id:
-                            _log(logging.INFO, execution_id, "Novel has only one valid episode. Skipping retention data.", novel_id=novel_id)
+                                item["TargetLatestEpNum"] = recent_valid_eps[0][1]
+                        elif latest_ep_id and latest_ep_id == first_ep_id:
+                            _log(logging.INFO, execution_id, "Novel has only one valid episode.", novel_id=novel_id)
+
+                        if ep30_id:
+                            ep30_id_int = int(ep30_id)
+                            if ep30_id_int in view_counts:
+                                item["Ep30View"] = view_counts[ep30_id_int]
+                                item["Ep30Num"] = early_valid_eps[29][1]
+
+                        if recent_base_id:
+                            recent_base_id_int = int(recent_base_id)
+                            if recent_base_id_int in view_counts:
+                                item["RecentBaseView"] = view_counts[recent_base_id_int]
+                                item["RecentBaseNum"] = recent_valid_eps[29][1]
                 else:
                     _log(logging.INFO, execution_id, "Novel has 0 episodes. Skipping retention data.", novel_id=novel_id)
 

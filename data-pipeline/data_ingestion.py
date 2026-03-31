@@ -49,7 +49,7 @@ def lambda_handler(event, context):
         with table.batch_writer() as batch:
             for item_dict in items:
                 processed_item = process_csv_row(item_dict)
-                final_item = {k: v for k, v in processed_item.items() if v != ""}
+                final_item = {k: v for k, v in processed_item.items() if v != "" and v != -1}
                 batch.put_item(Item=final_item)
                 processed_items.append(processed_item)
         
@@ -79,23 +79,15 @@ def process_csv_row(item):
     Raises an exception if any conversion fails.
     """
     # Convert numeric fields
-    for key in ['Ranking', 'Score', 'View', 'Like', 'Fav', 'Alr', 'Eps']:
+    for key in ['Ranking', 'Score', 'View', 'Like', 'Fav', 'Alr', 'Eps',
+                'FirstEpView', 'FirstEpNum', 'Ep30View', 'Ep30Num',
+                'RecentBaseView', 'RecentBaseNum', 'TargetLatestEpView', 'TargetLatestEpNum']:
         if item.get(key):
             try:
                 item[key] = int(item[key])
             except (ValueError, TypeError) as e:
                 logger.error(f"Could not convert {key} to int for value {item[key]}.")
                 raise e
-
-    # Convert RetentionRate to Decimal (empty string means data unavailable — omit the field)
-    if item.get('RetentionRate'):
-        try:
-            item['RetentionRate'] = Decimal(item['RetentionRate'])
-        except (ValueError, TypeError) as e:
-            logger.error(f"Could not convert RetentionRate to Decimal for value {item['RetentionRate']}.")
-            raise e
-    else:
-        item.pop('RetentionRate', None)
     
     # Keep ID and AuthorID as strings
     item['ID'] = str(item['ID'])
