@@ -161,32 +161,16 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
         reverse=True
     )
 
-    # 2. Calculate RetentionRate and add rank for each item
+    # 2. Add rank for each item
     processed_items = []
     for i, item in enumerate(sorted_items):
         item['Rank'] = i + 1
-        first_view = item.get("FirstEpView", -1)
-        latest_view = item.get("TargetLatestEpView", -1)
-        first_ep_num = item.get("FirstEpNum", -1)
-        latest_ep_num = item.get("TargetLatestEpNum", -1)
-
-        episode_diff = latest_ep_num - first_ep_num
-        if first_view > 0 and episode_diff > 0:
-            r_value = math.pow(latest_view / first_view, 1 / episode_diff)
-            item["RetentionRate"] = Decimal(f"{r_value:.4f}")
-        else:
-            item["RetentionRate"] = None
-
         processed_items.append(item)
 
     _log(logging.INFO, execution_id, f"Writing {len(processed_items)} items to DynamoDB.")
     
     with dynamodb_table.batch_writer() as batch:
         for item in processed_items:
-            # The RetentionRate is already a Decimal. Other floats are not expected.
-            # Simply put the item. The boto3 library handles Decimal types correctly.
-            if item.get("RetentionRate") is None:
-                item.pop("RetentionRate", None) # Remove None value if it exists
             batch.put_item(Item=item)
     _log(logging.INFO, execution_id, "Batch write to DynamoDB complete.")
     
