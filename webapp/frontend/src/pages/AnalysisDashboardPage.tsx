@@ -1,10 +1,10 @@
-import { Container, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { OverlayTrigger, Tooltip } from 'react-bootstrap';
 import TrendCard from './../components/TrendCard';
 import { InfoCircle } from 'react-bootstrap-icons';
 
 const AnalysisDashboardPage = () => {
   return (
-    <Container className="py-3 py-md-4">
+    <div className="np-page-container">
       <div className="d-flex align-items-center gap-2 mb-2">
         <h1 className="h2 mb-0 fs-page-title">데이터 분석</h1>
         <OverlayTrigger
@@ -32,7 +32,7 @@ const AnalysisDashboardPage = () => {
         </div>
         {/* 추가적인 트렌드 분석 기능 카드를 여기에 추가할 수 있습니다. */}
       </div>
-    </Container>
+    </div>
   );
 };
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
 import { InfoCircle } from 'react-bootstrap-icons';
 import { getAvailableDates, analyzeTagTrends } from '../services/api';
-import { Container, Alert, Spinner, Card, OverlayTrigger, Tooltip, Badge, Row, Col, ButtonGroup, Button } from 'react-bootstrap';
+import { Alert, Spinner, Card, OverlayTrigger, Tooltip, Badge, Row, Col, ButtonGroup, Button } from 'react-bootstrap';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 
@@ -308,7 +308,7 @@ const TagTrendsPage: React.FC = () => {
             </div>
             <hr className="my-2" />
             <div className="d-flex justify-content-between align-items-center mb-1">
-                <span className="fw-bold text-dark">{chartTitle}</span>
+                <span className="fw-bold">{chartTitle}</span>
             </div>
             <div style={{ height: '60px', marginLeft: '-10px', marginRight: '-10px' }}>
                 <ResponsiveContainer>
@@ -323,7 +323,7 @@ const TagTrendsPage: React.FC = () => {
   };
 
   return (
-    <Container className="py-3 py-md-4">
+    <div className="np-page-container">
       <div className="d-flex align-items-center gap-2 mb-2">
         <h1 className="h2 mb-0 fs-page-title">태그 트렌드</h1>
         <OverlayTrigger
@@ -367,7 +367,7 @@ const TagTrendsPage: React.FC = () => {
             <Spinner animation="border" role="status">
                 <span className="visually-hidden">Loading...</span>
             </Spinner>
-            <p className='mt-2'>데이터를 분석하고 있습니다...</p>
+            <p className='mt-2 text-muted'>데이터를 분석하고 있습니다...</p>
         </div>
       )}
 
@@ -413,7 +413,7 @@ const TagTrendsPage: React.FC = () => {
           </Col>
         </Row>
       )}
-    </Container>
+    </div>
   );
 };
 

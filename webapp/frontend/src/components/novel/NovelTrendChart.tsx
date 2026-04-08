@@ -36,7 +36,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="custom-tooltip" style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', border: '1px solid #ccc', padding: '10px', borderRadius: '5px' }}>
+      <div className="custom-tooltip" style={{ padding: '10px' }}>
         <p className="label fw-bold">{`${label}`}</p>
         {payload.map((p: any) => {
           const originalKey = Object.keys(CHART_CONFIG).find(k => CHART_CONFIG[k].name === p.name);
@@ -92,12 +92,20 @@ const CustomDot = (props: any) => {
 const SingleChart = ({ data, metric, config, isModal = false }: { data: NovelData[], metric: string, config: ChartConfig[string], isModal?: boolean }) => (
   <ResponsiveContainer width="100%" height={isModal ? '100%' : 250}>
     <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-      <CartesianGrid strokeDasharray="3 3" />
-      <XAxis dataKey="Date" />
-      <YAxis 
-        reversed={metric === 'Ranking'} 
-        domain={['auto', 'auto']} 
-        allowDecimals={false} 
+      <CartesianGrid strokeDasharray="3 3" stroke="var(--np-border)" />
+      <XAxis
+        dataKey="Date"
+        tick={{ fill: 'var(--np-text-secondary)', fontSize: 12 }}
+        axisLine={{ stroke: 'var(--np-border)' }}
+        tickLine={{ stroke: 'var(--np-border)' }}
+      />
+      <YAxis
+        reversed={metric === 'Ranking'}
+        domain={['auto', 'auto']}
+        allowDecimals={false}
+        tick={{ fill: 'var(--np-text-secondary)', fontSize: 12 }}
+        axisLine={{ stroke: 'var(--np-border)' }}
+        tickLine={{ stroke: 'var(--np-border)' }}
       />
       <Tooltip content={<CustomTooltip />} />
       <Legend />

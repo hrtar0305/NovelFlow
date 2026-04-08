@@ -1,8 +1,6 @@
 /* Custom styles for NP-Trend, inspired by the reference design */
 
 body {
-  background-color: #f9fafb; /* Light gray background */
-  color: #111827; /* Dark gray text */
   -webkit-text-size-adjust: 100%; /* Prevent font size inflation in mobile Safari */
   text-size-adjust: 100%;
 }
@@ -11,22 +9,168 @@ body {
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 50;
-  background-color: rgba(17, 24, 39, 0.9);
-  color: white;
-  padding: 0.5rem 1rem;
+  z-index: 100;
+  background-color: #0d1b2a;
+  border-bottom: 1px solid var(--np-border);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Wrapper for the search bar in the header to control its responsive size */
-.header-search-wrapper {
-  /* Let it grow and shrink, starting from a basis of 0. */
-  /* This is key to allowing it to shrink below its content size in a flex context. */
-  flex: 1 1 0;
-  min-width: 0; /* Explicitly allow shrinking to zero */
-  max-width: 450px; /* Sets a reasonable max width on large screens */
+.app-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 56px;
+  padding: 0 1.25rem;
+  max-width: 1600px;
+  margin: 0 auto;
 }
+
+/* Brand */
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-decoration: none;
+  flex-shrink: 0;
+  margin-right: 0.5rem;
+}
+
+.brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--np-accent) 0%, #6b8cff 100%);
+  color: #0b1622;
+  font-weight: 900;
+  font-size: 1rem;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
+}
+
+.brand-text {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--np-text-heading);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Desktop nav */
+.app-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex-shrink: 0;
+  margin-right: 0.5rem;
+}
+
+.app-header-link {
+  position: relative;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--np-text-secondary);
+  text-decoration: none;
+  transition: color 0.15s, background-color 0.15s;
+  white-space: nowrap;
+}
+
+.app-header-link:hover {
+  color: var(--np-text-heading);
+  background-color: rgba(255,255,255,0.06);
+}
+
+.app-header-link--active {
+  color: var(--np-accent) !important;
+  background-color: rgba(61, 180, 242, 0.1);
+}
+
+.app-header-link--active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--np-accent);
+  border-radius: 2px 2px 0 0;
+}
+
+/* Search wrapper */
+.header-search-wrapper {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 420px;
+  margin-left: auto;
+}
+
+/* Hamburger */
+.app-header-hamburger {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  background: none;
+  border: 1px solid var(--np-border);
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+.app-header-hamburger:hover {
+  border-color: var(--np-text-secondary);
+}
+
+.hamburger-line {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background-color: var(--np-text-secondary);
+  border-radius: 2px;
+  transition: transform 0.2s, opacity 0.2s;
+  transform-origin: center;
+}
+.open-1 { transform: translateY(7px) rotate(45deg); }
+.open-2 { opacity: 0; }
+.open-3 { transform: translateY(-7px) rotate(-45deg); }
+
+/* Mobile dropdown */
+.app-header-mobile-menu {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease-out;
+  background-color: #0d1b2a;
+  border-top: 1px solid transparent;
+}
+.app-header-mobile-menu.is-open {
+  max-height: 300px;
+  border-top-color: var(--np-border);
+}
+
+.mobile-nav-link {
+  display: block;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.925rem;
+  font-weight: 500;
+  color: var(--np-text-secondary);
+  text-decoration: none;
+  transition: color 0.15s, background-color 0.15s;
+  border-bottom: 1px solid var(--np-border);
+}
+.mobile-nav-link:last-child { border-bottom: none; }
+.mobile-nav-link:hover { color: var(--np-text-heading); background-color: rgba(255,255,255,0.04); }
+.mobile-nav-link--active { color: var(--np-accent) !important; background-color: rgba(61,180,242,0.07); }
+
+/* Wrapper for the search bar in the header to control its responsive size */
 
 .search-input {
   width: 100%;
@@ -36,7 +180,7 @@ body {
   border: 1px solid #4b5563; /* gray-600 */
   background-color: #374151; /* gray-700 */
   color: white;
-  font-size: 1rem; /* 16px to prevent mobile auto-zoom */
+  font-size: 0.9rem;
 }
 
 .search-input::placeholder {
@@ -63,218 +207,37 @@ body {
   padding-bottom: 0.2rem !important;
 }
 
-.search-results {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 0.5rem;
-  background-color: white;
-  border: 1px solid #e5e7eb; /* gray-200 */
-  border-radius: 0.5rem; /* rounded-lg */
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  z-index: 10;
-  max-height: 300px;
-  overflow-y: auto;
-}
 
-.search-result-item {
-  padding: 0.75rem 1rem;
-  cursor: pointer;
-  color: #111827; /* gray-900 */
-}
-
-.search-result-item:hover {
-  background-color: #f3f4f6; /* gray-100 */
-}
-
-.search-result-item a {
-  text-decoration: none;
-  color: inherit;
-  display: block;
-}
-
-.search-result-item small {
-  color: #6b7280; /* gray-500 */
-}
-
-.app-header-container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1rem;
-  flex-wrap: nowrap; /* Force items to stay on one line */
-}
-
-.app-header-left {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.app-header-center {
-  flex-grow: 1;
-  display: flex;
-  padding: 0 1rem;
-}
-
-.app-header-right {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.app-header-brand {
-  font-size: 1.25rem; /* text-xl */
-  font-weight: 700; /* font-bold */
-  color: white;
-  text-decoration: none;
-}
-
-.app-header-nav {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem; /* space-x-2 */
-}
-
-.app-header-link {
-  color: #d1d5db; /* gray-300 */
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.375rem; /* rounded-md */
-  text-decoration: none;
-  font-size: 0.875rem; /* text-sm */
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
-.app-header-link:hover {
-  background-color: #374151; /* gray-700 */
-  color: white;
-}
-
-/* 헤더 네비게이션 링크 폰트 두께를 normal로 재설정 */
-.app-header .navbar-nav .nav-link {
-  font-weight: normal;
-  color: #d1d5db; /* gray-300 */
-  transition: color 0.2s;
-}
-
-.app-header .navbar-nav .nav-link:hover {
-  color: white;
-}
-
-/* active 상태의 링크 (현재 페이지) */
-.app-header .navbar-nav .nav-link.active {
-  font-weight: 500;
-  color: white;
-}
-
-/* On mobile, make the collapsed navbar an overlay instead of pushing content down */
-@media (max-width: 991.98px) { /* Bootstrap's 'lg' breakpoint */
-  /* Override Bootstrap's default display:none to allow for our custom animation */
-  .app-header .navbar-collapse.collapse:not(.show) {
-    display: block;
-  }
-
-  .app-header .navbar-collapse {
-    position: absolute;
-    top: 100%; /* Position it right below the header's main bar */
-    left: 0;
-    right: 0;
-    background-color: rgba(17, 24, 39, 0.98); /* Use a slightly more opaque background */
-    padding: 1rem;
-    z-index: 49; /* Below the main header but above page content */
-    border-bottom-left-radius: 0.5rem;
-    border-bottom-right-radius: 0.5rem;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-    
-    /* Use transform and opacity for smoother, GPU-accelerated animation */
-    transition: opacity 0.25s ease-out, transform 0.25s ease-out;
-    transform: translateY(-10px); /* Start slightly above to slide down */
-    opacity: 0;
-    pointer-events: none; /* Prevent interaction when hidden */
-  }
-  /* When Bootstrap adds 'show' class to indicate it's open */
-  .app-header .navbar-collapse.show {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-  }
-  /* During the transition (Bootstrap's 'collapsing' class) */
-  .app-header .navbar-collapse.collapsing {
-    /* Override Bootstrap's height-based animation to use our transform/opacity animation */
-    height: auto !important;
-    display: block;
-  }
-}
-
-/* Custom styles for the navbar toggle (hamburger button) */
-.custom-navbar-toggle {
-  padding: 0.15rem 0.5rem;
-  font-size: 1rem;
-}
-.custom-navbar-toggle .navbar-toggler-icon {
-  width: 1.2em;
-  height: 1.2em;
-}
 
 
 /* Custom Table Styles */
-.custom-table-wrapper {
-  border: 1px solid #d1d5db; /* gray-300 */
-  border-radius: 0.5rem; /* rounded-lg */
-  overflow: auto; /* Enable both vertical and horizontal scrolling */
-  background-color: #ffffff;
-  position: relative;
-}
-
-.custom-table thead {
-  background-color: #f9fafb; /* gray-50 */
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
 .custom-table th {
-  padding: 0.8rem 1rem; /* A bit more vertical padding */
+  padding: 0.8rem 1rem;
   font-size: 0.95rem;
-  font-weight: 500; /* Regular weight for headers */
-  white-space: nowrap; /* Prevent header text from wrapping */
+  font-weight: 500;
+  white-space: nowrap;
   vertical-align: middle;
 }
 
 .cursor-pointer.sortable-header:hover {
-  background-color: #f0f0f0; /* A slightly darker grey for hover */
+  background-color: var(--np-surface-raised) !important;
+  color: var(--np-text-heading) !important;
 }
+
 
 .custom-table td {
-  padding: 0.8rem 1rem; /* A bit more vertical padding */
-  font-size: 0.9rem;   /* Larger base font size */
-  color: #374151; /* gray-700 */
-  border-bottom: 1px solid #e5e7eb; /* Standard border for rows */
+  padding: 0.8rem 1rem;
+  font-size: 0.9rem;
   white-space: nowrap;
   vertical-align: middle;
-  font-weight: normal; /* Remove all default bolding */
-}
-
-
-
-.custom-table tbody tr:hover {
-  background-color: #f9fafb; /* gray-50 */
+  font-weight: normal;
 }
 
 /* Custom Form Styles */
 .form-label {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #374151;
-}
-
-.form-control {
-  border: 1px solid #d1d5db; /* gray-300 */
+  color: var(--np-text-primary) !important;
 }
 
 /* Ensure react-datepicker input has enough width */
@@ -331,8 +294,8 @@ body {
 
 /* Ensure selected range is clearly visible */
 .react-datepicker__day--in-range {
-    background-color: #bfdbfe; /* A light blue for the range */
-    color: #1e3a8a;
+    background-color: rgba(61, 180, 242, 0.25);
+    color: var(--np-text-primary);
 }
 
 .react-datepicker__day--range-start,
@@ -363,21 +326,6 @@ body {
   white-space: nowrap;
   vertical-align: middle;
   border-radius: 0.375rem;
-}
-
-.rank-up {
-  background-color: #e6f4ea; /* Light Pastel Green */
-  color: #1e8449; /* Darker Green */
-}
-
-.rank-down {
-  background-color: #fce8e6; /* Light Pastel Red */
-  color: #c0392b; /* Darker Red */
-}
-
-.rank-same {
-  background-color: #f1f3f5; /* Light Pastel Gray */
-  color: #495057; /* Darker Gray */
 }
 
 .contest-table .rank-change-badge {
@@ -485,14 +433,6 @@ body {
   text-decoration: underline;
 }
 
-/* Ensure sticky header for Tag Rankings table */
-.tag-rankings-table thead {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 100 !important; /* Very high z-index to ensure it's on top */
-  background-color: #f9fafb !important; /* Ensure background is not transparent */
-}
-
 .subtle-link {
   color: inherit; /* Inherit color from parent paragraph */
   text-decoration: none; /* Remove underline by default */
@@ -577,9 +517,9 @@ body {
 
 
 /* 6. 선택 범위 내 날짜 (in-range)의 배경색 설정 */
-.react-datepicker__day--in-range {
-    background-color: #bfdbfe !important; /* 밝은 파란색 */
-    color: #1e3a8a !important;
+.react-datepicker__day--in-range:not(.react-datepicker__day--range-start):not(.react-datepicker__day--range-end) {
+    background-color: rgba(61, 180, 242, 0.25) !important;
+    color: var(--np-text-primary) !important;
 }
 
 /* 7. 범위의 시작/끝 날짜 (range-start/end)의 배경색 설정 */
@@ -610,6 +550,8 @@ body {
   padding: 0.75rem;
   text-align: left;
 }
+
+.tag-filter-input-group { max-width: 300px; }
 
 .tag-button-compact {
   font-size: 0.75rem !important; /* Smaller font (12px if base is 16px) */
@@ -794,7 +736,7 @@ body {
 
 @media (max-width: 767.98px) {
   .datepicker-help-text-container p {
-    font-size: 0.7em; /* Smaller on mobile */
+    font-size: 0.75rem;
   }
 }
 
@@ -889,6 +831,55 @@ h1.fs-page-title {
   }
 }
 
+/* Author Page — theme-aware card & readability */
+.author-novel-card-body {
+  background-color: var(--np-surface);
+  border-radius: inherit;
+}
+.author-novel-title-link {
+  color: var(--np-accent) !important;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.author-stats-inline {
+  font-size: 1rem;
+  color: var(--np-text-primary);
+  margin-bottom: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+.author-stats-dot {
+  color: var(--np-text-secondary);
+  opacity: 0.4;
+}
+.author-novel-title-link:hover {
+  color: var(--np-accent-hover) !important;
+  text-decoration: underline;
+}
+.author-stat-label {
+  color: var(--np-text-secondary);
+  font-size: 0.78rem;
+  margin-bottom: 0.1rem;
+}
+.author-stat-value {
+  color: var(--np-text-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.author-page-tag-chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--np-text-secondary);
+  background-color: var(--np-surface-raised);
+  border: 1px solid var(--np-border);
+  border-radius: 999px;
+  padding: 0.1em 0.65em;
+  line-height: 1.6;
+}
+
 /* Tag Trend Page Category Card Styles */
 .tag-category-card .card-header h4.h5 {
   font-size: 1.25rem;
@@ -911,4 +902,1354 @@ h1.fs-page-title {
   .tag-category-card .card-body .badge {
     font-size: 0.8rem;
   }
+}
+
+/* ===================================================================
+   AniList-Inspired Dark Theme & Layout
+   =================================================================== */
+
+/* ── Page Height Manager ── */
+.page-height-manager {
+  height: calc(100dvh - 56px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Page Banner ── */
+.page-banner {
+  flex-shrink: 0;
+  padding: 1.25rem 0 1rem;
+  background: linear-gradient(160deg, #1a2d42 0%, #151f2e 55%, #0f1923 100%);
+  border-bottom: 1px solid var(--np-border);
+}
+
+/* Banner 내부 콘텐츠를 헤더와 동일한 max-width로 정렬 */
+.page-banner-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  width: 100%;
+}
+
+/* 비-사이드바 페이지용 표준 콘텐츠 컨테이너 (Bootstrap Container 대체) */
+.np-page-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem;
+  width: 100%;
+}
+
+@media (max-width: 767.98px) {
+  .np-page-container {
+    padding: 0.75rem;
+  }
+}
+
+.page-banner-title {
+  font-size: 1.75rem;
+  font-weight: 400;
+  color: var(--np-text-heading);
+  margin: 0;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.page-banner-date {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--np-accent);
+  letter-spacing: 0.01em;
+}
+
+.page-banner-desc {
+  color: var(--np-text-secondary);
+  font-size: 0.85rem;
+  margin-top: 0.4rem;
+  margin-bottom: 0;
+  line-height: 1.6;
+}
+
+.page-banner-info-icon {
+  color: var(--np-text-secondary);
+}
+
+/* ── Page Layout ── */
+.page-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  max-width: 1600px;
+  margin: 0.75rem auto 0;
+  width: 100%;
+  border: 1px solid var(--np-border);
+  border-radius: 8px;
+}
+
+/* ── Sidebar ── */
+.page-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background-color: var(--np-surface);
+  border-right: 1px solid var(--np-border);
+  overflow-y: auto;
+  padding: 1rem;
+  gap: 0;
+}
+
+.sidebar-section {
+  padding: 0.75rem 0;
+}
+
+.sidebar-section-tags {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.sidebar-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--np-text-secondary);
+  margin-bottom: 0.6rem;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background-color: var(--np-border);
+  flex-shrink: 0;
+}
+
+/* ── 모바일 필터 패널 (Bootstrap Collapse 대체 - CSS max-height 트랜지션) ── */
+.filter-panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 0.5rem;
+}
+.filter-panel.filter-panel--open {
+  max-height: 640px;
+}
+
+.selected-tags-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.4rem 0.5rem;
+  min-height: 36px;
+  max-height: 100px;
+  overflow-y: auto;
+  background-color: var(--np-surface-alt);
+  border: 1px solid var(--np-border);
+  border-radius: 0.375rem;
+}
+
+/* ── Main Content ── */
+.page-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 767.98px) {
+  .page-sidebar {
+    display: none !important;
+  }
+  .page-layout {
+    margin-top: 0;
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+    width: auto;
+  }
+  .page-main {
+    padding: 0.35rem 0.5rem 0;
+  }
+  .page-banner {
+    padding: 0.5rem 0 0.5rem;
+  }
+  .page-banner-inner {
+    padding: 0 0.75rem;
+  }
+  .page-banner-title {
+    font-size: 1.25rem;
+  }
+  .tag-filter-list {
+    max-height: 90px !important;
+  }
+  .tag-filter-input-group {
+    max-width: 100%;
+  }
+}
+
+.mobile-controls-bar {
+  flex-shrink: 0;
+  background-color: var(--np-bg);
+  border-bottom: 1px solid var(--np-border);
+}
+
+:root {
+  --np-bg:             #0b1622;
+  --np-surface:        #151f2e;
+  --np-surface-alt:    #1a2634;
+  --np-surface-raised: #1e2d3f;
+  --np-surface-overlay:#243447;
+  --np-border:         #1d2d3e;
+  --np-border-subtle:  #1a2838;
+  --np-accent:         #3db4f2;
+  --np-accent-hover:   #2c9fd4;
+  --np-text-primary:   #c9d1d9;
+  --np-text-secondary: #8896a5;
+  --np-text-heading:   #e5eaf0;
+  --np-rank-up:        #4cca51;
+  --np-rank-down:      #e75959;
+
+  /* Radius scale */
+  --np-radius-sm:  4px;
+  --np-radius-md:  8px;
+  --np-radius-lg:  12px;
+  --np-radius-xl:  16px;
+
+  /* Shadow scale */
+  --np-shadow-sm:  0 1px 3px rgba(0,0,0,.35);
+  --np-shadow-md:  0 4px 12px rgba(0,0,0,.45);
+  --np-shadow-lg:  0 8px 24px rgba(0,0,0,.55);
+
+  /* Motion */
+  --np-transition: 150ms ease;
+
+  /* Bootstrap 5 변수 오버라이드 — 다크 테마 강제 적용 */
+  --bs-body-bg: #0b1622;
+  --bs-body-color: #c9d1d9;
+  --bs-heading-color: #e5eaf0;
+  --bs-emphasis-color: #e5eaf0;
+  --bs-secondary-color: #8896a5;
+  --bs-secondary-rgb: 136, 150, 165;
+  --bs-border-color: #1d2d3e;
+}
+
+/* --- Font --- */
+body, button, input, select, textarea {
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', Helvetica, Arial, sans-serif;
+}
+
+/* --- Base --- */
+body {
+  background-color: var(--np-bg);
+  color: var(--np-text-primary);
+  font-synthesis: none;
+}
+
+main {
+  background-color: var(--np-bg) !important;
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+  color: var(--np-text-heading);
+}
+
+.text-muted {
+  color: var(--np-text-secondary) !important;
+}
+
+.bg-light {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-primary) !important;
+}
+
+.border, .border-top, .border-bottom, .border-start, .border-end {
+  border-color: var(--np-border) !important;
+}
+
+
+/* --- Cards --- */
+.card {
+  background-color: var(--np-surface) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+  box-shadow: var(--np-shadow-sm);
+  border-radius: var(--np-radius-md) !important;
+}
+
+.card-header {
+  background-color: var(--np-surface-raised) !important;
+  border-bottom-color: var(--np-border) !important;
+  color: var(--np-text-heading) !important;
+  border-radius: var(--np-radius-md) var(--np-radius-md) 0 0 !important;
+}
+
+.card-body {
+  background-color: var(--np-surface) !important;
+  color: var(--np-text-primary) !important;
+}
+
+.card-title {
+  color: var(--np-text-heading) !important;
+}
+
+.card .text-muted {
+  color: var(--np-text-secondary) !important;
+}
+
+/* --- Table wrapper --- */
+.custom-table-wrapper {
+  background-color: var(--np-surface);
+  border-color: var(--np-border);
+  box-shadow: var(--np-shadow-md);
+  border-radius: var(--np-radius-md);
+  overflow: auto;
+  position: relative;
+}
+
+/* 통합 박스 내 table-wrapper는 border/radius 제거 */
+.page-layout .custom-table-wrapper {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* --- Table base: override Bootstrap's white default --- */
+.custom-table {
+  --bs-table-bg: transparent;
+  --bs-table-hover-bg: rgba(61, 180, 242, 0.06);
+  --bs-table-border-color: var(--np-border);
+  background-color: var(--np-surface) !important;
+  color: var(--np-text-primary) !important;
+}
+
+/* --- Table header --- */
+.custom-table thead {
+  background-color: var(--np-surface-alt) !important;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.custom-table th {
+  color: var(--np-text-secondary) !important;
+  border-bottom-color: var(--np-border) !important;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  background-color: var(--np-surface-alt) !important;
+}
+
+/* --- Table cells --- */
+.custom-table td {
+  color: var(--np-text-primary) !important;
+  border-bottom-color: var(--np-border) !important;
+  font-variant-numeric: tabular-nums;
+  background-color: transparent !important;
+}
+
+.custom-table td:nth-child(1) {
+  color: var(--np-text-heading) !important;
+  font-weight: 700;
+}
+
+.custom-table td a {
+  color: var(--np-text-heading) !important;
+}
+.custom-table td a:hover {
+  color: var(--np-accent) !important;
+}
+
+/* --- Table row hover --- */
+.custom-table tbody tr:hover td {
+  background-color: rgba(61, 180, 242, 0.06) !important;
+}
+
+/* --- Form controls --- */
+.form-control,
+.form-select {
+  background-color: var(--np-surface-alt) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+}
+
+.form-control::placeholder {
+  color: var(--np-text-secondary) !important;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--np-accent) !important;
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-primary) !important;
+}
+
+.input-group-text {
+  background-color: var(--np-surface-alt) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-secondary) !important;
+}
+
+/* --- Buttons --- */
+.custom-button {
+  background-color: var(--np-accent);
+  border-color: var(--np-accent);
+  color: #0b1622;
+}
+.custom-button:hover {
+  background-color: var(--np-accent-hover);
+  border-color: var(--np-accent-hover);
+  color: #0b1622;
+}
+
+.btn-primary {
+  background-color: var(--np-accent) !important;
+  border-color: var(--np-accent) !important;
+  color: #0b1622 !important;
+  font-weight: 600;
+}
+.btn-primary:hover {
+  background-color: var(--np-accent-hover) !important;
+  border-color: var(--np-accent-hover) !important;
+}
+
+.btn-outline-primary {
+  color: var(--np-accent) !important;
+  border-color: var(--np-accent) !important;
+}
+.btn-outline-primary:hover,
+.btn-outline-primary.active,
+.btn-check:checked + .btn-outline-primary {
+  background-color: var(--np-accent) !important;
+  color: #0b1622 !important;
+}
+
+.btn-secondary {
+  background-color: var(--np-surface-alt) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+}
+.btn-secondary:hover {
+  background-color: var(--np-border) !important;
+  color: var(--np-text-heading) !important;
+}
+
+.btn-outline-secondary {
+  color: var(--np-text-secondary) !important;
+  border-color: var(--np-border) !important;
+}
+.btn-outline-secondary:hover,
+.btn-outline-secondary.active {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-primary) !important;
+}
+
+/* --- Tags in table --- */
+.btn-secondary:not(.tag-button-compact).rounded-pill {
+  background-color: var(--np-surface-alt) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-secondary) !important;
+}
+.btn-secondary:not(.tag-button-compact).rounded-pill:hover {
+  background-color: var(--np-accent) !important;
+  border-color: var(--np-accent) !important;
+  color: #0b1622 !important;
+}
+
+.btn-primary:not(.tag-button-compact).rounded-pill {
+  background-color: var(--np-accent) !important;
+  border-color: var(--np-accent) !important;
+  color: #0b1622 !important;
+}
+.btn-primary:not(.tag-button-compact).rounded-pill:hover {
+  background-color: var(--np-accent-hover) !important;
+  border-color: var(--np-accent-hover) !important;
+  color: #0b1622 !important;
+}
+
+/* --- Filter compact tag buttons --- */
+.btn-secondary.tag-button-compact {
+  background-color: var(--np-surface-alt) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-secondary) !important;
+}
+.btn-secondary.tag-button-compact:hover {
+  background-color: var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+}
+
+.btn-primary.tag-button-compact {
+  background-color: var(--np-accent) !important;
+  border-color: var(--np-accent) !important;
+  color: #0b1622 !important;
+}
+.btn-primary.tag-button-compact:hover {
+  background-color: var(--np-accent-hover) !important;
+  border-color: var(--np-accent-hover) !important;
+  color: #0b1622 !important;
+}
+
+/* selected-tags-box 내 태그 삭제 hover 피드백 */
+.selected-tags-box .btn {
+  transition: opacity var(--np-transition), transform var(--np-transition);
+}
+.selected-tags-box .btn:hover {
+  opacity: 0.8;
+  transform: scale(0.95);
+}
+
+.btn-danger.tag-button-compact,
+.btn-danger:not(.tag-button-compact).rounded-pill {
+  background-color: rgba(231, 89, 89, 0.2) !important;
+  border-color: var(--np-rank-down) !important;
+  color: var(--np-rank-down) !important;
+}
+
+/* --- Rank change badges --- */
+.rank-up {
+  background-color: rgba(76, 202, 81, 0.15);
+  color: var(--np-rank-up);
+}
+.rank-down {
+  background-color: rgba(231, 89, 89, 0.15);
+  color: var(--np-rank-down);
+}
+.rank-same {
+  background-color: rgba(136, 150, 165, 0.12);
+  color: var(--np-text-secondary);
+}
+
+/* --- Bootstrap badges --- */
+.badge.bg-info {
+  background-color: rgba(61, 180, 242, 0.15) !important;
+  color: var(--np-accent) !important;
+}
+
+/* --- Alert --- */
+.alert-info {
+  background-color: rgba(61, 180, 242, 0.08) !important;
+  border-color: rgba(61, 180, 242, 0.25) !important;
+  color: var(--np-accent) !important;
+}
+.alert-danger {
+  background-color: rgba(231, 89, 89, 0.08) !important;
+  border-color: rgba(231, 89, 89, 0.25) !important;
+  color: var(--np-rank-down) !important;
+}
+
+/* --- Spinner --- */
+.spinner-border {
+  color: var(--np-accent) !important;
+}
+
+/* --- Modal --- */
+.modal-content {
+  --bs-modal-bg: var(--np-surface);
+  --bs-modal-color: var(--np-text-primary);
+  --bs-modal-border-color: var(--np-border);
+  background-color: var(--np-surface) !important;
+  border-color: var(--np-border);
+  color: var(--np-text-primary) !important;
+}
+.modal-header {
+  border-bottom-color: var(--np-border);
+  background-color: var(--np-surface-alt);
+}
+.modal-header .btn-close {
+  filter: invert(0.7) brightness(1.5);
+}
+
+/* --- Accordion (filter panel) --- */
+.accordion-item {
+  background-color: var(--np-surface) !important;
+  border-color: var(--np-border) !important;
+}
+.accordion-button {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-heading) !important;
+}
+.accordion-button:not(.collapsed) {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-accent) !important;
+  box-shadow: none !important;
+}
+.accordion-button::after {
+  filter: invert(0.6) brightness(1.5);
+}
+.accordion-body {
+  background-color: var(--np-surface) !important;
+  color: var(--np-text-primary);
+}
+
+/* --- Filter group card --- */
+.filter-group-card .card-header {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-heading);
+}
+.filter-group-card .card-body {
+  background-color: var(--np-surface) !important;
+}
+
+/* --- Date picker wrapper --- */
+.date-picker-wrapper {
+  background-color: var(--np-surface-alt) !important;
+  border-color: var(--np-border) !important;
+}
+.date-picker-wrapper .date-picker-icon {
+  color: var(--np-text-secondary) !important;
+}
+.date-picker-wrapper .form-control {
+  background-color: transparent !important;
+  color: var(--np-text-primary) !important;
+}
+
+/* --- react-datepicker dark theme --- */
+.react-datepicker {
+  background-color: var(--np-surface) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+}
+.react-datepicker__header {
+  background-color: var(--np-surface-alt) !important;
+  border-bottom-color: var(--np-border) !important;
+}
+.react-datepicker__current-month,
+.react-datepicker__day-name,
+.react-datepicker-time__header {
+  color: var(--np-text-heading) !important;
+}
+.react-datepicker__day {
+  color: var(--np-text-primary) !important;
+}
+.react-datepicker__day:hover:not(.react-datepicker__day--selected):not(.react-datepicker__day--highlighted):not(.react-datepicker__day--disabled) {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-heading) !important;
+}
+.react-datepicker__day--disabled {
+  color: var(--np-border) !important;
+  opacity: 0.5;
+}
+.react-datepicker__day--disabled:hover {
+  background-color: transparent !important;
+  color: var(--np-border) !important;
+  opacity: 0.5;
+}
+.react-datepicker__navigation-icon::before {
+  border-color: var(--np-text-secondary) !important;
+}
+.react-datepicker__triangle::before {
+  border-bottom-color: var(--np-border) !important;
+}
+.react-datepicker__triangle::after {
+  border-bottom-color: var(--np-surface-alt) !important;
+}
+
+/* --- Mobile card / border+rounded containers --- */
+div.border.rounded {
+  border-color: var(--np-border) !important;
+  background-color: var(--np-surface) !important;
+  color: var(--np-text-primary) !important;
+}
+
+/* --- Synopsis background --- */
+.bg-light.rounded,
+.card-text.bg-light {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-primary) !important;
+}
+
+/* --- Scrollbar --- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--np-border) var(--np-surface);
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--np-surface);
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--np-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--np-text-secondary);
+}
+
+/* ===================================================================
+   ContestPage 이동 스타일 (인라인 style 블록에서 이동)
+   =================================================================== */
+/* --- Dropdown 다크모드 오버라이드 --- */
+.dropdown-menu {
+  background-color: var(--np-surface-raised) !important;
+  border-color: var(--np-border) !important;
+  box-shadow: var(--np-shadow-md);
+  color: var(--np-text-primary) !important;
+}
+.dropdown-item {
+  color: var(--np-text-primary) !important;
+  background-color: transparent;
+}
+.dropdown-item:hover,
+.dropdown-item:focus {
+  background-color: var(--np-surface-overlay) !important;
+  color: var(--np-text-heading) !important;
+}
+.dropdown-item.active,
+.dropdown-item:active {
+  background-color: var(--np-accent) !important;
+  color: #fff !important;
+}
+[data-theme="light"] .dropdown-menu {
+  background-color: #ffffff !important;
+  border-color: var(--np-border) !important;
+}
+[data-theme="light"] .dropdown-item {
+  color: var(--np-text-primary) !important;
+}
+[data-theme="light"] .dropdown-item:hover,
+[data-theme="light"] .dropdown-item:focus {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-heading) !important;
+}
+
+.year-dropdown-menu {
+  min-width: auto;
+}
+.year-dropdown-toggle {
+  padding: .2rem .4rem;
+  font-size: 0.9rem;
+}
+@media (max-width: 767px) {
+  .year-dropdown-toggle {
+    padding: .1rem .3rem;
+    font-size: 0.8rem;
+  }
+}
+
+.placeholder-row td {
+  color: var(--np-text-secondary) !important;
+  opacity: 0.7;
+}
+.placeholder-row a {
+  color: inherit !important;
+  text-decoration: none !important;
+  pointer-events: none;
+}
+
+.fs-sm-control .form-check-label {
+  font-size: 0.9rem;
+}
+
+/* scatter chart highlight row (TagRankingsPage, ContestPage) */
+tr.highlight-row td {
+  background-color: var(--np-surface-raised) !important;
+}
+
+/* ===================================================================
+   Recharts 커스텀 툴팁 다크 테마
+   =================================================================== */
+
+/* Notice box — dark/light mode compatible alternative to Bootstrap Alert warning */
+.notice-box {
+  padding: 0.85rem 1.1rem;
+  border-radius: 0.5rem;
+  border-left: 3px solid var(--np-accent);
+  background-color: color-mix(in srgb, var(--np-accent) 8%, var(--np-surface));
+  color: var(--np-text-primary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.custom-tooltip {
+  background-color: var(--np-surface-overlay) !important;
+  border: 1px solid var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+  border-radius: var(--np-radius-md);
+  box-shadow: var(--np-shadow-md);
+  padding: 0.75rem;
+}
+.custom-tooltip p {
+  color: var(--np-text-primary) !important;
+  margin-bottom: 0.25rem;
+}
+.custom-tooltip .fw-bold,
+.custom-tooltip strong {
+  color: var(--np-text-heading) !important;
+}
+
+/* NovelRankingsPage: 행 높이 고정으로 virtual scroll 정확도 향상 */
+.novel-rankings-table tbody tr {
+  height: 57px;
+}
+.novel-rankings-table tbody td {
+  overflow: hidden;
+  white-space: nowrap;
+}
+.novel-rankings-table tbody td:last-child {
+  white-space: normal;
+  overflow: hidden;
+}
+
+/* scatter chart point highlight (ContestTagRankingsPage, TagRankingsPage) */
+.scatter-point > circle {
+  transition: r 0.15s ease-in-out, stroke-width 0.15s ease-in-out;
+}
+.scatter-point.highlight > circle {
+  r: 10;
+  stroke: var(--np-text-primary);
+  stroke-width: 2.5px;
+}
+
+/* --- Nav Tabs 다크 테마 --- */
+:root {
+  --bs-nav-tabs-border-color: var(--np-border);
+  --bs-nav-tabs-link-hover-border-color: var(--np-border) var(--np-border) transparent;
+  --bs-nav-tabs-link-active-color: var(--np-text-heading);
+  --bs-nav-tabs-link-active-bg: var(--np-bg);
+  --bs-nav-tabs-link-active-border-color: var(--np-border) var(--np-border) var(--np-bg);
+}
+.nav-tabs {
+  border-bottom: 1px solid var(--np-border) !important;
+}
+.nav-tabs .nav-link {
+  color: var(--np-text-secondary) !important;
+  border-color: transparent !important;
+  background-color: transparent !important;
+}
+.nav-tabs .nav-link:hover {
+  color: var(--np-text-primary) !important;
+  border-color: var(--np-border) var(--np-border) transparent !important;
+  background-color: var(--np-surface-alt) !important;
+}
+.nav-tabs .nav-link.active,
+.nav-tabs .nav-item.show .nav-link {
+  background-color: var(--np-bg) !important;
+  border-color: var(--np-border) var(--np-border) var(--np-bg) !important;
+  color: var(--np-text-heading) !important;
+}
+
+/* --- Page title 색상 명시 --- */
+.fs-page-title,
+h1.fs-page-title,
+.h1.fs-page-title,
+h2.fs-page-title,
+.h2.fs-page-title,
+.np-page-container h1,
+.np-page-container h2,
+.np-page-container h3,
+.np-page-container .h1,
+.np-page-container .h2,
+.np-page-container .h3 {
+  color: var(--np-text-heading) !important;
+}
+.fs-section-title-mobile {
+  color: var(--np-text-heading) !important;
+}
+
+/* np-page-container 내 description 텍스트 */
+.np-page-container p.text-muted,
+.np-page-container .text-muted {
+  color: var(--np-text-secondary) !important;
+}
+
+/* --- 데이터 수집/설명 텍스트 (datepicker-help-text) --- */
+.datepicker-help-text-container p {
+  color: var(--np-text-secondary) !important;
+}
+
+/* ===================================================================
+   라이트모드 CSS 변수
+   =================================================================== */
+[data-theme="light"] {
+  --np-bg:             #eef4fc;
+  --np-surface:        #ffffff;
+  --np-surface-alt:    #ddeaf8;
+  --np-surface-raised: #d0e2f5;
+  --np-surface-overlay:#ffffff;
+  --np-border:         #b8cee8;
+  --np-border-subtle:  #cdddf0;
+  --np-accent:         #2979d4;
+  --np-accent-hover:   #1a5fb4;
+  --np-text-primary:   #1a2d42;
+  --np-text-secondary: #4a6680;
+  --np-text-heading:   #0c1d30;
+  --np-rank-up:        #1a7a40;
+  --np-rank-down:      #c0392b;
+  --np-shadow-sm:  0 1px 4px rgba(10,30,60,.08);
+  --np-shadow-md:  0 4px 14px rgba(10,30,60,.11);
+  --np-shadow-lg:  0 8px 28px rgba(10,30,60,.15);
+  /* Bootstrap 변수 오버라이드 */
+  --bs-body-bg: #eef4fc;
+  --bs-body-color: #1a2d42;
+  --bs-heading-color: #0c1d30;
+  --bs-emphasis-color: #0c1d30;
+  --bs-secondary-color: #4a6680;
+  --bs-secondary-rgb: 74, 102, 128;
+  --bs-border-color: #b8cee8;
+  --bs-nav-tabs-border-color: #b8cee8;
+  --bs-nav-tabs-link-active-bg: #eef4fc;
+  --bs-nav-tabs-link-active-border-color: #b8cee8 #b8cee8 #eef4fc;
+  --bs-primary-rgb: 41, 121, 212;
+}
+
+[data-theme="light"] body {
+  background-color: var(--np-bg);
+  color: var(--np-text-primary);
+}
+
+[data-theme="light"] main {
+  background-color: var(--np-bg) !important;
+}
+
+[data-theme="light"] .app-header {
+  background-color: #d6e8f8;
+  border-bottom: none;
+}
+
+[data-theme="light"] .brand-icon {
+  background: linear-gradient(135deg, #5ba4e8 0%, #8ec0f5 100%);
+  color: #fff;
+}
+
+[data-theme="light"] .app-header-link {
+  color: #1e3a5a;
+}
+[data-theme="light"] .app-header-link:hover {
+  background-color: rgba(255,255,255,0.4);
+  color: #0c1d30;
+}
+[data-theme="light"] .app-header-link--active {
+  color: var(--np-accent) !important;
+  background-color: rgba(41,121,212,0.12);
+}
+
+[data-theme="light"] .page-banner {
+  background: linear-gradient(160deg, #c6ddf5 0%, #b0d0f0 55%, #9bc3eb 100%);
+  border-bottom: none;
+}
+
+[data-theme="light"] .page-banner-title {
+  color: #061524;
+}
+
+[data-theme="light"] .page-banner-desc {
+  color: #1e3d58;
+}
+
+/* 라이트모드 버튼 primary - 파스텔 */
+[data-theme="light"] .btn-primary {
+  background-color: #4a9ee8 !important;
+  border-color: #3a8ed8 !important;
+  color: #fff !important;
+}
+[data-theme="light"] .btn-primary:hover {
+  background-color: #3a8ed8 !important;
+  border-color: #2979d4 !important;
+}
+
+/* 라이트모드 버튼 secondary - tag용 */
+[data-theme="light"] .btn-secondary {
+  background-color: #d8e8f8 !important;
+  border-color: #b8cee8 !important;
+  color: #1a3a5c !important;
+}
+[data-theme="light"] .btn-secondary:hover {
+  background-color: #c4dbf5 !important;
+  color: #0c1d30 !important;
+}
+[data-theme="light"] .btn-secondary.tag-button-compact {
+  background-color: #dce9f7 !important;
+  border-color: #b8cee8 !important;
+  color: #1a3a5c !important;
+}
+[data-theme="light"] .btn-secondary.tag-button-compact:hover {
+  background-color: #bdd6f2 !important;
+}
+[data-theme="light"] .btn-primary.tag-button-compact,
+[data-theme="light"] .btn-primary:not(.tag-button-compact).rounded-pill {
+  background-color: #4a9ee8 !important;
+  border-color: #3a8ed8 !important;
+  color: #fff !important;
+}
+
+/* 라이트모드 검색창 */
+[data-theme="light"] .search-input,
+[data-theme="light"] .form-control {
+  background-color: #ffffff !important;
+  border-color: #b8cee8 !important;
+  color: #1a2d42 !important;
+}
+[data-theme="light"] .form-control::placeholder {
+  color: #7a9ab8 !important;
+}
+[data-theme="light"] .date-picker-wrapper .form-control {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+[data-theme="light"] .input-group-text {
+  background-color: #d0e2f5 !important;
+  border-color: #b8cee8 !important;
+  color: #1a3a5c !important;
+}
+
+[data-theme="light"] .search-input {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+[data-theme="light"] .search-input::placeholder {
+  color: #9ca3af;
+}
+
+/* --- Theme Toggle Button --- */
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 20px;
+  border: 1px solid var(--np-border);
+  background-color: var(--np-surface-alt);
+  color: var(--np-text-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--np-transition), background-color var(--np-transition), border-color var(--np-transition);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+@media (max-width: 991.98px) {
+  .theme-toggle-btn span {
+    display: none;
+  }
+  .theme-toggle-btn {
+    padding: 0.3rem 0.5rem;
+  }
+}
+.theme-toggle-btn:hover {
+  background-color: var(--np-surface-raised);
+  border-color: var(--np-accent);
+  color: var(--np-accent);
+}
+
+/* --- main 배경 전체 채움 --- */
+main {
+  min-height: calc(100dvh - 56px);
+}
+
+/* --- ListGroup 다크 테마 --- */
+.list-group-item {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-primary) !important;
+  border-color: var(--np-border) !important;
+}
+
+/* --- Accordion 다크 테마 --- */
+.accordion-item {
+  background-color: var(--np-surface) !important;
+  border-color: var(--np-border) !important;
+}
+.accordion-body {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-primary) !important;
+}
+.accordion-button {
+  background-color: var(--np-surface) !important;
+  color: var(--np-text-heading) !important;
+  box-shadow: none !important;
+}
+.accordion-button:not(.collapsed) {
+  background-color: var(--np-surface-raised) !important;
+  color: var(--np-text-heading) !important;
+}
+.accordion-button::after {
+  filter: invert(0.7);
+}
+
+/* --- Form check / switch 다크 테마 --- */
+.form-check-label {
+  color: var(--np-text-primary) !important;
+}
+.form-switch .form-check-input {
+  background-color: var(--np-border) !important;
+  border-color: var(--np-border) !important;
+}
+.form-switch .form-check-input:checked {
+  background-color: var(--np-accent) !important;
+  border-color: var(--np-accent) !important;
+}
+
+/* --- ButtonGroup 기본/고급 구분선 --- */
+.btn-group > .btn-primary + .btn-outline-secondary,
+.btn-group > .btn-outline-secondary + .btn-primary {
+  border-left-color: var(--np-accent) !important;
+}
+
+/* --- text-muted 색상 명시 (Bootstrap var 충돌 방지) --- */
+.text-muted, .text-muted * {
+  color: var(--np-text-secondary) !important;
+}
+small.text-muted, .small.text-muted {
+  color: var(--np-text-secondary) !important;
+}
+
+/* --- Custom Tooltip (Recharts) --- */
+.custom-tooltip {
+  background-color: var(--np-surface-raised) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+  font-size: 0.85rem;
+}
+.custom-tooltip p {
+  color: var(--np-text-primary);
+}
+.custom-tooltip .fw-bold {
+  color: var(--np-text-heading);
+}
+
+/* --- Chart Card --- */
+.chart-card {
+  background-color: var(--np-surface);
+}
+.chart-card-header {
+  padding: 0.4rem 0.65rem 0.35rem;
+  border-bottom: 1px solid var(--np-border);
+  background-color: var(--np-surface-raised);
+  border-radius: inherit;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.chart-card-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--np-text-heading);
+  letter-spacing: 0.01em;
+}
+.chart-zoom-btn {
+  font-size: 0.75rem !important;
+  padding: 0.15rem 0.5rem !important;
+  line-height: 1.4 !important;
+}
+
+/* ===================================================================
+   Novel Detail Page Header
+   =================================================================== */
+
+.novel-detail-header {
+  background: linear-gradient(160deg, #1a2d42 0%, #151f2e 55%, #0f1923 100%);
+  border-bottom: 1px solid var(--np-border);
+  padding: 1.25rem 0 1rem;
+  margin-bottom: 1rem;
+}
+
+.novel-detail-header-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  width: 100%;
+}
+
+.novel-detail-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.novel-detail-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--np-text-heading);
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+@media (max-width: 767.98px) {
+  .novel-detail-title {
+    font-size: 1.1rem;
+  }
+  .novel-detail-header {
+    padding: 0.85rem 0 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .novel-detail-header-inner {
+    padding: 0 0.75rem;
+  }
+}
+
+.novel-detail-ext-link {
+  color: var(--np-text-secondary);
+  flex-shrink: 0;
+  line-height: 1;
+  transition: color var(--np-transition);
+}
+.novel-detail-ext-link:hover {
+  color: var(--np-accent);
+}
+
+.novel-detail-award-badge {
+  font-size: 0.75rem;
+  padding: 0.2em 0.55em;
+}
+
+.novel-detail-contest-label {
+  display: block;
+  width: fit-content;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--np-accent);
+  border: 1px solid var(--np-accent);
+  border-radius: 4px;
+  padding: 0.1em 0.5em;
+  margin-top: 0;
+  margin-bottom: 0.35rem;
+  letter-spacing: 0.03em;
+  opacity: 0.8;
+}
+.novel-detail-author {
+  font-size: 0.9rem;
+  margin-bottom: 0.6rem;
+}
+.novel-detail-author a {
+  color: var(--np-accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.novel-detail-author a:hover {
+  color: var(--np-accent-hover);
+  text-decoration: underline;
+}
+
+.novel-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.85rem;
+}
+
+/* Stats row */
+.novel-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.125rem;
+  margin-bottom: 0.85rem;
+}
+
+.novel-stat-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--np-radius-sm);
+  background-color: rgba(255,255,255,0.04);
+}
+
+.novel-stat-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--np-text-heading);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.novel-stat-label {
+  font-size: 0.6rem;
+  color: var(--np-text-secondary);
+  margin-top: 0.15rem;
+  white-space: nowrap;
+}
+
+
+.novel-stats-divider {
+  width: 1px;
+  background-color: var(--np-border);
+  margin: 0.2rem 0.3rem;
+  align-self: stretch;
+}
+
+@media (max-width: 767.98px) {
+  .novel-stats-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0.2rem;
+    margin-bottom: 0.6rem;
+  }
+  .novel-stats-row::-webkit-scrollbar {
+    display: none;
+  }
+  .novel-stat-block {
+    flex: 0 0 auto;
+    min-width: 64px;
+    padding: 0.35rem 0.55rem;
+    scroll-snap-align: start;
+  }
+  .novel-stat-value {
+    font-size: 1rem;
+  }
+  .novel-stat-label {
+    font-size: 0.75rem;
+  }
+  .novel-stats-divider {
+    display: none;
+  }
+}
+
+/* Synopsis */
+.novel-detail-synopsis {
+  font-size: 0.82rem;
+  color: var(--np-text-primary);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  background-color: rgba(255,255,255,0.03);
+  border: 1px solid var(--np-border);
+  border-radius: var(--np-radius-sm);
+  padding: 0.6rem 0.75rem;
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  .novel-detail-synopsis {
+    font-size: 0.9rem;
+  }
+}
+
+/* Light mode overrides */
+[data-theme="light"] .novel-detail-header {
+  background: linear-gradient(160deg, #c6ddf5 0%, #b0d0f0 55%, #9bc3eb 100%);
+}
+[data-theme="light"] .novel-detail-title {
+  color: #12243a;
+}
+[data-theme="light"] .novel-detail-author a {
+  color: var(--np-accent);
+}
+[data-theme="light"] .novel-stat-block {
+  background-color: rgba(0,0,0,0.04);
+}
+[data-theme="light"] .novel-stat-value {
+  color: #1a202c;
+}
+[data-theme="light"] .novel-detail-synopsis {
+  background-color: rgba(0,0,0,0.03);
+}
+[data-theme="light"] .novel-detail-contest-label {
+  color: #fff;
+  background-color: #2060b0;
+  border-color: #2060b0;
+  opacity: 1;
 }

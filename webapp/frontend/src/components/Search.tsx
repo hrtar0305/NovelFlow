@@ -1,32 +1,41 @@
+import { useRef, useEffect } from 'react';
 import { liteClient } from 'algoliasearch/lite';
-import { InstantSearch, SearchBox, Hits, useInstantSearch, useSearchBox } from 'react-instantsearch'; // useSearchBox 추가
+import { InstantSearch, SearchBox, Hits, useInstantSearch, useSearchBox } from 'react-instantsearch';
 import { Link } from 'react-router-dom';
-import type { Hit, SearchClient } from 'instantsearch.js'; // SearchClient 추가
+import type { Hit, SearchClient } from 'instantsearch.js';
 import { debounce } from 'instantsearch.js/es/lib/utils';
 import './Search.css';
 
-// IMPORTANT: Replace with your own Algolia credentials
-// You can find these in your Algolia dashboard: https://www.algolia.com/dashboard/
 const appId = import.meta.env.VITE_ALGOLIA_APP_ID || 'YOUR_APP_ID';
-
-// Use the *Search-Only* API Key for frontend queries for security.
 const apiKey = import.meta.env.VITE_ALGOLIA_SEARCH_API_KEY || 'YOUR_SEARCH_ONLY_API_KEY';
 
 const originalSearchClient = liteClient(appId, apiKey) as SearchClient;
 
-const debouncedSearchClient: SearchClient = {
+// 500ms 디바운스 — 빠른 타이핑 중 불필요한 요청 차단
+const debouncedSearch = debounce(
+  originalSearchClient.search.bind(originalSearchClient),
+  500
+) as SearchClient['search'];
+
+// 빈 쿼리(초기 마운트 등)는 API 요청 자체를 건너뜀
+const searchClient: SearchClient = {
   ...originalSearchClient,
-  search: debounce(originalSearchClient.search, 300) as SearchClient['search'],
+  search(requests) {
+    if (requests.every(({ params }) => !params?.query)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return Promise.resolve({ results: requests.map(() => ({ hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 0, processingTimeMS: 0, exhaustiveNbHits: true, query: '', params: '' })) }) as any;
+    }
+    return debouncedSearch(requests);
+  },
 };
 
-// Custom component to render a single search result
 function HitComponent({ hit }: { hit: Hit }) {
-  const { clear } = useSearchBox(); // clear 함수 가져오기
+  const { clear } = useSearchBox();
   const url = hit.type === 'novel' ? `/novels/${hit.id}` : `/authors/${hit.id}`;
   const typeDisplay = hit.type === 'novel' ? '소설' : '작가';
 
   return (
-    <Link to={url} className="aa-ItemLink" onClick={clear}> {/* onClick 핸들러 추가 */}
+    <Link to={url} className="aa-ItemLink" onClick={clear}>
       <div className="aa-ItemContent">
         <div className="aa-ItemTitle">{hit.name}</div>
         <div className="aa-ItemContentDescription">{typeDisplay}</div>
@@ -35,45 +44,55 @@ function HitComponent({ hit }: { hit: Hit }) {
   );
 }
 
-// This new component will contain the actual search UI
-// and use hooks to control rendering.
 function SearchContent() {
-    const { uiState, results } = useInstantSearch();
-    const query = uiState.novels_and_authors?.query || '';
+  const { uiState, results } = useInstantSearch();
+  const { clear } = useSearchBox();
+  const query = uiState.novels_and_authors?.query || '';
+  const showResults = query.length > 0 && results.query === query;
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-    // Show results only when a query is entered AND the results are for that specific query.
-    // This prevents showing stale results from a previous query or an initial empty query.
-    const showResults = query.length > 0 && results.query === query;
+  // 검색창 바깥 클릭 시 결과창 닫기
+  useEffect(() => {
+    if (!showResults) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        clear();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showResults, clear]);
 
-    return (
-        <div className="search-wrapper">
-            <SearchBox 
-                placeholder="소설, 작가 검색" 
-                className="search-box" 
-            />
-            {showResults && (
-                <div className="search-results">
-                    <Hits hitComponent={HitComponent} />
-                </div>
-            )}
+  return (
+    <div className="search-wrapper" ref={wrapperRef}>
+      <SearchBox placeholder="검색" className="search-box" />
+      {showResults && (
+        <div className="search-results">
+          {results.nbHits === 0 ? (
+            <div className="search-no-results">검색 결과가 없습니다.</div>
+          ) : (
+            <Hits hitComponent={HitComponent} />
+          )}
         </div>
-    );
+      )}
+    </div>
+  );
 }
 
 export function Search() {
   if (!appId || appId === 'YOUR_APP_ID') {
     return (
-        <div className="search-placeholder">검색 기능이 설정되지 않았습니다. Algolia 인증 정보를 추가해주세요.</div>
+      <div className="search-placeholder">검색 기능이 설정되지 않았습니다. Algolia 인증 정보를 추가해주세요.</div>
     );
   }
 
   return (
-    <InstantSearch 
-        searchClient={debouncedSearchClient} 
-        indexName="novels_and_authors"
-        future={{ preserveSharedStateOnUnmount: true }}
+    <InstantSearch
+      searchClient={searchClient}
+      indexName="novels_and_authors"
+      future={{ preserveSharedStateOnUnmount: true }}
     >
-        <SearchContent />
+      <SearchContent />
     </InstantSearch>
   );
 }

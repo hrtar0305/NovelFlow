@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useTransition } from 'react';
-import { Container, Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert} from 'react-bootstrap';
+import { Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert} from 'react-bootstrap';
 import { ArrowUp, ArrowDown, ArrowDownUp, InfoCircle } from 'react-bootstrap-icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format, parseISO, isValid } from 'date-fns';
@@ -47,7 +47,7 @@ const CustomTooltip = ({ active, payload, yAxisKey, yAxisName }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="custom-tooltip bg-white p-3 border rounded shadow-sm" style={{ fontSize: '0.9rem' }}>
+      <div className="custom-tooltip" style={{ fontSize: '0.9rem' }}>
         <p className="fw-bold mb-1">{data.tag} (랭킹: {data.Rank})</p>
         <p className="mb-0 text-muted">등장 횟수: {data.count}</p>
         <p className="mb-2 text-muted">{yAxisName}: {data[yAxisKey].toFixed(2)}</p>
@@ -278,24 +278,7 @@ const TagRankingsPage = () => {
 
   return (
     <>
-      <style>{`
-        .scatter-point > circle {
-            transition: r 0.15s ease-in-out, stroke-width 0.15s ease-in-out;
-        }
-        .scatter-point.highlight > circle {
-            r: 10px;
-            stroke: black;
-            stroke-width: 2.5px;
-        }
-        tr.highlight-row {
-            background-color: #e9ecef !important;
-        }
-        .page-height-manager {
-          /* Default height for PC, which user confirmed is good */
-          height: calc(100dvh - 56px);
-        }
-      `}</style>
-        <Container className="py-3 py-md-4 d-flex flex-column page-height-manager">
+        <div className="np-page-container d-flex flex-column" style={{ height: 'calc(100dvh - 56px)' }}>
         <div className="d-flex align-items-center gap-2 mb-2">
           <h1 className="h2 mb-0 fs-page-title">태그 랭킹</h1>
           <OverlayTrigger
@@ -346,7 +329,7 @@ const TagRankingsPage = () => {
                             <div className="flex-grow-1 me-2">
                               <div className="d-flex align-items-baseline gap-2">
                             <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{tag.Rank}위</span>
-                                <h5 className="mb-0 h6 text-dark">{tag.tag}</h5>
+                                <h5 className="mb-0 h6">{tag.tag}</h5>
                               </div>
                             </div>
                             <div className="flex-shrink-0 text-end" style={{ minWidth: '65px' }}>
@@ -367,10 +350,10 @@ const TagRankingsPage = () => {
 
               <div className={`${mobileViewMode === 'table' ? 'd-flex' : 'd-none d-md-flex'} flex-column flex-grow-1`} style={{ minHeight: 0 }}>
                 {/* Table */}
-                <div className="custom-table-wrapper mb-2" style={{ position: 'relative', backgroundColor: 'white', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', opacity: isPending ? 0.7 : 1, display: 'flex', flexDirection: 'column' }}>
+                <div className="custom-table-wrapper mb-2" style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', opacity: isPending ? 0.7 : 1, display: 'flex', flexDirection: 'column' }}>
                   {isPending && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}><Spinner animation="border" /></div>}
                   <Table responsive="md" hover className="custom-table">
-                    <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'white' }}>
+                    <thead>
                       <tr>
                         <th style={{ fontSize: '0.85rem', width: '100px' }}><span>순위</span></th>
                         <th style={{ fontSize: '0.85rem' }}>태그</th>
@@ -431,16 +414,16 @@ const TagRankingsPage = () => {
                               name="등장 횟수" 
                               unit="회" 
                               domain={xDomain} 
-                              allowDecimals={false} 
-                              tick={{ fontSize: isMobile ? 10 : undefined }} 
+                              allowDecimals={false}
+                              tick={{ fontSize: isMobile ? 12 : undefined }}
                             />
-                            <YAxis 
-                              type="number" 
-                              dataKey="avg_linear" 
-                              name="평균 선형 점수" 
-                              domain={yDomain} 
-                              allowDecimals={false} 
-                              tick={{ fontSize: isMobile ? 10 : undefined }} 
+                            <YAxis
+                              type="number"
+                              dataKey="avg_linear"
+                              name="평균 선형 점수"
+                              domain={yDomain}
+                              allowDecimals={false}
+                              tick={{ fontSize: isMobile ? 12 : undefined }}
                             />
                             <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip yAxisKey="avg_linear" yAxisName="평균 선형 점수" />} />
                             <Scatter name="Tags" data={chartData} shape={<CustomScatterShape />} isAnimationActive={false}>
@@ -458,7 +441,7 @@ const TagRankingsPage = () => {
             <Alert variant="info" className="text-center mt-3">해당 날짜에 대한 태그 랭킹 데이터가 없습니다.</Alert>
           )
         )}
-      </Container>
+      </div>
     </>
   );
 };

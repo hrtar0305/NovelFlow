@@ -1,38 +1,73 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Navbar, Nav, Container } from 'react-bootstrap';
 import { Search } from './Search';
+import ThemeToggle from './ThemeToggle';
+
+const NAV_LINKS = [
+  { to: '/novels/rankings', label: '소설 랭킹' },
+  { to: '/tags/rankings',   label: '태그 랭킹' },
+  { to: '/trends',          label: '데이터 분석' },
+  { to: '/contests',        label: '공모전' },
+];
 
 const Header = () => {
-  const [expanded, setExpanded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <Navbar
-      variant="dark"
-      expand="lg"
-      className="app-header"
-      expanded={expanded}
-      onToggle={setExpanded}
-      onSelect={() => setExpanded(false)}
-    >
-      <Container>
-        <Navbar.Brand as={NavLink} to="/" className="fw-bold fs-5 me-lg-3 me-2 text-nowrap" onClick={() => setExpanded(false)}>
-          노벨피아 랭킹
-        </Navbar.Brand>
-        <div className="header-search-wrapper me-lg-5 me-2">
+    <header className="app-header">
+      <div className="app-header-inner">
+
+        {/* Brand */}
+        <NavLink to="/" className="app-header-brand" onClick={() => setMenuOpen(false)}>
+          <span className="brand-icon">N</span>
+          <span className="brand-text">노벨피아 랭킹</span>
+        </NavLink>
+
+        {/* Desktop nav */}
+        <nav className="app-header-nav d-none d-lg-flex">
+          {NAV_LINKS.map(({ to, label }) => (
+            <NavLink key={to} to={to} className={({ isActive }) =>
+              `app-header-link${isActive ? ' app-header-link--active' : ''}`
+            }>
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Search */}
+        <div className="header-search-wrapper">
           <Search />
         </div>
-        <Navbar.Toggle aria-controls="basic-navbar-nav" className="custom-navbar-toggle" />
-        <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="ms-auto align-items-lg-center align-items-end">
-            <Nav.Link as={NavLink} to="/novels/rankings" className="fs-6" onClick={() => setExpanded(false)}>소설 랭킹</Nav.Link>
-            <Nav.Link as={NavLink} to="/tags/rankings" className="fs-6" onClick={() => setExpanded(false)}>태그 랭킹</Nav.Link>
-            <Nav.Link as={NavLink} to="/trends" className="fs-6" onClick={() => setExpanded(false)}>데이터 분석</Nav.Link>
-            <Nav.Link as={NavLink} to="/contests" className="fs-6" onClick={() => setExpanded(false)}>공모전</Nav.Link>
-          </Nav>
-        </Navbar.Collapse>
-      </Container>
-    </Navbar>
+
+        {/* Theme toggle */}
+        <ThemeToggle />
+
+        {/* Mobile hamburger */}
+        <button
+          className="app-header-hamburger d-lg-none"
+          onClick={() => setMenuOpen(o => !o)}
+          aria-label="메뉴 열기"
+        >
+          <span className={`hamburger-line ${menuOpen ? 'open-1' : ''}`} />
+          <span className={`hamburger-line ${menuOpen ? 'open-2' : ''}`} />
+          <span className={`hamburger-line ${menuOpen ? 'open-3' : ''}`} />
+        </button>
+      </div>
+
+      {/* Mobile dropdown menu */}
+      <div className={`app-header-mobile-menu ${menuOpen ? 'is-open' : ''}`}>
+        {NAV_LINKS.map(({ to, label }) => (
+          <NavLink key={to} to={to}
+            className={({ isActive }) =>
+              `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`
+            }
+            onClick={() => setMenuOpen(false)}
+          >
+            {label}
+          </NavLink>
+        ))}
+      </div>
+    </header>
   );
 };
 

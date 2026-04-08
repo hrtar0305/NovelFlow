@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { Card, Badge } from 'react-bootstrap';
+import { Badge } from 'react-bootstrap';
 
 interface NovelDetails {
   ID: string;
@@ -14,6 +14,8 @@ interface NovelDetails {
   Fav?: number | null;
   Alr?: number | null;
   Eps?: number | null;
+  EarlyRetentionRate?: number | null;
+  RecentRetentionRate?: number | null;
   award?: string | null;
 }
 
@@ -21,84 +23,78 @@ interface NovelDetailsCardProps {
   details: NovelDetails | null;
 }
 
-const formatStatNumber = (num: number): string => {
-  if (num >= 1000000) {
-    return `${(num / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
-  }
-  if (num >= 1000) {
-    return `${(num / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  }
-  return num.toLocaleString();
+const StatBlock: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="novel-stat-block">
+    <span className="novel-stat-value">{value}</span>
+    <span className="novel-stat-label">{label}</span>
+  </div>
+);
+
+const formatNum = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
+  return n.toLocaleString();
 };
 
 const NovelDetailsCard: React.FC<NovelDetailsCardProps> = ({ details }) => {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  if (!details) return null;
 
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  if (!details) {
-    return null;
-  }
+  const novelUrl = `https://novelpia.com/novel/${details.ID.includes('#') ? details.ID.split('#')[1] : details.ID}`;
+  const likeToViewRatio = (details.View && details.View > 0 && details.Like != null)
+    ? details.Like / details.View
+    : null;
 
   return (
-    <Card className="mb-3">
-      <Card.Header className="novel-card-header">
-        <div className="d-flex align-items-baseline gap-1">
-          <h5 className="mb-0 fw-bold fs-novel-title">{details.Title || '(제목 없음)'}</h5>
-          <a href={`https://novelpia.com/novel/${details.ID.includes('#') ? details.ID.split('#')[1] : details.ID}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-              <polyline points="15 3 21 3 21 9"></polyline>
-              <line x1="10" y1="14" x2="21" y2="3"></line>
-            </svg>
-          </a>
-        </div>
-        <div className="text-muted">
-          <Link to={`/authors/${details.AuthorID}`} className="fw-bold fs-author-name">{details.AuthorName || '(작자 미상)'}</Link>
-        </div>
-      </Card.Header>
-      <Card.Body className="novel-card-body">
-        <div className="d-flex flex-wrap gap-1 mb-1">
+    <div className="novel-detail-header">
+      <div className="novel-detail-header-inner">
+      {/* Title row */}
+      <div className="novel-detail-title-row">
+        <h1 className="novel-detail-title">{details.Title || '(제목 없음)'}</h1>
+        <a href={novelUrl} target="_blank" rel="noopener noreferrer" className="novel-detail-ext-link" aria-label="노벨피아에서 보기">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+        </a>
+        {details.award && (
+          <Badge bg="warning" text="dark" className="novel-detail-award-badge">{details.award}</Badge>
+        )}
+      </div>
+
+      {/* Author */}
+      <div className="novel-detail-author">
+        <Link to={`/authors/${details.AuthorID}`}>{details.AuthorName || '(작자 미상)'}</Link>
+      </div>
+
+      {/* Tags */}
+      {(details.Tags || []).length > 0 && (
+        <div className="novel-detail-tags">
           {(details.Tags || []).map(tag => (
-            <Badge pill bg="info" text="dark" className="fw-bold fs-tag-badge" key={tag}>
-              #{tag}
-            </Badge>
+            <Badge pill bg="secondary" className="fw-bold fs-tag-badge" key={tag}>#{tag}</Badge>
           ))}
         </div>
+      )}
 
-        <div className="d-flex flex-wrap justify-content-around justify-content-md-start text-center mb-2 gap-3 gap-md-4">
-          <div>
-            <strong className="fs-stat">{isMobile ? formatStatNumber(details.View || 0) : (details.View || 0).toLocaleString()}</strong>
-            <div className="text-muted" style={{fontSize: '0.65rem'}}>조회</div>
-          </div>
-          <div>
-            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Like || 0) : (details.Like || 0).toLocaleString()}</strong>
-            <div className="text-muted" style={{fontSize: '0.65rem'}}>추천</div>
-          </div>
-          <div>
-            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Fav || 0) : (details.Fav || 0).toLocaleString()}</strong>
-            <div className="text-muted" style={{fontSize: '0.65rem'}}>선호</div>
-          </div>
-          <div>
-            <strong className="fs-stat">{isMobile ? formatStatNumber(details.Alr || 0) : (details.Alr || 0).toLocaleString()}</strong>
-            <div className="text-muted" style={{fontSize: '0.65rem'}}>알람</div>
-          </div>
-          <div>
-            <strong className="fs-stat">{(details.Eps || 0).toLocaleString()}</strong>
-            <div className="text-muted" style={{fontSize: '0.65rem'}}>회차</div>
-          </div>
-        </div>
-        
-        <Card.Text className="mt-2 p-2 bg-light rounded fs-synopsis" style={{ whiteSpace: 'pre-wrap' }}>
-          {details.Synopsis}
-        </Card.Text>
+      {/* Stats */}
+      <div className="novel-stats-row">
+        <StatBlock label="조회" value={formatNum(details.View || 0)} />
+        <StatBlock label="추천" value={formatNum(details.Like || 0)} />
+        <StatBlock label="선호" value={formatNum(details.Fav || 0)} />
+        <StatBlock label="알람" value={formatNum(details.Alr || 0)} />
+        <StatBlock label="회차" value={(details.Eps || 0).toLocaleString()} />
+        <div className="novel-stats-divider" />
+        <StatBlock label="추천비" value={likeToViewRatio != null ? `${(likeToViewRatio * 100).toFixed(2)}%` : '-'} />
+        <StatBlock label="초반 잔류율" value={typeof details.EarlyRetentionRate === 'number' ? `${(details.EarlyRetentionRate * 100).toFixed(1)}%` : '-'} />
+        <StatBlock label="최신 잔류율" value={typeof details.RecentRetentionRate === 'number' ? `${(details.RecentRetentionRate * 100).toFixed(1)}%` : '-'} />
+      </div>
 
-      </Card.Body>
-    </Card>
+      {/* Synopsis */}
+      {details.Synopsis && (
+        <p className="novel-detail-synopsis">{details.Synopsis}</p>
+      )}
+      </div>
+    </div>
   );
 };
 

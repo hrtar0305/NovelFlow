@@ -23,6 +23,11 @@
   font-size: 0.9rem;
 }
 
+.search-box .ais-SearchBox-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
 .search-box .ais-SearchBox-input::placeholder {
   color: #d1d5db; /* gray-300 */
 }
@@ -40,9 +45,10 @@
   left: 0;
   width: 100%; /* Match search box width */
   margin-top: 8px;
-  background-color: white;
+  background-color: var(--np-surface-overlay);
+  border: 1px solid var(--np-border);
   border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--np-shadow-md);
   z-index: 100;
   max-height: 400px;
   overflow-y: auto;
@@ -69,7 +75,7 @@
 }
 
 .aa-ItemLink:hover {
-  background-color: #f3f4f6; /* gray-100 */
+  background-color: var(--np-surface-raised);
 }
 
 .aa-ItemContent {
@@ -79,13 +85,21 @@
 
 .aa-ItemTitle {
   font-weight: 600;
-  color: #1f2937; /* gray-800 */
+  color: var(--np-text-heading);
 }
 
 .aa-ItemContentDescription {
   font-size: 0.8rem;
-  color: #6b7280; /* gray-500 */
+  color: var(--np-text-secondary);
   text-transform: uppercase;
+}
+
+/* No results placeholder */
+.search-no-results {
+  padding: 1rem;
+  text-align: center;
+  color: var(--np-text-secondary);
+  font-size: 0.9rem;
 }
 
 /* Placeholder for when search is not configured */

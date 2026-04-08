@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useTransition } from 'react';
-import { Container, Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert, Dropdown, Nav } from 'react-bootstrap';
-import { ArrowUp, ArrowDown, ArrowDownUp, InfoCircle } from 'react-bootstrap-icons';
+import { Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert, Dropdown, Nav } from 'react-bootstrap';
+import { InfoCircle } from 'react-bootstrap-icons';
 import { useParams, useNavigate, NavLink } from 'react-router-dom';
 import { format, parseISO, isValid } from 'date-fns';
 import { getContestTagRankingsByDate, getContestAvailableDates } from '../services/api';
@@ -47,7 +47,7 @@ const CustomTooltip = ({ active, payload, yAxisKey, yAxisName }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="custom-tooltip bg-white p-3 border rounded shadow-sm" style={{ fontSize: '0.9rem' }}>
+      <div className="custom-tooltip" style={{ fontSize: '0.9rem' }}>
         <p className="fw-bold mb-1">{data.tag} (랭킹: {data.Rank})</p>
         <p className="mb-0 text-muted">등장 횟수: {data.count}</p>
         <p className="mb-2 text-muted">{yAxisName}: {data[yAxisKey].toFixed(2)}</p>
@@ -251,10 +251,6 @@ const ContestTagRankingsPage = () => {
     return rankedForChart.slice(0, topN);
   }, [tags, topN]);
 
-  const getSortIndicator = (key: keyof Tag) => {
-    if (sortConfig.key !== key) return <ArrowDownUp size={14} className="text-muted" />;
-    return sortConfig.direction === 'ascending' ? <ArrowUp size={14} className="text-primary" /> : <ArrowDown size={14} className="text-primary" />;
-  };
 
   const getAxisDomain = (data: number[], padding = 0.1) => {
       if (data.length === 0) return [0, 1];
@@ -275,137 +271,139 @@ const ContestTagRankingsPage = () => {
   };
 
   return (
-    <>
-      <style>{`
-        .scatter-point > circle { transition: r 0.15s ease-in-out, stroke-width 0.15s ease-in-out; }
-        .scatter-point.highlight > circle { r: 10px; stroke: black; stroke-width: 2.5px; }
-        tr.highlight-row { background-color: #e9ecef !important; }
-        .year-dropdown-menu {
-          min-width: auto;
-        }
-        .year-dropdown-toggle {
-          padding: .2rem .4rem;
-          font-size: 0.9rem;
-        }
-        @media (max-width: 767px) {
-          .year-dropdown-toggle {
-            padding: .1rem .3rem;
-            font-size: 0.8rem;
-          }
-        }
-        .page-height-manager {
-          /* Default height for PC, which user confirmed is good */
-          height: calc(100dvh - 56px);
-        }
-      `}</style>
-        <Container className="py-3 py-md-4 d-flex flex-column page-height-manager">
-        <div className="d-flex align-items-center gap-2 mb-2">
-          <h1 className="h2 mb-0 fs-page-title">우주최강 공모전</h1>
-          <Dropdown onSelect={handleYearChange}>
-            <Dropdown.Toggle variant="outline-secondary" id="dropdown-year-select" size="sm" className="year-dropdown-toggle">
-              {year}년
-            </Dropdown.Toggle>
-            <Dropdown.Menu className="year-dropdown-menu">
-              {['2025'].map(y => (
-                <Dropdown.Item key={y} eventKey={y} active={y === year}>{y}년</Dropdown.Item>
-              ))}
-            </Dropdown.Menu>
-          </Dropdown>
-          <OverlayTrigger
-            trigger="click"
-            rootClose
-            placement="bottom"
-            overlay={
-              <BootstrapTooltip id="contest-description-tooltip">
-                우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
-              </BootstrapTooltip>
-            }
-          >
-            <span className="d-md-none" style={{ cursor: 'pointer' }}>
-              <InfoCircle />
-            </span>
-          </OverlayTrigger>
+    <div className="page-height-manager">
+      <div className="page-banner">
+        <div className="page-banner-inner">
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <h1 className="page-banner-title">우주최강 공모전</h1>
+            <Dropdown onSelect={handleYearChange}>
+              <Dropdown.Toggle variant="outline-secondary" id="dropdown-year-select" size="sm" className="year-dropdown-toggle">
+                {year}년
+              </Dropdown.Toggle>
+              <Dropdown.Menu className="year-dropdown-menu">
+                {['2025'].map(y => (
+                  <Dropdown.Item key={y} eventKey={y} active={y === year}>{y}년</Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown>
+            <OverlayTrigger
+              trigger="click"
+              rootClose
+              placement="bottom"
+              overlay={
+                <BootstrapTooltip id="contest-description-tooltip">
+                  우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
+                </BootstrapTooltip>
+              }
+            >
+              <span className="d-md-none page-banner-info-icon" style={{ cursor: 'pointer' }}>
+                <InfoCircle />
+              </span>
+            </OverlayTrigger>
+          </div>
+          <p className="page-banner-desc d-none d-md-block">
+            우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
+          </p>
         </div>
+      </div>
 
-        <p className="text-muted mb-3 d-none d-md-block">
-          우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
-        </p>
-        
-        <Nav variant="tabs" className="mb-2">
-          <Nav.Item>
-            <Nav.Link as={NavLink} to={`/contests/${year}/${dateParam || ''}`} end>소설 랭킹</Nav.Link>
-          </Nav.Item>
-          <Nav.Item>
-            <Nav.Link as={NavLink} to={`/contests/${year}/tags/rankings/${dateParam || ''}`} end>태그 랭킹</Nav.Link>
-          </Nav.Item>
-        </Nav>
-        
-        <Row className="mb-1 align-items-center justify-content-between mobile-ranking-controls-row">
-          <Col xs="auto">
+      {/* 모바일 컨트롤 바 */}
+      <div className="mobile-controls-bar d-md-none d-flex align-items-center gap-2 px-2 py-2">
+        <CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} />
+        <ButtonGroup size="sm" className="ms-auto">
+          <Button variant={mobileViewMode === 'card' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('card')}>요약</Button>
+          <Button variant={mobileViewMode === 'table' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('table')}>상세</Button>
+        </ButtonGroup>
+      </div>
+
+      {/* 모바일: 태그 검색 — page-layout 밖에 배치 */}
+      <div className="d-md-none px-2 pb-1">
+        <TagSearchControl onSearchChange={handleSearchChange} />
+      </div>
+
+      <div className="page-layout">
+        {/* 데스크탑 사이드바 */}
+        <aside className="page-sidebar d-none d-md-flex flex-column">
+          <div className="sidebar-section">
+            <div className="sidebar-label">날짜 선택</div>
             <CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} />
-          </Col>
-          <Col xs="auto" className="d-md-none">
-            <ButtonGroup size="sm">
-              <Button variant={mobileViewMode === 'card' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('card')}>요약</Button>
-              <Button variant={mobileViewMode === 'table' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('table')}>상세</Button>
+          </div>
+          <hr className="my-2 sidebar-divider" />
+          <div className="sidebar-section">
+            <div className="sidebar-label">표시 범위</div>
+            <ButtonGroup size="sm" className="w-100">
+              {topNOptions.map(option => (
+                <Button key={option} variant={topN === option ? 'primary' : 'outline-secondary'} onClick={() => setTopN(option)}>{`Top ${option}`}</Button>
+              ))}
             </ButtonGroup>
-          </Col>
-        </Row>
+          </div>
+          <hr className="my-2 sidebar-divider" />
+          <div className="sidebar-section" style={{ flex: 1 }}>
+            <div className="sidebar-label">태그 검색</div>
+            <TagSearchControl onSearchChange={handleSearchChange} />
+          </div>
+        </aside>
 
-        <div className="mb-1" style={{ maxWidth: '400px' }}>
-          <TagSearchControl onSearchChange={handleSearchChange} />
-        </div>
+        <div className="page-main d-flex flex-column overflow-hidden">
+          <Nav variant="tabs" className="mb-2 flex-shrink-0">
+            <Nav.Item>
+              <Nav.Link as={NavLink} to={`/contests/${year}/${dateParam || ''}`} end>소설 랭킹</Nav.Link>
+            </Nav.Item>
+            <Nav.Item>
+              <Nav.Link as={NavLink} to={`/contests/${year}/tags/rankings/${dateParam || ''}`} end>태그 랭킹</Nav.Link>
+            </Nav.Item>
+          </Nav>
 
-        {loading && <div className="text-center py-5"><Spinner animation="border" /></div>}
-        {error && <Alert variant="danger">{error}</Alert>}
-        
-        {!loading && !error && (
-          tags.length > 0 ? (
-            <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>
-              <div className="d-md-none">
+          {loading && <div className="text-center py-5"><Spinner animation="border" /></div>}
+          {error && <Alert variant="danger">{error}</Alert>}
+
+          {!loading && !error && (
+            tags.length > 0 ? (
+              <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>
                 {mobileViewMode === 'card' && (
-                  <div className="p-1">
-                    {processedTags.map((tag) => (
-                      <Card key={tag.tag} className="mb-2 shadow-sm">
-                        <Card.Body className="p-2">
-                          <div className="d-flex justify-content-between align-items-center">
-                            <div className="flex-grow-1 me-2">
-                              <div className="d-flex align-items-baseline gap-2">
-                                <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{tag.Rank}위</span>
-                                <h5 className="mb-0 h6 text-dark">{tag.tag}</h5>
+                  <div className="d-md-none" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
+                    <div className="p-1">
+                      {processedTags.map((tag) => (
+                        <Card key={tag.tag} className="mb-2 shadow-sm">
+                          <Card.Body className="p-2">
+                            <div className="d-flex justify-content-between align-items-center">
+                              <div className="flex-grow-1 me-2">
+                                <div className="d-flex align-items-baseline gap-2">
+                                  <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{tag.Rank}위</span>
+                                  <h5 className="mb-0 h6">{tag.tag}</h5>
+                                </div>
+                              </div>
+                              <div className="flex-shrink-0 text-end" style={{ minWidth: '65px' }}>
+                                <div className="text-muted small">선형 점수</div>
+                                <div className="fw-bold">{tag.score_linear.toFixed(2)}</div>
+                              </div>
+                              <div className="flex-shrink-0 text-end ms-3" style={{ minWidth: '60px' }}>
+                                <div className="text-muted small">등장 횟수</div>
+                                <div className="fw-bold">{tag.count}회</div>
                               </div>
                             </div>
-                            <div className="flex-shrink-0 text-end" style={{ minWidth: '65px' }}>
-                              <div className="text-muted small">선형 점수</div>
-                              <div className="fw-bold">{tag.score_linear.toFixed(2)}</div>
-                            </div>
-                            <div className="flex-shrink-0 text-end ms-3" style={{ minWidth: '60px' }}>
-                              <div className="text-muted small">등장 횟수</div>
-                              <div className="fw-bold">{tag.count}회</div>
-                            </div>
-                          </div>
-                        </Card.Body>
-                      </Card>
-                    ))}
+                          </Card.Body>
+                        </Card>
+                      ))}
+                    </div>
                   </div>
                 )}
-              </div>
 
-              <div className={`${mobileViewMode === 'table' ? 'd-flex' : 'd-none d-md-flex'} flex-column flex-grow-1`} style={{ minHeight: 0 }}>
-                <div className="custom-table-wrapper mb-2" style={{ position: 'relative', backgroundColor: 'white', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', opacity: isPending ? 0.7 : 1, display: 'flex', flexDirection: 'column' }}>
-                  {isPending && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}><Spinner animation="border" /></div>}
-                  <Table responsive="md" hover className="custom-table">
-                    <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'white' }}>
+                <div className={`${mobileViewMode === 'table' ? 'd-flex' : 'd-none d-md-flex'} flex-column flex-grow-1`} style={{ minHeight: 0 }}>
+                  <div className="custom-table-wrapper mb-2" style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', opacity: isPending ? 0.7 : 1, display: 'flex', flexDirection: 'column' }}>
+                    {isPending && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}><Spinner animation="border" /></div>}
+                    <Table responsive="md" hover className="custom-table">
+                    <thead>
                       <tr>
                         <th style={{ fontSize: '0.85rem', width: '100px' }}><span>순위</span></th>
                         <th style={{ fontSize: '0.85rem' }}>태그</th>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>선형 점수</span>{getSortIndicator('score_linear')}</div></th></OverlayTrigger> 
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'선형 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>평균 선형 점수</span>{getSortIndicator('avg_linear')}</div></th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / 순위'로 계산하여, 1위에 가까울수록 기하급수적으로 높은 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>역순위 점수</span>{getSortIndicator('score_inverse')}</div></th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'역순위 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>평균 역순위 점수</span>{getSortIndicator('avg_inverse')}</div></th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / ln(순위 + 1)'로 계산하여, 상위권에 완만한 가중치를 부여해 점수 격차를 줄인 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('score_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>로그 점수</span>{getSortIndicator('score_log')}</div></th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'로그 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>평균 로그 점수</span>{getSortIndicator('avg_log')}</div></th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>순위와 무관하게, 랭킹 내에 등장한 횟수를 그대로 집계하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('count')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}><div className="d-flex align-items-center justify-content-start gap-1"><span>등장 횟수</span>{getSortIndicator('count')}</div></th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>선형 점수</th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'선형 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>평균 선형 점수</th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / 순위'로 계산하여, 1위에 가까울수록 기하급수적으로 높은 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>역순위 점수</th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'역순위 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>평균 역순위 점수</th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / ln(순위 + 1)'로 계산하여, 상위권에 완만한 가중치를 부여해 점수 격차를 줄인 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('score_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>로그 점수</th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'로그 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>평균 로그 점수</th></OverlayTrigger>
+                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>순위와 무관하게, 랭킹 내에 등장한 횟수를 그대로 집계하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('count')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>등장 횟수</th></OverlayTrigger>
                       </tr>
                     </thead>
                     <tbody onMouseLeave={handleTableMouseLeave}>
@@ -432,7 +430,7 @@ const ContestTagRankingsPage = () => {
                     <Row className="align-items-center g-2">
                       <Col><h5 className={`mb-0 ${isMobile ? 'h6' : ''}`}>태그 포지셔닝 맵</h5></Col>
                       {!isMobile && <Col xs="auto"><span className="text-muted" style={{ fontSize: '0.875rem' }}>*선형 점수 기준</span></Col>}
-                      <Col xs="auto">
+                      <Col xs="auto" className="d-md-none">
                         <ButtonGroup size="sm">
                           {topNOptions.map(option => (<Button key={option} variant={topN === option ? 'primary' : 'outline-secondary'} onClick={() => setTopN(option)} style={{ fontSize: isMobile ? '0.75rem' : undefined, padding: isMobile ? '0.2rem 0.4rem' : undefined }}>{`Top ${option}`}</Button>))}
                         </ButtonGroup>
@@ -443,8 +441,8 @@ const ContestTagRankingsPage = () => {
                     <ResponsiveContainer width="100%" height={chartHeight}>
                         <ScatterChart margin={isMobile ? { top: 10, right: 10, bottom: -10, left: -20 } : { top: 20, right: 20, bottom: 20, left: 0 }}>
                             <CartesianGrid />
-                            <XAxis type="number" dataKey="count" name="등장 횟수" unit="회" domain={xDomain} allowDecimals={false} tick={{ fontSize: isMobile ? 10 : undefined }} />
-                            <YAxis type="number" dataKey="avg_linear" name="평균 선형 점수" domain={yDomain} allowDecimals={false} tick={{ fontSize: isMobile ? 10 : undefined }} />
+                            <XAxis type="number" dataKey="count" name="등장 횟수" unit="회" domain={xDomain} allowDecimals={false} tick={{ fontSize: isMobile ? 12 : undefined }} />
+                            <YAxis type="number" dataKey="avg_linear" name="평균 선형 점수" domain={yDomain} allowDecimals={false} tick={{ fontSize: isMobile ? 12 : undefined }} />
                             <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip yAxisKey="avg_linear" yAxisName="평균 선형 점수" />} />
                             <Scatter name="Tags" data={chartData} shape={<CustomScatterShape />} isAnimationActive={false}>
                                 {chartData.map((entry) => <Cell key={`cell-${entry.tag}`} fill={getColorByRank(entry.Rank)} />)}
@@ -461,8 +459,9 @@ const ContestTagRankingsPage = () => {
             <Alert variant="info" className="text-center mt-3">해당 날짜에 대한 태그 랭킹 데이터가 없습니다.</Alert>
           )
         )}
-      </Container>
-    </>
+        </div>{/* end page-main */}
+      </div>{/* end page-layout */}
+    </div>
   );
 };
 

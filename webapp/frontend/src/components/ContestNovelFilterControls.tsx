@@ -65,20 +65,24 @@ const ContestNovelFilterControls = React.memo(({ onFilterChange }: ContestNovelF
       </div>
       <div className="flex-fill" style={{ minWidth: '200px' }}>
         <Form.Label className="fw-bold">회차 범위 필터</Form.Label>
-        <InputGroup>
-          <Form.Control 
-            type="number" 
-            placeholder="최소 회차" 
-            value={tempMinEps} 
-            onChange={(e) => setTempMinEps(e.target.value)} 
+        <InputGroup size="sm">
+          <Form.Control
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="최소 회차"
+            value={tempMinEps}
+            onChange={(e) => setTempMinEps(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEpsFilter(); } }}
           />
           <InputGroup.Text>-</InputGroup.Text>
-          <Form.Control 
-            type="number" 
-            placeholder="최대 회차" 
-            value={tempMaxEps} 
-            onChange={(e) => setTempMaxEps(e.target.value)}  
+          <Form.Control
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="최대 회차"
+            value={tempMaxEps}
+            onChange={(e) => setTempMaxEps(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEpsFilter(); } }}
           />
           <Button onClick={handleApplyEpsFilter}>적용</Button>

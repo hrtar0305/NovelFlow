@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef, useEffect } from 'react';
+import React, { useState, useCallback, forwardRef, useEffect, useMemo } from 'react';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -31,6 +31,12 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
   const [isOpen, setIsOpen] = useState(false);
   const [popperPlacement, setPopperPlacement] = useState<'bottom-start' | 'bottom'>('bottom-start');
 
+  const maxDate = useMemo(() => {
+    if (availableDates.size === 0) return undefined;
+    const dates = Array.from(availableDates).sort();
+    return new Date(dates[dates.length - 1]);
+  }, [availableDates]);
+
   useEffect(() => {
     const updatePlacement = () => {
       if (window.innerWidth < 768) {
@@ -58,13 +64,14 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
   };
 
   return (
-    <div className="date-picker-wrapper">
-      <CalendarEvent className="date-picker-icon" onClick={handleToggle} />
+    <div className="date-picker-wrapper" onClick={(e) => { if (e.target === e.currentTarget) handleToggle(); }}>
+      <CalendarEvent className="date-picker-icon" />
       <DatePicker
         key={availableDates.size}
         selected={selectedDate}
         onChange={handleChange}
         filterDate={filterDate}
+        maxDate={maxDate}
         open={isOpen}
         onInputClick={() => setIsOpen(true)}
         onClickOutside={() => setIsOpen(false)}

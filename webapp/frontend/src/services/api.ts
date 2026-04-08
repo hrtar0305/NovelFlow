@@ -58,8 +58,12 @@ export const getContestLatestDate = (year: number) => {
   return axios.get(`${API_BASE_URL}/api/contests/${year}/latest-date`);
 };
 
+const _contestAvailableDatesCache: Record<number, Promise<any>> = {};
 export const getContestAvailableDates = (year: number) => {
-  return axios.get(`${API_BASE_URL}/api/contests/${year}/available-dates`);
+  if (!_contestAvailableDatesCache[year]) {
+    _contestAvailableDatesCache[year] = axios.get(`${API_BASE_URL}/api/contests/${year}/available-dates`);
+  }
+  return _contestAvailableDatesCache[year];
 };
 
 export const getLatestContestNovelDetails = (year: number, novelId: string) => {

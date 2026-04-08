@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useParams } from 'react-router-dom';
-import { Container, Spinner, Alert, Modal } from 'react-bootstrap';
+import { Spinner, Alert, Modal } from 'react-bootstrap';
 import { useNovelData } from '../hooks/useNovelData';
 import NovelDetailsCard from '../components/novel/NovelDetailsCard';
 import DateRangePicker from '../components/novel/DateRangePicker';
@@ -86,53 +86,55 @@ const NovelDetailPage = () => {
   }
 
   return (
-    <Container className="py-3 py-md-4">
+    <div>
       {isInitialLoad ? (
         <div className="text-center vh-100 d-flex align-items-center justify-content-center">
           <Spinner animation="border" />
         </div>
     ) : error ? (
-      <Alert variant="danger" className="text-center">{error}</Alert>
+      <div className="np-page-container"><Alert variant="danger" className="text-center">{error}</Alert></div>
     ) : (
       <>
           {details && <NovelDetailsCard details={details} />}
           
-          <div className="mt-1 date-range-picker-container">
-            <h4 className="mb-2 fs-section-title-mobile">지표별 상세 추이</h4>
-            <DateRangePicker
-              startDate={startDate}
-              endDate={endDate}
-              minDate={minDate}
-              maxDate={maxDate}
-              availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))}
-              novelAvailableDatesSet={novelAvailableDatesSet}
-              onStartDateChange={handleStartDateChange}
-              onEndDateChange={handleEndDateChange} 
-              isNovelDetailPage={true} showNovelDataIndicator={false} />
-          </div>
+          <div className="np-page-container pt-0">
+            <div className="mt-0 date-range-picker-container">
+              <h4 className="mb-2 fs-section-title-mobile">지표별 상세 추이</h4>
+              <DateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                minDate={minDate}
+                maxDate={maxDate}
+                availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))}
+                novelAvailableDatesSet={novelAvailableDatesSet}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                isNovelDetailPage={true} showNovelDataIndicator={false} />
+            </div>
 
-          <div className="mt-2 position-relative">
-            {loading && (
-              <div className="position-absolute w-100 h-100 d-flex justify-content-center align-items-center" style={{ top: 0, left: 0, background: 'rgba(255, 255, 255, 0.7)', zIndex: 10 }}>
-                <Spinner animation="border" />
-              </div>
-            )}
-            <div style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-              {novelData.length > 0 ? (
-                <>
-                  {hasBothPeriods && (
-                    <Alert variant="info" className="d-flex align-items-center text-center p-2 mb-2 small">
-                      <InfoCircle size={16} className="me-2 flex-shrink-0" />
-                      <span>참고: <strong>2025-07-21</strong>부터 집계 기준이 300위에서 500위로 변경되었습니다.</span>
-                    </Alert>
-                  )}
-                  <Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>
-                    <SmallMultiplesChart data={novelData} hasBothPeriods={hasBothPeriods} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} />
-                  </Suspense>
-                </>
-              ) : (
-                !loading && <Alert variant="info">선택된 기간에 대한 데이터가 없습니다.</Alert>
+            <div className="mt-2 position-relative">
+              {loading && (
+                <div className="position-absolute w-100 h-100 d-flex justify-content-center align-items-center" style={{ top: 0, left: 0, background: 'rgba(11,22,34,0.6)', zIndex: 10 }}>
+                  <Spinner animation="border" />
+                </div>
               )}
+              <div style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+                {novelData.length > 0 ? (
+                  <>
+                    {hasBothPeriods && (
+                      <Alert variant="info" className="d-flex align-items-center text-center p-2 mb-2 small">
+                        <InfoCircle size={16} className="me-2 flex-shrink-0" />
+                        <span>참고: <strong>2025-07-21</strong>부터 집계 기준이 300위에서 500위로 변경되었습니다.</span>
+                      </Alert>
+                    )}
+                    <Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>
+                      <SmallMultiplesChart data={novelData} hasBothPeriods={hasBothPeriods} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} />
+                    </Suspense>
+                  </>
+                ) : (
+                  !loading && <Alert variant="info">선택된 기간에 대한 데이터가 없습니다.</Alert>
+                )}
+              </div>
             </div>
           </div>
           <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false}>
@@ -147,7 +149,7 @@ const NovelDetailPage = () => {
           </Modal>
         </>
       )}
-    </Container>
+    </div>
   );
 };
 

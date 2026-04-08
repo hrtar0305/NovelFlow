@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Label } from 'recharts';
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { Button } from 'react-bootstrap';
 
@@ -122,7 +122,7 @@ const CustomCandleTooltip = ({ active, payload, label, name, metricKey }: { acti
     }
 
     return (
-      <div className="custom-tooltip bg-light p-2 border rounded shadow-sm">
+      <div className="custom-tooltip p-2 border rounded shadow-sm">
         <p className="label fw-bold mb-1">{`날짜: ${label}`}</p>
         <p className="mb-0">
           {`${name}: ${typeof currValue === 'number' ? currValue.toLocaleString() : currValue}`}
@@ -134,7 +134,7 @@ const CustomCandleTooltip = ({ active, payload, label, name, metricKey }: { acti
   return null;
 };
 
-const ChartWrapper = ({ children, isModal }: { children: React.ReactNode, isModal: boolean }) => {
+const ChartWrapper = ({ children, isModal, firstFullWidth }: { children: React.ReactNode, isModal: boolean, firstFullWidth: boolean }) => {
   if (isModal) {
     return <div className="h-100">{children}</div>;
   }
@@ -142,35 +142,36 @@ const ChartWrapper = ({ children, isModal }: { children: React.ReactNode, isModa
   return (
     <>
       <style>{`
+        /* Mobile: vertical stack */
         .charts-container {
-          /* Mobile-first: horizontal scroll */
           display: flex;
-          overflow-x: auto;
-          scroll-snap-type: x mandatory;
-          -webkit-overflow-scrolling: touch;
-          scrollbar-width: none; /* Firefox */
-        }
-        .charts-container::-webkit-scrollbar {
-          display: none; /* Chrome, Safari, Opera */
+          flex-direction: column;
+          gap: 0.75rem;
         }
         .charts-container > .chart-item-wrapper {
-          flex: 0 0 95%;
-          scroll-snap-align: start;
-          padding-right: 1rem;
-        }
-        .charts-container > .chart-item-wrapper:last-child {
-          padding-right: 0;
+          width: 100%;
+          height: 240px;
         }
 
-        /* Desktop: vertical stack */
-        @media (min-width: 768px) { /* Bootstrap's md breakpoint */
+        /* Desktop: 2-column grid */
+        @media (min-width: 768px) {
           .charts-container {
             display: grid;
-            gap: 0.5rem; /* Replicates Bootstrap's g-2 */
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            flex-direction: unset;
+          }
+          .charts-container > .chart-item-wrapper {
+            width: auto;
+            min-height: 240px;
+          }
+          .charts-container.first-full-width > .chart-item-wrapper:first-child {
+            grid-column: 1 / -1;
+            min-height: 200px;
           }
         }
       `}</style>
-      <div className="charts-container">{children}</div>
+      <div className={`charts-container${firstFullWidth ? ' first-full-width' : ''}`}>{children}</div>
     </>
   );
 };
@@ -207,8 +208,10 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
 
   const metrics = isModal && modalMetric ? [modalMetric] : Object.keys(metricConfigs);
 
+  const firstFullWidth = !isModal && metrics.length % 2 !== 0;
+
   return (
-    <ChartWrapper isModal={isModal}>
+    <ChartWrapper isModal={isModal} firstFullWidth={firstFullWidth}>
       {metrics.map((metric) => {
         const config = metricConfigs[metric];
         
@@ -265,42 +268,48 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
 
         return (
           <div key={metric} className={isModal ? "h-100" : "chart-item-wrapper"}>
-            <div className="p-2 border rounded h-100 d-flex flex-column position-relative">
-              <div className="flex-grow-1" style={{minHeight: isModal ? 'auto' : '180px'}}>
+            <div className="chart-card border rounded h-100 d-flex flex-column">
+              <div className="chart-card-header d-flex align-items-center justify-content-between">
+                <span className="chart-card-title">{config.name}</span>
+                {!isModal && (
+                  <Button variant="outline-secondary" size="sm" onClick={() => onZoomClick(metric)} className="chart-zoom-btn">확대</Button>
+                )}
+              </div>
+              <div className="flex-grow-1" style={{minHeight: isModal ? 'auto' : '180px', padding: '0 4px 4px'}}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dataWithTooltipTarget} margin={{ top: 20, right: 20, left: isMobile ? -8 : 35, bottom: isMobile ? -14 : 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                        dataKey="Date" 
+                  <ComposedChart data={dataWithTooltipTarget} margin={{ top: 8, right: 12, left: isMobile ? -8 : 30, bottom: isMobile ? -14 : 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--np-border)" />
+                    <XAxis
+                        dataKey="Date"
                         tickFormatter={(dateStr) => format(parseISO(dateStr), 'd')}
-                        tick={{ fontSize: isMobile ? 11 : undefined }}
+                        tick={{ fontSize: isMobile ? 11 : 12, fill: 'var(--np-text-secondary)' }}
+                        axisLine={{ stroke: 'var(--np-border)' }}
+                        tickLine={{ stroke: 'var(--np-border)' }}
                     />
-                    <YAxis 
+                    <YAxis
                         domain={yDomain}
-                        reversed={metric.toLowerCase().includes('rank')} 
+                        reversed={metric.toLowerCase().includes('rank')}
                         tickFormatter={(value) =>
                           isMobile && !metric.toLowerCase().includes('rank')
                             ? formatNumberForMobile(value)
                             : value.toLocaleString()}
                         allowDecimals={!metric.toLowerCase().includes('rank')}
-                        tick={{ fontSize: isMobile ? 11 : undefined }}
+                        tick={{ fontSize: isMobile ? 11 : 12, fill: 'var(--np-text-secondary)' }}
+                        axisLine={{ stroke: 'var(--np-border)' }}
+                        tickLine={{ stroke: 'var(--np-border)' }}
                     />
                     <Tooltip content={<CustomCandleTooltip name={config.name} metricKey={metric} />} isAnimationActive={false} />
-                    {hasBothPeriods && <ReferenceLine x="2025-07-21" stroke="red" strokeDasharray="3 3" strokeWidth={2} />}
-                    <Label value={config.name} position="insideTopLeft" offset={10} style={{fill: '#666', fontSize: '0.9rem', fontWeight: 'bold'}} />
+                    {hasBothPeriods && <ReferenceLine x="2025-07-21" stroke="var(--np-rank-down)" strokeDasharray="3 3" strokeWidth={2} />}
                     <Bar dataKey="tooltipTrigger" fill="transparent" isAnimationActive={false} />
                     <Bar dataKey={`${metric}_range`} isAnimationActive={false} barSize={4} shape={CenteredBar}>
                       {dataWithTooltipTarget.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={entry[`${metric}_changeType`] === 'up' ? upColor : entry[`${metric}_changeType`] === 'down' ? downColor : '#e0e0e0'} />
+                        <Cell key={`cell-${index}`} fill={entry[`${metric}_changeType`] === 'up' ? upColor : entry[`${metric}_changeType`] === 'down' ? downColor : 'var(--np-border)'} />
                       ))}
                     </Bar>
-                    <Line type="monotone" dataKey={metric} stroke="#343a40" dot={<CustomizedDot dataKey={metric} />} connectNulls={metric.toLowerCase().includes('rank')} isAnimationActive={false} />
+                    <Line type="monotone" dataKey={metric} stroke="var(--np-accent)" strokeWidth={2} dot={<CustomizedDot dataKey={metric} />} connectNulls={metric.toLowerCase().includes('rank')} isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
-              {!isModal && (
-                <Button variant="outline-secondary" size="sm" onClick={() => onZoomClick(metric)} style={{position: 'absolute', top: '5px', right: '5px'}}>확대</Button>
-              )}
             </div>
           </div>
         );

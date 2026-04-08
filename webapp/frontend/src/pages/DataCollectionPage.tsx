@@ -1,8 +1,8 @@
-import { Container, Card, ListGroup, Accordion, Alert } from 'react-bootstrap';
+import { Card, ListGroup, Accordion } from 'react-bootstrap';
 
 const DataCollectionPage = () => {
   return (
-    <Container className="py-3 py-md-4">
+    <div className="np-page-container">
       <Card>
         <Card.Header>
           <h1 className="h3 mb-0">데이터 수집 및 랭킹 기준</h1>
@@ -48,16 +48,16 @@ const DataCollectionPage = () => {
           </Accordion>
 
           <h2 className="h5 mt-4">주의사항</h2>
-          <Alert variant="warning">
+          <div className="notice-box">
             <ul className="mb-0 ps-3">
               <li>본 사이트의 랭킹은 <strong>7일간의 누적 조회수</strong>를 기준으로 하므로, 일일 조회수 기반의 순위 변동과는 체감상 차이가 있을 수 있습니다.</li>
               <li>노벨피아에서 공식 제공하는 '주간 Top 100'과도 집계 방식이 다르므로 순위가 일치하지 않습니다.</li>
               <li>데이터 수집 시각은 기준 시각(오후 9시)에서 최대 1시간의 오차가 발생할 수 있어 완벽한 24시간 주기의 데이터가 아닐 수 있습니다.</li>
             </ul>
-          </Alert>
+          </div>
         </Card.Body>
       </Card>
-    </Container>
+    </div>
   );
 };
 

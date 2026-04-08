@@ -33,8 +33,8 @@ interface ContestNovelDetails {
   Fav?: number;
   Alr?: number;
   Eps?: number;
-  RetentionRate?: number;
-  Ranking?: number; // Add Ranking to be consistent
+  Ranking?: number;
+  award?: string | null;
 }
 
 export const useContestNovelData = (year: string | undefined, novelId: string | undefined) => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Spinner, Alert, Container, Card, Row, Col, Badge } from 'react-bootstrap';
+import { Spinner, Alert, Card, Row, Col } from 'react-bootstrap';
 import { getAuthorNovels } from '../services/api';
 
 // API로부터 받는 소설 데이터 타입 정의
@@ -16,6 +16,12 @@ interface Novel {
   Alr: number;
   Tags: string[];
 }
+
+const formatNum = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
+  return n.toLocaleString();
+};
 
 const AuthorPage = () => {
   const { authorId } = useParams<{ authorId: string }>();
@@ -74,7 +80,7 @@ const AuthorPage = () => {
   };
 
   return (
-    <Container className="py-3 py-md-4">
+    <div className="np-page-container">
       {loading ? (
         <div className="text-center">
           <Spinner animation="border" />
@@ -95,27 +101,36 @@ const AuthorPage = () => {
                   onClick={() => handleCardClick(novel.ID)}
                   style={isMobile ? { cursor: 'pointer' } : {}}
                 >
-                  <Card.Body className="p-3">
+                  <Card.Body className="p-3 author-novel-card-body">
                     <Card.Title className="h5 mb-2 fs-author-page-novel-title">
                       {isMobile ? (
-                        <span className="text-dark text-decoration-none">{novel.Title || '(제목 없음)'}</span>
+                        <span className="author-novel-title-link">{novel.Title || '(제목 없음)'}</span>
                       ) : (
-                        <Link to={`/novels/${novel.ID}`} className="text-dark text-decoration-none">
+                        <Link to={`/novels/${novel.ID}`} className="author-novel-title-link">
                           {novel.Title || '(제목 없음)'}
                         </Link>
                       )}
                     </Card.Title>
-                    <Row xs={2} md={4} className="g-4 g-md-2 text-center text-md-start mb-2 author-page-stats">
-                      <Col><div className="text-muted small">회차</div><strong>{novel.Eps.toLocaleString()}화</strong></Col>
-                      <Col><div className="text-muted small">조회수</div><strong>{novel.View.toLocaleString()}</strong></Col>
-                      <Col><div className="text-muted small">추천</div><strong>{novel.Like.toLocaleString()}</strong></Col>
-                      <Col><div className="text-muted small">선호</div><strong>{novel.Fav.toLocaleString()}</strong></Col>
+                    {/* 모바일: 인라인 한 줄 */}
+                    <div className="d-md-none author-stats-inline">
+                      <span>{novel.Eps.toLocaleString()}화</span>
+                      <span className="author-stats-dot">·</span>
+                      <span>조회 {formatNum(novel.View)}</span>
+                      <span className="author-stats-dot">·</span>
+                      <span>선호 {formatNum(novel.Fav)}</span>
+                    </div>
+                    {/* 데스크탑: 그리드 */}
+                    <Row xs={4} className="d-none d-md-flex g-2 text-start mb-2 author-page-stats">
+                      <Col><div className="author-stat-label">회차</div><strong className="author-stat-value">{novel.Eps.toLocaleString()}화</strong></Col>
+                      <Col><div className="author-stat-label">조회수</div><strong className="author-stat-value">{novel.View.toLocaleString()}</strong></Col>
+                      <Col><div className="author-stat-label">추천</div><strong className="author-stat-value">{novel.Like.toLocaleString()}</strong></Col>
+                      <Col><div className="author-stat-label">선호</div><strong className="author-stat-value">{novel.Fav.toLocaleString()}</strong></Col>
                     </Row>
                     {novel.Tags && novel.Tags.length > 0 && (
                       <div className="pt-2 border-top">
                         <div className="d-flex flex-wrap gap-1">
                           {novel.Tags.map((tag) => (
-                            <Badge pill bg="secondary" key={tag} className="fw-normal fs-author-page-tag">{tag}</Badge>
+                            <span key={tag} className="author-page-tag-chip">{tag}</span>
                           ))}
                         </div>
                       </div>
@@ -129,7 +144,7 @@ const AuthorPage = () => {
           </div>
         </>
       )}
-    </Container>
+    </div>
   );
 };
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useTransition, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useParams, Link, useNavigate, NavLink } from 'react-router-dom';
-import { Table, Spinner, Alert, Container, Card, Row, Col, Button, Collapse, Dropdown, ButtonGroup, InputGroup, Form, OverlayTrigger, Tooltip, Nav, Badge } from 'react-bootstrap';
-import { Funnel, ChevronUp, ChevronDown, InfoCircle, ArrowUpShort, ArrowDownShort, ExclamationCircleFill } from 'react-bootstrap-icons';
+import { Table, Spinner, Alert, Card, Button, Dropdown, ButtonGroup, InputGroup, Form, OverlayTrigger, Tooltip, Nav, Badge } from 'react-bootstrap';
+import { Funnel, ChevronUp, ChevronDown, InfoCircle, ArrowUpShort, ArrowDownShort } from 'react-bootstrap-icons';
 import { getContestDataByDate, getContestAvailableDates } from '../services/api';
 import ContestNovelFilterControls from '../components/ContestNovelFilterControls';
 import CalendarPicker from '../components/CalendarPicker';
@@ -92,7 +92,6 @@ interface ContestNovel {
   Fav?: number;
   Eps?: number;
   Tags: string[];
-  RetentionRate?: number;
   Date: string;
   Rank: number;
   view_change: number;
@@ -130,6 +129,7 @@ const ContestPage = () => {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<'include-or' | 'include-and' | 'exclude'>('include-and');
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+  const [activeFilterType, setActiveFilterType] = useState<'basic' | 'advanced'>('basic');
   const [advancedRule, setAdvancedRule] = useState('');
   const [activeAdvancedRule, setActiveAdvancedRule] = useState('');
   const [filterError, setFilterError] = useState<string | null>(null);
@@ -226,7 +226,7 @@ const ContestPage = () => {
     }
 
     // 1. Tag Filtering
-    if (isAdvancedMode) {
+    if (activeFilterType === 'advanced') {
       if (activeAdvancedRule) {
         try {
           filteredItems = filteredItems.filter(novel => evaluateAdvancedRule(activeAdvancedRule, novel.Tags || []));
@@ -295,7 +295,7 @@ const ContestPage = () => {
     }
 
     return filteredItems;
-  }, [novels, sortConfig, isAdvancedMode, selectedTags, filterMode, activeAdvancedRule, searchTerm, activeMinEps, activeMaxEps, showOnlyWinners]);
+  }, [novels, sortConfig, activeFilterType, selectedTags, filterMode, activeAdvancedRule, searchTerm, activeMinEps, activeMaxEps, showOnlyWinners]);
 
   const tableVirtualizer = useVirtualizer({
     count: processedNovels.length,
@@ -331,13 +331,19 @@ const ContestPage = () => {
 
   const clearAllTags = () => {
     startTransition(() => {
+      setActiveFilterType('basic');
+      setAdvancedRule('');
+      setActiveAdvancedRule('');
       setSelectedTags([]);
     });
   };
 
   const handleTagSelect = (tag: string) => {
     startTransition(() => {
-      setSelectedTags(prev => 
+      setActiveFilterType('basic');
+      setAdvancedRule('');
+      setActiveAdvancedRule('');
+      setSelectedTags(prev =>
         prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
       );
     });
@@ -345,6 +351,9 @@ const ContestPage = () => {
 
   const handleTagDeselect = (tag: string) => {
     startTransition(() => {
+      setActiveFilterType('basic');
+      setAdvancedRule('');
+      setActiveAdvancedRule('');
       setSelectedTags(prev => prev.filter(t => t !== tag));
     });
   };
@@ -356,6 +365,8 @@ const ContestPage = () => {
         setFilterError(null);
         setAdvancedRule(newRule);
         setActiveAdvancedRule(newRule);
+        setActiveFilterType('advanced');
+        setSelectedTags([]);
       }
     });
   };
@@ -370,27 +381,22 @@ const ContestPage = () => {
   const handleFilterModeChange = (mode: string | null) => {
     if (mode) {
       startTransition(() => {
+        setActiveFilterType('basic');
         setFilterMode(mode as 'include-or' | 'include-and' | 'exclude');
       });
     }
   };
 
   const handleSwitchToSimple = () => {
-    startTransition(() => {
-      setIsAdvancedMode(false);
-      setActiveAdvancedRule('');
-    });
+    setIsAdvancedMode(false);
   };
 
   const handleSwitchToAdvanced = () => {
-    startTransition(() => {
-      setIsAdvancedMode(true);
-      setSelectedTags([]);
-    });
+    setIsAdvancedMode(true);
   };
 
   const requestSort = (key: keyof ContestNovel) => {
-    const sortableKeys: (keyof ContestNovel)[] = ['Rank', 'rank_change', 'view_change', 'View', 'like_to_view_ratio', 'RetentionRate', 'Eps'];
+    const sortableKeys: (keyof ContestNovel)[] = ['Rank', 'rank_change', 'view_change', 'View', 'like_to_view_ratio', 'Eps'];
     if (!sortableKeys.includes(key)) {
       return;
     }
@@ -400,7 +406,7 @@ const ContestPage = () => {
       if (sortConfig && sortConfig.key === key) {
         direction = sortConfig.direction === 'ascending' ? 'descending' : 'ascending';
       } else {
-        direction = (['rank_change', 'View', 'view_change', 'like_to_view_ratio', 'RetentionRate'].includes(key)) ? 'descending' : 'ascending';
+        direction = (['rank_change', 'View', 'view_change', 'like_to_view_ratio'].includes(key)) ? 'descending' : 'ascending';
       }
       setSortConfig({ key, direction });
     });
@@ -418,257 +424,216 @@ const ContestPage = () => {
     }
   };
 
-  const alertInfo = useMemo(() => {
-    if (!currentDate) return null;
-    const currentDateStr = format(currentDate, 'yyyy-MM-dd');
-    
-    if (currentDateStr < '2025-10-15') {
-      return {
-        text: '10월 15일 이전 랭킹 데이터는 연독률을 제공하지 않습니다.',
-        variant: 'info' as const,
-      };
+  // CSS 필터 패널 애니메이션 - showFilters가 false가 되면 300ms 뒤 내부 컨텐츠 언마운트
+  useEffect(() => {
+    if (!showFilters) {
+      const t = setTimeout(() => setShouldRenderFilters(false), 300);
+      return () => clearTimeout(t);
+    } else {
+      setShouldRenderFilters(true);
     }
-    return null;
-  }, [currentDate]);
+  }, [showFilters]);
 
   const tableVirtualItems = tableVirtualizer.getVirtualItems();
   const tablePaddingTop = tableVirtualItems[0]?.start ?? 0;
-  const tablePaddingBottom = tableVirtualizer.getTotalSize() - (tableVirtualItems.at(-1)?.end ?? 0);
+  const lastTableItem = tableVirtualItems[tableVirtualItems.length - 1];
+  const tablePaddingBottom = lastTableItem ? tableVirtualizer.getTotalSize() - lastTableItem.end : 0;
   const mobileVirtualItems = mobileVirtualizer.getVirtualItems();
 
-  return (
-    <Container className="py-3 py-md-4 d-flex flex-column page-height-manager">
-      <style type="text/css">{`
-        .page-height-manager {
-          height: calc(100dvh - 56px);
-        }
-        .novel-rankings-table thead th {
-          position: sticky;
-          top: 0;
-          z-index: 1;
-          background-color: white;
-        }
-        .year-dropdown-menu {
-          min-width: auto;
-        }
-        .year-dropdown-toggle {
-          padding: .2rem .4rem;
-          font-size: 0.9rem;
-        }
-        @media (max-width: 767px) {
-          .year-dropdown-toggle {
-            padding: .1rem .3rem;
-            font-size: 0.8rem;
-          }
-        }
-        .placeholder-row td {
-          color: #6c757d !important; /* Bootstrap's text-muted color */
-          opacity: 0.7;
-        }
-        .placeholder-row a {
-          color: inherit !important;
-          text-decoration: none !important;
-          pointer-events: none;
-        }
-        .fs-sm-control .form-check-label {
-          font-size: 0.9rem;
-        }
-      `}</style>
-
-      <div className="d-flex align-items-center gap-2 mb-2">
-        <h1 className="h2 mb-0 fs-page-title">우주최강 공모전</h1>
-        <Dropdown onSelect={handleYearChange}>
-          <Dropdown.Toggle variant="outline-secondary" id="dropdown-year-select" size="sm" className="year-dropdown-toggle">
-            {year}년
+  // --- 태그 필터 콘텐츠 (사이드바/모바일 공통) ---
+  const tagFilterContent = (idSuffix: string) => (
+    <div className="d-flex flex-column gap-2">
+      {/* 첫 줄: 기본/고급 토글 + 비우기 */}
+      <div className="d-flex align-items-center justify-content-between">
+        <ButtonGroup size="sm">
+          <Button variant={!isAdvancedMode ? 'primary' : 'outline-secondary'} onClick={handleSwitchToSimple}>기본</Button>
+          <Button variant={isAdvancedMode ? 'primary' : 'outline-secondary'} onClick={handleSwitchToAdvanced}>고급</Button>
+        </ButtonGroup>
+        {!isAdvancedMode && selectedTags.length > 0 && (
+          <Button variant="outline-danger" size="sm" onClick={clearAllTags}>비우기</Button>
+        )}
+      </div>
+      {/* 둘째 줄: 필터 모드 드롭다운 (기본 모드일 때만) */}
+      {!isAdvancedMode && (
+        <Dropdown onSelect={handleFilterModeChange}>
+          <Dropdown.Toggle variant="outline-secondary" id={`dropdown-filter-mode-${idSuffix}`} size="sm" className="w-100 d-flex justify-content-between align-items-center">
+            {filterModeLabels[filterMode]}
           </Dropdown.Toggle>
-          <Dropdown.Menu className="year-dropdown-menu">
-            {['2025'].map(y => (
-              <Dropdown.Item key={y} eventKey={y} active={y === year}>
-                {y}년
-              </Dropdown.Item>
-            ))}
+          <Dropdown.Menu className="w-100">
+            <Dropdown.Item eventKey="include-and">{filterModeLabels['include-and']}</Dropdown.Item>
+            <Dropdown.Item eventKey="include-or">{filterModeLabels['include-or']}</Dropdown.Item>
+            <Dropdown.Item eventKey="exclude">{filterModeLabels['exclude']}</Dropdown.Item>
           </Dropdown.Menu>
         </Dropdown>
-        <OverlayTrigger
-          trigger="click"
-          rootClose
-          placement="bottom"
-          overlay={
-            <Tooltip id="contest-description-tooltip">
-              우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
-            </Tooltip>
-          }
-        >
-          <span className="d-md-none" style={{ cursor: 'pointer' }}>
-            <InfoCircle />
-          </span>
-        </OverlayTrigger>
-      </div>
-      <p className="text-muted mb-3 d-none d-md-block">
-        우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
-      </p>
+      )}
 
-      <Nav variant="tabs" className="mb-2">
-        <Nav.Item>
-          <Nav.Link as={NavLink} to={`/contests/${year}/${dateParam || ''}`} end>소설 랭킹</Nav.Link>
-        </Nav.Item>
-        <Nav.Item>
-          <Nav.Link as={NavLink} to={`/contests/${year}/tags/rankings/${dateParam || ''}`} end>태그 랭킹</Nav.Link>
-        </Nav.Item>
-      </Nav>
-
-      <Row className="mb-1 align-items-center mobile-ranking-controls-row">
-        <Col className="d-flex align-items-center gap-2">
-          <div className="flex-shrink-0">
-            <CalendarPicker
-              selectedDate={currentDate}
-              onDateChange={handleDateChange}
-              availableDates={availableDates}
-            />
+      {!isAdvancedMode ? (
+        <>
+          <div className="selected-tags-box">
+            {selectedTags.map(tag => (
+              <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm"
+                onClick={() => handleTagDeselect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>
+            ))}
           </div>
-          <div className="flex-shrink-0">
-            <Button
-              onClick={() => setShowFilters(!showFilters)}
-              aria-controls="filters-collapse-content"
-              aria-expanded={showFilters}
-              variant="outline-secondary" size="sm"
-              className="d-flex align-items-center"
+          <TagFilter unselectedTags={unselectedTags} onTagSelect={handleTagSelect} />
+        </>
+      ) : (
+        <>
+          <InputGroup>
+            <Form.Control
+              as="textarea" rows={2}
+              placeholder="e.g. (하렘 AND 순애) OR (TS AND NOT BL)"
+              ref={advancedRuleInputRef} defaultValue={advancedRule}
+              onKeyDown={handleAdvancedInputKeyDown}
+              isInvalid={!!filterError}
+            />
+          </InputGroup>
+          <div className="d-flex justify-content-between align-items-center">
+            <Button variant="primary" size="sm" onClick={applyAdvancedFilter}>필터 적용</Button>
+            <small className="text-muted">AND / OR / NOT / ()</small>
+          </div>
+          {filterError && <Alert variant="danger" className="p-2 small mb-0">{filterError}</Alert>}
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="page-height-manager">
+
+      {/* ── Page Banner ── */}
+      <div className="page-banner">
+        <div className="page-banner-inner">
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <h1 className="page-banner-title">우주최강 공모전</h1>
+            <Dropdown onSelect={handleYearChange}>
+              <Dropdown.Toggle variant="outline-secondary" id="dropdown-year-select" size="sm" className="year-dropdown-toggle">
+                {year}년
+              </Dropdown.Toggle>
+              <Dropdown.Menu className="year-dropdown-menu">
+                {['2025'].map(y => (
+                  <Dropdown.Item key={y} eventKey={y} active={y === year}>{y}년</Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown>
+            <OverlayTrigger trigger="click" rootClose placement="bottom"
+              overlay={<Tooltip id="contest-description-tooltip">우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.</Tooltip>}
             >
-              <Funnel className="me-1" /><span className="d-none d-md-inline">필터</span>{showFilters ? <ChevronUp className="ms-1" /> : <ChevronDown className="ms-1" />}
-            </Button>
+              <span className="d-md-none page-banner-info-icon" style={{ cursor: 'pointer' }}><InfoCircle /></span>
+            </OverlayTrigger>
           </div>
-          <div className="flex-shrink-0">
-            <Form.Check 
-              type="switch"
-              id="winner-switch"
-              label={<><span className="d-none d-md-inline">수상작만 보기</span><span className="d-inline d-md-none">수상작</span></>}
-              checked={showOnlyWinners}
-              onChange={(e) => startTransition(() => setShowOnlyWinners(e.target.checked))}
-              className="fs-sm-control"
-            />
-          </div>
-          {/* Desktop: Show alert to the right of the date picker */}
-          <div className="d-none d-md-block">
-            {alertInfo && (
-              <Alert variant={alertInfo.variant} className="d-flex align-items-center text-start p-2 mb-0 small">
-                <InfoCircle size={16} className="me-2 flex-shrink-0" style={{ minWidth: '16px' }} />
-                <span><strong>참고:</strong> {alertInfo.text}</span>
-              </Alert>
-            )}
-          </div>
-          {/* Mobile: Show info icon with tooltip */}
-          <div className="d-md-none">
-            {alertInfo && (
-              <OverlayTrigger
-                trigger="click"
-                rootClose
-                placement="bottom-start"
-                overlay={
-                  <Tooltip id="retention-rate-warning-tooltip" className="small">
-                    <strong>참고:</strong> {alertInfo.text}
-                  </Tooltip>
-                }
-              >
-                <span style={{ cursor: 'pointer' }} className="d-flex align-items-center text-info">
-                  <ExclamationCircleFill />
-                </span>
-              </OverlayTrigger>
-            )}
-          </div>
-        </Col>
-        <Col xs="auto" className="d-md-none">
-          <ButtonGroup size="sm">
-            <Button variant={mobileViewMode === 'card' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('card')}>요약</Button>
-            <Button variant={mobileViewMode === 'table' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('table')}>상세</Button>
-          </ButtonGroup>
-        </Col>
-      </Row>
+          <p className="page-banner-desc d-none d-md-block">
+            우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
+          </p>
+        </div>
+      </div>
 
-      <Collapse 
-        in={showFilters}
-        onExiting={() => setShouldRenderFilters(false)}
-      >
-        <div id="filters-collapse-content">
+      {/* 모바일 컨트롤 바 — page-layout 밖에 배치 */}
+      <div className="mobile-controls-bar d-md-none d-flex align-items-center gap-2 px-2 py-2">
+        <CalendarPicker selectedDate={currentDate} onDateChange={handleDateChange} availableDates={availableDates} />
+        <Button
+          onClick={() => setShowFilters(!showFilters)}
+          variant="outline-secondary" size="sm"
+          className="d-flex align-items-center gap-1"
+        >
+          <Funnel size={14} />
+          <span>필터</span>
+          {showFilters ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </Button>
+        <ButtonGroup size="sm" className="ms-auto">
+          <Button variant={mobileViewMode === 'card' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('card')}>요약</Button>
+          <Button variant={mobileViewMode === 'table' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('table')}>상세</Button>
+        </ButtonGroup>
+      </div>
+
+      {/* 모바일 필터 패널 — page-layout 밖에 배치 */}
+      <div className={`filter-panel d-md-none px-2${showFilters ? ' filter-panel--open' : ''}`}>
+        <div id="filters-collapse-mobile">
           {(showFilters || shouldRenderFilters) && (
-            <div className="px-3 py-2 border rounded mb-1">
+            <div className="p-2 border rounded mt-2">
               <ContestNovelFilterControls onFilterChange={handleFilterChange} />
-            <hr className="my-2"/>
-            <div className="d-flex flex-wrap align-items-center justify-content-between mb-2">
-              <div className="d-flex align-items-center gap-2">
-                <span className="fw-bold">태그 선택</span>
-                <ButtonGroup size="sm">
-                  <Button variant={!isAdvancedMode ? 'primary' : 'outline-secondary'} onClick={handleSwitchToSimple} className="fw-bold">기본</Button>
-                  <Button variant={isAdvancedMode ? 'primary' : 'outline-secondary'} onClick={handleSwitchToAdvanced} className="fw-bold">고급</Button>
-                </ButtonGroup>
+              <div className="mt-2 mb-1">
+                <Form.Check
+                  type="switch"
+                  id="winner-switch-mobile"
+                  label="수상작만 보기"
+                  checked={showOnlyWinners}
+                  onChange={(e) => startTransition(() => setShowOnlyWinners(e.target.checked))}
+                  className="fs-sm-control"
+                />
               </div>
-              {isAdvancedMode && (
-                <div className="d-md-none">
-                  <Button variant="primary" size="sm" onClick={applyAdvancedFilter} className="fw-bold">필터 적용</Button>
-                </div>
-              )}
-              {!isAdvancedMode && (
-                <div className="d-flex align-items-center gap-2">
-                  <div style={{ minWidth: '130px' }}>
-                    <Dropdown onSelect={handleFilterModeChange}>
-                      <Dropdown.Toggle variant="outline-secondary" id="dropdown-filter-mode" size="sm" className="w-100 d-flex justify-content-between align-items-center">
-                        <span>{filterModeLabels[filterMode]}</span>
-                      </Dropdown.Toggle>
-                      <Dropdown.Menu className="w-100">
-                        <Dropdown.Item eventKey="include-and">{filterModeLabels['include-and']}</Dropdown.Item>
-                        <Dropdown.Item eventKey="include-or">{filterModeLabels['include-or']}</Dropdown.Item>
-                        <Dropdown.Item eventKey="exclude">{filterModeLabels['exclude']}</Dropdown.Item>
-                      </Dropdown.Menu>
-                    </Dropdown>
-                  </div>
-                  {selectedTags.length > 0 && (
-                    <Button variant="outline-danger" size="sm" onClick={clearAllTags} className="d-none d-md-inline-block">비우기</Button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {!isAdvancedMode ? (
-              <div>
-                <div className="d-flex flex-wrap gap-1 p-2 bg-light border rounded" style={{ minHeight: '40px', maxHeight: '60px', overflowY: 'auto' }}>
-                    {selectedTags.map(tag => (
-                      <Button key={tag} variant={filterMode === 'exclude' ? 'danger' : 'primary'} size="sm" onClick={() => handleTagDeselect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>
-                    ))}
-                </div>
-                    <hr className="my-2" />
-                    <TagFilter unselectedTags={unselectedTags} onTagSelect={handleTagSelect} />
-              </div>
-            ) : (
-              <div>
-                <InputGroup className="mb-0 mb-md-2">
-                    <Form.Control
-                        as="textarea" rows={2} placeholder="e.g. (하렘 AND 순애) OR (TS AND NOT BL)"
-                        ref={advancedRuleInputRef} defaultValue={advancedRule} onKeyDown={handleAdvancedInputKeyDown} isInvalid={!!filterError}
-                    />
-                </InputGroup>
-                <div className="d-none d-md-flex justify-content-between align-items-center">
-                    <div><Button variant="primary" size="sm" onClick={applyAdvancedFilter} className="fw-bold">필터 적용</Button></div>
-                    <Alert variant="light" className="p-1 m-0 d-flex align-items-center">
-                        <InfoCircle size={15} className="me-1 flex-shrink-0"/>
-                        <span>AND, OR, NOT 및 괄호()를 사용하여 태그를 조합할 수 있습니다.</span>
-                    </Alert>
-                </div>
-              </div>
-            )}
+              <hr className="my-2" />
+              <div className="sidebar-label mb-2">태그 필터</div>
+              {tagFilterContent('mobile')}
             </div>
           )}
-          </div>
-      </Collapse>
+        </div>
+      </div>
 
-      {/* 작품 목록 테이블 */}
-      <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>
-        {loading && <div className="text-center py-5"><Spinner animation="border" /></div>}
-        {error && <Alert variant="danger">{error}</Alert>}
-        {!loading && !error && novels.length > 0 && (
-          <>
-            {/* Table View (Desktop or Mobile Table Mode) */}
-            <div className={`${mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'} h-100`}>
-              <div ref={tableScrollRef} className="custom-table-wrapper table-responsive border rounded h-100" style={{ overflow: 'auto', opacity: isPending ? 0.7 : 1 }}>
-                {isPending && <div className="position-absolute w-100 h-100 d-flex justify-content-center align-items-center" style={{ zIndex: 10, backgroundColor: 'rgba(255,255,255,0.5)' }}><Spinner animation="border" /></div>}
+      {/* ── Page Layout ── */}
+      <div className="page-layout">
+
+        {/* ── Desktop Sidebar ── */}
+        <aside className="page-sidebar d-none d-md-flex flex-column">
+
+          <div className="sidebar-section">
+            <div className="sidebar-label">날짜 선택</div>
+            <CalendarPicker selectedDate={currentDate} onDateChange={handleDateChange} availableDates={availableDates} />
+          </div>
+
+          <div className="sidebar-divider" />
+
+          <div className="sidebar-section">
+            <div className="sidebar-label mb-2">검색 / 회차 / 수상</div>
+            <ContestNovelFilterControls onFilterChange={handleFilterChange} />
+            <div className="mt-2">
+              <Form.Check
+                type="switch"
+                id="winner-switch-desktop"
+                label="수상작만 보기"
+                checked={showOnlyWinners}
+                onChange={(e) => startTransition(() => setShowOnlyWinners(e.target.checked))}
+                className="fs-sm-control"
+              />
+            </div>
+          </div>
+
+          <div className="sidebar-divider" />
+
+          <div className="sidebar-section sidebar-section-tags">
+            <div className="sidebar-label mb-2">태그 필터</div>
+            {tagFilterContent('desktop')}
+          </div>
+
+        </aside>
+
+        {/* ── Main Content ── */}
+        <div className="page-main">
+
+          {/* Nav tabs */}
+          <Nav variant="tabs" className="mb-2 flex-shrink-0">
+            <Nav.Item>
+              <Nav.Link as={NavLink} to={`/contests/${year}/${dateParam || ''}`} end>소설 랭킹</Nav.Link>
+            </Nav.Item>
+            <Nav.Item>
+              <Nav.Link as={NavLink} to={`/contests/${year}/tags/rankings/${dateParam || ''}`} end>태그 랭킹</Nav.Link>
+            </Nav.Item>
+          </Nav>
+
+          {error && <Alert variant="danger" className="mt-2 flex-shrink-0">{error}</Alert>}
+          {loading && <div className="text-center py-5"><Spinner animation="border" /></div>}
+          {!loading && !error && novels.length === 0 && <Alert variant="info">데이터가 없습니다.</Alert>}
+
+          {!loading && !error && novels.length > 0 && (
+            <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0, position: 'relative', opacity: isPending ? 0.7 : 1 }}>
+              {isPending && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
+                  <Spinner animation="border" />
+                </div>
+              )}
+
+              {/* Table View (Desktop or Mobile Table Mode) */}
+              <div ref={tableScrollRef} className={`custom-table-wrapper border rounded h-100 ${mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'}`} style={{ overflowY: 'auto', backgroundColor: 'var(--np-surface)' }}>
                 <Table hover className="custom-table novel-rankings-table contest-table" style={{ tableLayout: 'fixed' }}>
                   <colgroup>
                     <col style={{ width: '50px' }} />
@@ -679,42 +644,20 @@ const ContestPage = () => {
                     <col style={{ width: '90px' }} />
                     <col style={{ width: '90px' }} />
                     <col style={{ width: '70px' }} />
-                    <col style={{ width: '70px' }} />
                     <col style={{ width: '55px' }} />
                     <col style={{ width: '300px' }} />
                   </colgroup>
                   <thead>
                     <tr>
-                      <th onClick={() => requestSort('Rank')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem' }}>
-                        <div className="d-flex align-items-center justify-content-center"><span>순위</span></div>
-                      </th>
-                      <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem' }}>
-                        <div className="d-flex align-items-center justify-content-center"><span>변동</span></div>
-                      </th>
-                      <th style={{ fontSize: '0.85rem', textAlign: 'center' }}>
-                        <span>수상</span>
-                      </th>
-                      <th style={{ fontSize: '0.85rem', whiteSpace: 'normal' }}>
-                        <span>제목</span>
-                      </th>
-                      <th style={{ fontSize: '0.85rem', textAlign: 'left', whiteSpace: 'normal' }}>
-                        <span>작가</span>
-                      </th>
-                      <th onClick={() => requestSort('View')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
-                        <div className="d-flex align-items-center"><span>총 조회수</span></div>
-                      </th>
-                      <th onClick={() => requestSort('view_change')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
-                        <div className="d-flex align-items-center"><span>일간 조회수</span></div>
-                      </th>
-                      <th onClick={() => requestSort('like_to_view_ratio')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
-                        <div className="d-flex align-items-center"><span>추천비</span></div>
-                      </th>
-                      <th onClick={() => requestSort('RetentionRate')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
-                        <div className="d-flex align-items-center"><span>연독률</span></div>
-                      </th>
-                      <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}>
-                        <div className="d-flex align-items-center"><span>회차</span></div>
-                      </th>
+                      <th onClick={() => requestSort('Rank')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem' }}><div className="d-flex align-items-center justify-content-center"><span>순위</span></div></th>
+                      <th onClick={() => requestSort('rank_change')} className="cursor-pointer sortable-header text-center" style={{ fontSize: '0.85rem' }}><div className="d-flex align-items-center justify-content-center"><span>변동</span></div></th>
+                      <th style={{ fontSize: '0.85rem', textAlign: 'center' }}><span>수상</span></th>
+                      <th style={{ fontSize: '0.85rem', whiteSpace: 'normal' }}><span>제목</span></th>
+                      <th style={{ fontSize: '0.85rem', textAlign: 'left', whiteSpace: 'normal' }}><span>작가</span></th>
+                      <th onClick={() => requestSort('View')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}><div className="d-flex align-items-center"><span>총 조회수</span></div></th>
+                      <th onClick={() => requestSort('view_change')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}><div className="d-flex align-items-center"><span>일간 조회수</span></div></th>
+                      <th onClick={() => requestSort('like_to_view_ratio')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}><div className="d-flex align-items-center"><span>추천비</span></div></th>
+                      <th onClick={() => requestSort('Eps')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', textAlign: 'left' }}><div className="d-flex align-items-center"><span>회차</span></div></th>
                       <th style={{ fontSize: '0.85rem', textAlign: 'left' }}>태그</th>
                     </tr>
                   </thead>
@@ -722,43 +665,28 @@ const ContestPage = () => {
                     {processedNovels.length > 0 ? (
                       <>
                         {tablePaddingTop > 0 && (
-                          <tr><td colSpan={11} style={{ height: `${tablePaddingTop}px`, padding: 0, border: 'none' }} /></tr>
+                          <tr><td colSpan={10} style={{ height: `${tablePaddingTop}px`, padding: 0, border: 'none' }} /></tr>
                         )}
                         {tableVirtualItems.map((virtualRow) => {
                           const novel = processedNovels[virtualRow.index];
                           return (
-                            <tr
-                              key={novel.ID}
-                              data-index={virtualRow.index}
-                              ref={tableVirtualizer.measureElement}
+                            <tr key={novel.ID} data-index={virtualRow.index} ref={tableVirtualizer.measureElement}
                               className={novel.View === -1 ? 'placeholder-row' : ''}
                             >
                               <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Rank}</td>
                               <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></td>
-                              <td className="text-center align-middle">
-                                {renderAwardBadge(novel.award)}
-                              </td>
+                              <td className="text-center align-middle">{renderAwardBadge(novel.award)}</td>
                               <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }} className="align-middle">
                                 {novel.View === -1 ? `삭제된 소설 (${novel.ID})` : (
-                                  <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-indigo-600 hover:text-indigo-900 fw-bold">{novel.Title || '(제목 없음)'}</Link>
+                                  <Link to={`/contests/${year}/novels/${novel.ID}`} className="fw-bold">{novel.Title || '(제목 없음)'}</Link>
                                 )}
                               </td>
                               <td style={{ fontSize: '0.9rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>
                                 {novel.View === -1 ? '-' : (novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)'))}
                               </td>
-                              <td style={{ fontSize: '0.9rem' }}>
-                                {novel.View === -1 ? '-' : (novel.View != null ? novel.View.toLocaleString() : '-')}
-                              </td>
-                              <td style={{ fontSize: '0.9rem' }}>
-                                {novel.View === -1 ? '-' : novel.view_change.toLocaleString()}
-                              </td>
+                              <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : (novel.View != null ? novel.View.toLocaleString() : '-')}</td>
+                              <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : novel.view_change.toLocaleString()}</td>
                               <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : `${(novel.like_to_view_ratio * 100).toFixed(2)}%`}</td>
-                              <td style={{ fontSize: '0.9rem' }}>
-                                {currentDate && format(currentDate, 'yyyy-MM-dd') < '2025-10-15'
-                                  ? '-'
-                                  : (typeof novel.RetentionRate === 'number' ? `${(novel.RetentionRate * 100).toFixed(1)}%` : '-')
-                                }
-                              </td>
                               <td style={{ fontSize: '0.9rem' }}>{novel.View === -1 ? '-' : (novel.Eps?.toLocaleString() ?? '-')}</td>
                               <td style={{ fontSize: '0.9rem' }}>
                                 <div className="d-flex flex-wrap gap-1">
@@ -769,77 +697,71 @@ const ContestPage = () => {
                           );
                         })}
                         {tablePaddingBottom > 0 && (
-                          <tr><td colSpan={11} style={{ height: `${tablePaddingBottom}px`, padding: 0, border: 'none' }} /></tr>
+                          <tr><td colSpan={10} style={{ height: `${tablePaddingBottom}px`, padding: 0, border: 'none' }} /></tr>
                         )}
                       </>
                     ) : (
-                      <tr><td colSpan={11} className="text-center py-4">현재 필터와 일치하는 결과가 없습니다.</td></tr>
+                      <tr><td colSpan={10} className="text-center py-4">현재 필터와 일치하는 결과가 없습니다.</td></tr>
                     )}
                   </tbody>
                 </Table>
               </div>
-            </div>
 
-            {/* Mobile Card View */}
-            <div ref={mobileScrollRef} className={`${mobileViewMode === 'card' ? 'd-block' : 'd-none'} d-md-none h-100 border rounded`} style={{ overflowY: 'auto', overflowX: 'hidden' }}>
-              {processedNovels.length > 0 ? (
-                <div style={{ height: `${mobileVirtualizer.getTotalSize()}px`, position: 'relative' }}>
-                  {mobileVirtualItems.map((virtualRow) => {
-                    const novel = processedNovels[virtualRow.index];
-                    return (
-                      <div
-                        key={novel.ID}
-                        data-index={virtualRow.index}
-                        ref={mobileVirtualizer.measureElement}
-                        style={{ position: 'absolute', top: 0, left: '4px', right: '4px', paddingBottom: '4px', transform: `translateY(${virtualRow.start}px)` }}
-                      >
-                        <Card className="shadow-sm">
-                          <Card.Body className="p-2">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                              <div className="flex-grow-1 me-2">
-                                <div className="d-flex align-items-center gap-2">
-                                  <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Rank}위</span>
-                                  <div className="d-flex align-items-center">
-                                    {renderAwardBadge(novel.award)}
+              {/* Mobile Card View */}
+              <div ref={mobileScrollRef} className={`${mobileViewMode === 'card' ? 'd-md-none d-block' : 'd-none'} h-100 border rounded`} style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+                {processedNovels.length > 0 ? (
+                  <div style={{ height: `${mobileVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+                    {mobileVirtualItems.map((virtualRow) => {
+                      const novel = processedNovels[virtualRow.index];
+                      return (
+                        <div key={novel.ID} data-index={virtualRow.index} ref={mobileVirtualizer.measureElement}
+                          style={{ position: 'absolute', top: 0, left: '4px', right: '4px', paddingBottom: '4px', transform: `translateY(${virtualRow.start}px)` }}
+                        >
+                          <Card className="shadow-sm">
+                            <Card.Body className="p-2">
+                              <div className="d-flex justify-content-between align-items-start mb-2">
+                                <div className="flex-grow-1 me-2">
+                                  <div className="d-flex align-items-center gap-2">
+                                    <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Rank}위</span>
+                                    <div className="d-flex align-items-center">{renderAwardBadge(novel.award)}</div>
                                   </div>
-                                </div>
-                                <h5 className="mb-0 h6 mt-1" style={{ wordBreak: 'break-all' }}>
+                                  <h5 className="mb-0 h6 mt-1" style={{ wordBreak: 'break-all' }}>
                                     {novel.View === -1 ? (
                                       <span className="text-muted">{`삭제된 소설 (${novel.ID})`}</span>
                                     ) : (
-                                      <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-dark text-decoration-none">{novel.Title || '(제목 없음)'}</Link>
+                                      <Link to={`/contests/${year}/novels/${novel.ID}`} className="text-decoration-none">{novel.Title || '(제목 없음)'}</Link>
                                     )}
-                                </h5>
-                                <div className="text-muted small mt-1">
-                                  {novel.View !== -1 && (
-                                    <span>{novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)')}</span>
-                                  )}
-                                  {novel.View !== -1 && <span className="mx-1">·</span>}
-                                  <span>{novel.View === -1 ? '-' : `${novel.Eps}화`}</span>
+                                  </h5>
+                                  <div className="text-muted small mt-1">
+                                    {novel.View !== -1 && (
+                                      <span>{novel.AuthorID && novel.AuthorID !== "0" ? <Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link> : (novel.AuthorName || '(작자 미상)')}</span>
+                                    )}
+                                    {novel.View !== -1 && <span className="mx-1">·</span>}
+                                    <span>{novel.View === -1 ? '-' : `${novel.Eps}화`}</span>
+                                  </div>
                                 </div>
+                                <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></div>
                               </div>
-                              <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} isNew={!!novel.is_new} /></div>
-                            </div>
-                            {novel.Tags && novel.Tags.length > 0 && (
-                              <div className="pt-2 border-top">
-                                <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
-                              </div>
-                            )}
-                          </Card.Body>
-                        </Card>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <Alert variant="info" className="text-center m-1">현재 필터와 일치하는 결과가 없습니다.</Alert>
-              )}
+                              {novel.Tags && novel.Tags.length > 0 && (
+                                <div className="pt-2 border-top">
+                                  <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map(tag => (<Button key={tag} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
+                                </div>
+                              )}
+                            </Card.Body>
+                          </Card>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <Alert variant="info" className="text-center m-1">현재 필터와 일치하는 결과가 없습니다.</Alert>
+                )}
+              </div>
             </div>
-          </>
-        )}
-        {!loading && !error && novels.length === 0 && <Alert variant="info">데이터가 없습니다.</Alert>}
+          )}
+        </div>
       </div>
-    </Container>
+    </div>
   );
 };
 

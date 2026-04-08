@@ -87,6 +87,33 @@ class DecimalEncoder(json.JSONEncoder):
                 return float(o)
         return super(DecimalEncoder, self).default(o)
 
+def _compute_retention_rates(item: dict) -> dict:
+    """DB 원본 수치에서 초반/최신 연독률 계산 (단순 구간 비율).
+    - EarlyRetentionRate: 1화 대비 30화 조회수 비율 (1화 독자 중 30화까지 읽은 비율)
+    - RecentRetentionRate: 최신화 역순 30번째 대비 최신화 조회수 비율
+    - 유효 에피소드 < 30개면 Early는 1화 대비 최신화 비율로 fallback
+    """
+    result = {"EarlyRetentionRate": None, "RecentRetentionRate": None}
+
+    first_view = item.get("FirstEpView")
+    ep30_view = item.get("Ep30View")
+    latest_view = item.get("TargetLatestEpView")
+    base_view = item.get("RecentBaseView")
+
+    # Early: 1번째 유효 ep 대비 30번째 유효 ep 비율
+    if first_view and first_view > 0:
+        if ep30_view:
+            result["EarlyRetentionRate"] = round(ep30_view / first_view, 4)
+        elif latest_view:
+            # fallback: 유효 에피소드 < 30개
+            result["EarlyRetentionRate"] = round(latest_view / first_view, 4)
+
+    # Recent: 최신화 역순 30번째 대비 최신화 비율
+    if base_view and base_view > 0 and latest_view:
+        result["RecentRetentionRate"] = round(latest_view / base_view, 4)
+
+    return result
+
 # --- Pydantic Response Models ---
 class AvailableDatesResponse(BaseModel):
     available_dates: List[str] = Field(..., description="데이터가 존재하는 모든 날짜 목록 (내림차순 정렬)", example=["2025-08-20", "2025-08-19"])
@@ -113,6 +140,16 @@ class NovelRankData(BaseModel):
     Tags: List[str] = Field(default_factory=list)
     Synopsis: Optional[str] = None
     rank_change: Optional[Any] = Field(None, description="랭킹 변동. 숫자 또는 'New'", example=5)
+    EarlyRetentionRate: Optional[float] = None
+    RecentRetentionRate: Optional[float] = None
+    FirstEpView: Optional[int] = None
+    FirstEpNum: Optional[int] = None
+    Ep30View: Optional[int] = None
+    Ep30Num: Optional[int] = None
+    RecentBaseView: Optional[int] = None
+    RecentBaseNum: Optional[int] = None
+    TargetLatestEpView: Optional[int] = None
+    TargetLatestEpNum: Optional[int] = None
 
 class NovelDetails(BaseModel):
     # Required fields
@@ -132,6 +169,16 @@ class NovelDetails(BaseModel):
     Eps: Optional[int] = None
     Tags: List[str] = Field(default_factory=list)
     Synopsis: Optional[str] = None
+    EarlyRetentionRate: Optional[float] = None
+    RecentRetentionRate: Optional[float] = None
+    FirstEpView: Optional[int] = None
+    FirstEpNum: Optional[int] = None
+    Ep30View: Optional[int] = None
+    Ep30Num: Optional[int] = None
+    RecentBaseView: Optional[int] = None
+    RecentBaseNum: Optional[int] = None
+    TargetLatestEpView: Optional[int] = None
+    TargetLatestEpNum: Optional[int] = None
 
 class TagRankData(BaseModel):
     tag: str
@@ -158,7 +205,16 @@ class ContestNovelData(BaseModel):
     LastUpdate: Optional[str] = None
     Synopsis: Optional[str] = None
     Tags: List[str] = Field(default_factory=list)
-    RetentionRate: Optional[float] = None # 연독률
+    EarlyRetentionRate: Optional[float] = None
+    RecentRetentionRate: Optional[float] = None
+    FirstEpView: Optional[int] = None
+    FirstEpNum: Optional[int] = None
+    Ep30View: Optional[int] = None
+    Ep30Num: Optional[int] = None
+    RecentBaseView: Optional[int] = None
+    RecentBaseNum: Optional[int] = None
+    TargetLatestEpView: Optional[int] = None
+    TargetLatestEpNum: Optional[int] = None
     Rank: Optional[int] = None  # Calculated rank based on view_change
     view_change: int = Field(0, description="일일 조회수 변동")
     rank_change: Optional[Any] = Field(None, description="랭킹 변동. 숫자 또는 'New'")
@@ -262,7 +318,7 @@ def get_novels_by_date(date: str, response: Response):
         # 4. 직전 날짜 랭킹 맵 생성 (novel_id -> rank)
         previous_ranks_map = {item['ID']: item['Ranking'] for item in previous_day_items}
 
-        # 5. 현재 날짜 데이터에 랭킹 변동 정보 추가
+        # 5. 현재 날짜 데이터에 랭킹 변동 정보 + 연독률 추가
         for item in current_day_items:
             novel_id = item['ID'] # ID is already NOVEL#<novel_id>
             current_rank = item['Ranking']
@@ -273,6 +329,8 @@ def get_novels_by_date(date: str, response: Response):
                 item['rank_change'] = rank_change
             else:
                 item['rank_change'] = 'New' # 신규 진입
+
+            item.update(_compute_retention_rates(item))
 
         # 데이터는 하루에 한 번 바뀌므로 길게 캐싱 가능
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
@@ -295,6 +353,7 @@ def get_latest_novel_details(novel_id: str, response: Response):
         items = db_response.get('Items', [])
         if items:
             latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
+            latest_item.update(_compute_retention_rates(latest_item))
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return latest_item
         else:
@@ -321,6 +380,10 @@ def get_novel_trend(novel_id: str, start_date: str, end_date: str, response: Res
 
         # Get title from the first available item (if any)
         novel_title = items[0].get('Title', 'Unknown Title') if items else 'Unknown Title'
+
+        # 연독률 계산 적용
+        for item in items:
+            item.update(_compute_retention_rates(item))
 
         # 조회를 빠르게 하기 위해 날짜를 키로 하는 맵 생성
         data_map = {item['Date']: item for item in items}
@@ -674,7 +737,6 @@ def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date:
                     'Eps': None,
                     'Synopsis': None,
                     'Rank': None,
-                    'RetentionRate': None,
                 })
             current_date += timedelta(days=1)
 

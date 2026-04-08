@@ -25,6 +25,7 @@ interface NovelDetails {
   Fav: number;
   Alr: number;
   Eps: number;
+  RetentionRate?: number;
 }
 
 export const useNovelData = (novelId: string | undefined) => {

@@ -26,7 +26,7 @@ const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?:
     className={`form-control ${className || ''} rounded-0 w-100`}
     onClick={onClick}
     ref={ref}
-    style={{ cursor: 'pointer', backgroundColor: 'white' }}
+    style={{ cursor: 'pointer', backgroundColor: 'var(--np-surface-alt)' }}
   >
     {value || <span className="text-muted">날짜 선택</span>}
   </div>
