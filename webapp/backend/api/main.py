@@ -23,12 +23,13 @@ from mangum import Mangum
 from pydantic import BaseModel, Field
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
-# 로거 설정
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 로거 설정 (Lambda root logger 사용 — basicConfig는 Lambda에서 무효)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 # FastAPI 애플리케이션 인스턴스 생성
 app = FastAPI()
@@ -86,6 +87,16 @@ class DecimalEncoder(json.JSONEncoder):
             else:
                 return float(o)
         return super(DecimalEncoder, self).default(o)
+
+def _convert_decimals(obj):
+    """DynamoDB Decimal을 int/float으로 직접 변환 (json 이중 파싱 없이)."""
+    if isinstance(obj, list):
+        return [_convert_decimals(i) for i in obj]
+    elif isinstance(obj, dict):
+        return {k: _convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, decimal.Decimal):
+        return int(obj) if obj % 1 == 0 else float(obj)
+    return obj
 
 def _compute_retention_rates(item: dict) -> dict:
     """DB 원본 수치에서 초반/최신 연독률 계산 (단순 구간 비율).
@@ -541,103 +552,93 @@ def get_contest_available_dates(year: int, response: Response):
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
+# 공모전 랭킹 리스트 뷰에서 실제 사용하는 필드만 조회 (Synopsis, 에피소드 조회수 등 제외)
+# 'Date', 'View', 'Like', 'Rank'는 DynamoDB 예약어이므로 ExpressionAttributeNames 사용
+_CONTEST_LIST_PROJ = 'ID, #dt, Title, AuthorName, AuthorID, #vw, #lk, Fav, Alr, Eps, Tags, #rk'
+_CONTEST_LIST_NAMES = {'#dt': 'Date', '#vw': 'View', '#lk': 'Like', '#rk': 'Rank'}
+
+def _fetch_all_contest_items(target_date: str, projection: str | None = None, expr_names: dict | None = None) -> list:
+    """지정 날짜의 전체 공모전 항목을 페이지네이션으로 조회합니다."""
+    items = []
+    query_args = {
+        'IndexName': 'DateViewIndex',
+        'KeyConditionExpression': Key('Date').eq(target_date),
+    }
+    if projection:
+        query_args['ProjectionExpression'] = projection
+    if expr_names:
+        query_args['ExpressionAttributeNames'] = expr_names
+    while True:
+        resp = contest_table.query(**query_args)
+        items.extend(resp.get('Items', []))
+        if 'LastEvaluatedKey' not in resp:
+            break
+        query_args['ExclusiveStartKey'] = resp['LastEvaluatedKey']
+    return _convert_decimals(items)
+
+
 @app.get("/api/contests/{year}/{date}", response_model=List[ContestNovelData])
 def get_contest_data_by_date(year: int, date: str, response: Response):
     """
     지정된 연도의 특정 날짜 공모전 소설 데이터를 조회합니다.
     """
-    # For now, we only have 2025 data.
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
 
+    # 전날 날짜 산출 (available_dates_list 조회)
     available_dates_list = []
     try:
         dates_response = contest_table.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'})
         dates_item = dates_response.get('Item')
         if dates_item and 'dates' in dates_item:
-            # The list is already sorted descending in the database item
             available_dates_list = sorted(list(dates_item['dates']), reverse=True)
     except ClientError as e:
-        available_dates_list = []
         logger.warning(f"Could not fetch available dates for contest: {e}")
 
+    previous_date = None
     try:
-        # 1. Get current day's data with pagination
-        all_items = []
-        query_args = {
-            'IndexName': 'DateViewIndex',
-            'KeyConditionExpression': Key('Date').eq(date)
-        }
+        idx = available_dates_list.index(date)
+        if idx + 1 < len(available_dates_list):
+            previous_date = available_dates_list[idx + 1]
+    except (ValueError, IndexError):
+        pass
 
-        while True:
-            db_response = contest_table.query(**query_args)
-            items = db_response.get('Items', [])
-            all_items.extend(items)
-            
-            if 'LastEvaluatedKey' in db_response:
-                query_args['ExclusiveStartKey'] = db_response['LastEvaluatedKey']
-            else:
-                break
-
-        current_day_items = json.loads(json.dumps(all_items, cls=DecimalEncoder))
+    try:
+        # 현재 날짜 + 전날 DynamoDB 쿼리 병렬 실행 (리스트 뷰에 필요한 필드만 투영)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_current = executor.submit(_fetch_all_contest_items, date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES)
+            future_prev = executor.submit(_fetch_all_contest_items, previous_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES) if previous_date else None
+            current_day_items = future_current.result()
+            previous_day_items = future_prev.result() if future_prev else []
 
         if not current_day_items:
             raise HTTPException(status_code=404, detail="No data found for the given date.")
-
-        # 2. Find previous date and get its data
-        previous_day_items = []
-        try:
-            current_date_index = available_dates_list.index(date)
-            if current_date_index + 1 < len(available_dates_list):
-                previous_date = available_dates_list[current_date_index + 1]
-                
-                prev_query_args = {
-                    'IndexName': 'DateViewIndex',
-                    'KeyConditionExpression': Key('Date').eq(previous_date)
-                }
-                prev_all_items = []
-                while True:
-                    prev_db_response = contest_table.query(**prev_query_args)
-                    prev_items_chunk = prev_db_response.get('Items', [])
-                    prev_all_items.extend(prev_items_chunk)
-                    if 'LastEvaluatedKey' in prev_db_response:
-                        prev_query_args['ExclusiveStartKey'] = prev_db_response['LastEvaluatedKey']
-                    else:
-                        break
-                previous_day_items = json.loads(json.dumps(prev_all_items, cls=DecimalEncoder))
-        except (ValueError, IndexError):
-            # If current date not in list or it's the oldest, there's no previous date.
-            pass
 
         previous_day_map = {item['ID']: item for item in previous_day_items}
 
         for item in current_day_items:
             previous_item = previous_day_map.get(item['ID'])
             item['award'] = None
-            # 상위 등급부터 순서대로 확인하여 가장 높은 상 하나만 할당
             for award_name, ids_set in AWARD_WINNERS_2025.items():
                 if item['ID'] in ids_set:
                     item['award'] = award_name
                     break
             item['view_change'] = (item.get('View', 0) or 0) - (previous_item.get('View', 0) or 0) if previous_item else (item.get('View', 0) or 0)
-            item['is_new'] = False # 기본값 설정
+            item['is_new'] = False
             if previous_item and previous_item.get('Rank') is not None:
-                # 이전 날짜에 순위 데이터가 있는 경우
                 previous_rank = previous_item['Rank']
                 current_rank = item.get('Rank')
-                # 현재 날짜에 순위가 없는 경우를 대비 (이론상 발생하지 않음)
                 item['rank_change'] = previous_rank - current_rank if current_rank is not None else 'New'
                 if item['rank_change'] == 'New': item['is_new'] = True
             else:
-                # 이전 날짜에 데이터가 없거나 순위가 없는 경우 'New'로 처리
                 item['rank_change'] = 'New'
+
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return current_day_items
 
     except ClientError as e:
-        # Handle cases where the GSI might not exist yet
         if e.response['Error']['Code'] == 'ResourceNotFoundException':
-             raise HTTPException(status_code=500, detail="Required index 'DateViewIndex' not found on contest table.")
+            raise HTTPException(status_code=500, detail="Required index 'DateViewIndex' not found on contest table.")
         raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
 
 @app.get("/api/contests/{year}/novels/{novel_id}/latest", response_model=ContestNovelData)
