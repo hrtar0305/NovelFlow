@@ -193,11 +193,11 @@ class NovelDetails(BaseModel):
 
 class TagRankData(BaseModel):
     tag: str
-    score_linear: float
-    score_inverse: float
-    score_log: float
+    power_score: float
+    local_lift: Optional[float] = None  # top100 vs bottom400 상대적 표현도 (구 데이터는 null)
     count: int
     Rank: int
+    rank_change: Optional[Any] = None  # 전일 대비 순위 변화 (양수=상승, 음수=하락, 'New'=신규)
 
 class ContestNovelData(BaseModel):
     ID: str
@@ -442,10 +442,26 @@ def get_novel_available_dates(novel_id: str, response: Response):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5) -> Optional[float]:
+    """
+    Local Lift = top100_rate / bottom400_rate
+    상위 100개와 하위 400개를 상호 배타적으로 비교하여 순위 관통력을 측정합니다.
+    min_count 미만 태그는 노이즈로 간주하여 None 반환.
+    """
+    if count_total < min_count:
+        return None
+    count_bottom400 = count_total - count_top100
+    top100_rate = count_top100 / 100.0
+    bottom400_rate = max(count_bottom400, 1) / 400.0  # 최소 1로 스무딩 (상한: count_top100 * 4)
+    return top100_rate / bottom400_rate
+
+
 @app.get("/api/ranks/tags/{date}", response_model=List[TagRankData])
 def get_tags_by_date(date: str, response: Response):
     """
     특정 날짜의 태그 랭킹 데이터를 조회합니다.
+    - power_score: Σ 1/ln(rank+1) — 시장 지배력 (빈도 × 순위 품질)
+    - local_lift: top100_rate / bottom400_rate — 순위 관통력/신흥 트렌드 (TagCountsTop100 없는 구 데이터는 null)
     """
     try:
         db_response = table.get_item(Key={'ID': f"STATS#{date}", 'Date': date})
@@ -453,29 +469,53 @@ def get_tags_by_date(date: str, response: Response):
         if not item:
             raise HTTPException(status_code=404, detail="No tag statistics found for the given date.")
 
-        scores_linear = item.get('TagWeightedScoresInverseLinear', {})
-        scores_inverse = item.get('TagWeightedScoresInverseRank', {})
         scores_log = item.get('TagWeightedScoresLogarithmic', {})
-        counts = item.get('TagCounts', {})
+        counts_total = item.get('TagCounts', {})
+        counts_top100 = item.get('TagCountsTop100', {})  # 구 데이터에는 없을 수 있음
+        has_top100_data = bool(counts_top100)
 
         tag_data = []
-        for tag in scores_linear.keys():
+        for tag in scores_log.keys():
+            count_total = counts_total.get(tag, 0)
+            count_top100 = counts_top100.get(tag, 0)
             tag_data.append({
                 'tag': tag,
-                'score_linear': scores_linear.get(tag, 0),
-                'score_inverse': scores_inverse.get(tag, 0),
-                'score_log': scores_log.get(tag, 0),
-                'count': counts.get(tag, 0)
+                'power_score': scores_log.get(tag, 0),
+                'local_lift': _compute_local_lift(count_top100, count_total) if has_top100_data else None,
+                'count': count_total,
             })
-        
+
         processed_data = json.loads(json.dumps(tag_data, cls=DecimalEncoder))
-        
-        # Sort by linear score to determine rank
-        sorted_data = sorted(processed_data, key=lambda x: x.get('score_linear', 0), reverse=True)
-        
-        # Add rank to each item
-        for i, item in enumerate(sorted_data):
-            item['Rank'] = i + 1
+
+        # power_score 기준 정렬 후 순위 부여
+        sorted_data = sorted(processed_data, key=lambda x: x.get('power_score', 0), reverse=True)
+        for i, tag_item in enumerate(sorted_data):
+            tag_item['Rank'] = i + 1
+
+        # 전날 데이터 조회하여 rank_change 계산 (power_score 기준)
+        prev_rank_map = {}
+        try:
+            prev_date = (datetime.strptime(date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+            prev_db_response = table.get_item(
+                Key={'ID': f'STATS#{prev_date}', 'Date': prev_date},
+                ProjectionExpression='TagWeightedScoresLogarithmic'
+            )
+            prev_item = prev_db_response.get('Item')
+            if prev_item:
+                prev_scores = json.loads(json.dumps(dict(prev_item.get('TagWeightedScoresLogarithmic', {})), cls=DecimalEncoder))
+                sorted_prev = sorted(prev_scores.items(), key=lambda x: x[1], reverse=True)
+                prev_rank_map = {tag: i + 1 for i, (tag, _) in enumerate(sorted_prev)}
+        except Exception as e:
+            logger.warning(f"Failed to fetch previous day tag ranks for rank_change: {e}")
+
+        for tag_item in sorted_data:
+            prev_rank = prev_rank_map.get(tag_item['tag'])
+            if not prev_rank_map:
+                tag_item['rank_change'] = None
+            elif prev_rank is None:
+                tag_item['rank_change'] = 'New'
+            else:
+                tag_item['rank_change'] = prev_rank - tag_item['Rank']
 
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return sorted_data
@@ -811,7 +851,7 @@ def analyze_tag_trends(start_date: str, end_date: str, response: Response, _: Op
                 RequestItems={
                     table.name: {
                         'Keys': chunk,
-                        'ProjectionExpression': 'ID, #d, TagWeightedScoresInverseLinear, TagCounts',
+                        'ProjectionExpression': 'ID, #d, TagWeightedScoresLogarithmic, TagCountsTop100, TagCounts',
                         'ExpressionAttributeNames': {'#d': 'Date'}
                     }
                 }
@@ -833,29 +873,35 @@ def analyze_tag_trends(start_date: str, end_date: str, response: Response, _: Op
                 continue
             
             idx = date_map[item_date]
-            scores_linear = item.get('TagWeightedScoresInverseLinear', {})
+            scores_log = item.get('TagWeightedScoresLogarithmic', {})
+            counts_top100 = item.get('TagCountsTop100', {})  # 없으면 {} (구 날짜 호환)
             counts = item.get('TagCounts', {})
 
-            for tag in scores_linear.keys():
+            for tag in set(scores_log.keys()) | set(counts.keys()):
                 if tag not in tag_analytics:
                     tag_analytics[tag] = {
-                        'total_linear_score': 0,
+                        'total_log_score': 0,
                         'total_count': 0,
+                        'total_count_top100': 0,
                         'daily_avg_scores': [0.0] * len(dates),
                         'daily_total_scores': [0.0] * len(dates)
                     }
-                
-                score = scores_linear.get(tag, 0)
-                count = counts.get(tag, 0)
 
-                tag_analytics[tag]['total_linear_score'] += score
+                score = scores_log.get(tag, 0)
+                count = counts.get(tag, 0)
+                count_top100 = counts_top100.get(tag, 0)
+
+                tag_analytics[tag]['total_log_score'] += score
                 tag_analytics[tag]['total_count'] += count
+                tag_analytics[tag]['total_count_top100'] += count_top100
                 tag_analytics[tag]['daily_total_scores'][idx] = score
                 if count > 0:
-                    avg_score = score / count
-                    tag_analytics[tag]['daily_avg_scores'][idx] = avg_score
+                    tag_analytics[tag]['daily_avg_scores'][idx] = score / count
 
         # 3. 각 태그에 대한 최종 분석 지표 계산
+        # min_count: 기간 길이에 비례 (최소 5) — Local Lift 유효성 판단에 사용
+        min_count = max(5, len(dates) * 2)
+
         analyzed_tags = []
         for tag, data in tag_analytics.items():
             if data['total_count'] == 0:
@@ -871,74 +917,84 @@ def analyze_tag_trends(start_date: str, end_date: str, response: Response, _: Op
                 # 가중 선형 회귀를 사용하여 기울기 계산
                 m, _ = np.polyfit(x_values, y_values_slope, deg=1, w=weights)
                 slope = m
-            
+
             daily_total_scores = data['daily_total_scores']
             std_dev = np.std(daily_total_scores)
             avg_total_score = np.mean(daily_total_scores) if daily_total_scores else 0
             normalized_std_dev = std_dev / avg_total_score if avg_total_score > 0 else 0
-            
+
             max_score = max(data['daily_avg_scores'])
             min_score = min(data['daily_avg_scores'])
             avg_daily_avg_score = np.mean(data['daily_avg_scores'])
 
+            # Period Local Lift: Simpson's Paradox 방지 — 기간 전체 집계 후 한 번만 계산
+            total_count = data['total_count']
+            total_count_top100 = data['total_count_top100']
+            if total_count >= min_count:
+                count_bottom400 = total_count - total_count_top100
+                top100_rate = total_count_top100 / 100.0
+                bottom400_rate = max(count_bottom400, 1) / 400.0
+                period_local_lift = top100_rate / bottom400_rate
+            else:
+                period_local_lift = None
+
             analyzed_tags.append({
                 'tag': tag,
                 'slope': slope,
+                'period_local_lift': period_local_lift,
                 'avg_daily_avg_score': float(avg_daily_avg_score),
                 'avg_total_score': float(avg_total_score),
                 'min_score': float(min_score),
                 'max_score': float(max_score),
                 'normalized_std_dev': float(normalized_std_dev),
-                'total_score': data['total_linear_score'],
-                'score_series': data['daily_avg_scores'], # 일일 평균 점수 시계열
-                'total_score_series': data['daily_total_scores'] # 일일 총합 점수 시계열
+                'total_log_score': data['total_log_score'],
+                'score_series': data['daily_avg_scores'],
             })
 
         if not analyzed_tags:
             raise HTTPException(status_code=404, detail="No tags with enough data to analyze.")
 
-        # 4. 카테고리별 태그 분류
-        # 상승 태그 / 하락 태그
-        analyzed_tags.sort(key=lambda x: x['slope'], reverse=True)
-        rising_tags = [t for t in analyzed_tags if t['slope'] > 0][:20]
-        falling_tags = [t for t in reversed(analyzed_tags) if t['slope'] < 0][:20]
+        # 4. 2×2 매트릭스 카테고리 분류 (Slope × Local Lift)
+        # 분위 기준: Local Lift 있는 태그만으로 계산
+        lifts = [t['period_local_lift'] for t in analyzed_tags if t['period_local_lift'] is not None]
+        lift_median = float(np.percentile(lifts, 50)) if lifts else 1.0
+        lift_p75 = float(np.percentile(lifts, 75)) if lifts else 1.5
 
-        # 상위 10% 인기 태그 풀 생성
-        analyzed_tags.sort(key=lambda x: x['total_score'], reverse=True)
-        total_score_threshold_index = int(len(analyzed_tags) * 0.1)
-        popular_tags_pool = analyzed_tags[:total_score_threshold_index + 1]
+        trend_leader = []    # 상승 + Lift 상위 50% → 지금 뜨는 트렌드
+        broad_popular = []   # 상승 + Lift 하위 50% → 대중적이지만 경쟁 치열
+        efficient_niche = [] # 비상승 + Lift 상위 25% → 틈새지만 상위권 집중
+        declining = []       # 기울기 음수 → 수요 감소
 
-        # 꾸준한 인기 태그
-        stable_pool = list(popular_tags_pool)
-        stable_pool.sort(key=lambda x: x['normalized_std_dev'])
-        stable_popular_tags = stable_pool[:20]
+        for t in analyzed_tags:
+            lift = t['period_local_lift']
+            slope = t['slope']
+            if slope > 0:
+                if lift is not None and lift >= lift_median:
+                    trend_leader.append(t)
+                else:
+                    broad_popular.append(t)
+            else:
+                if slope < 0:
+                    declining.append(t)
+                if lift is not None and lift >= lift_p75:
+                    efficient_niche.append(t)
 
-        # 격동의 태그
-        volatile_pool = list(popular_tags_pool)
-        volatile_pool.sort(key=lambda x: x['normalized_std_dev'], reverse=True)
-        volatile_tags = volatile_pool[:20]
+        trend_leader.sort(key=lambda x: x['slope'], reverse=True)
+        broad_popular.sort(key=lambda x: x['slope'], reverse=True)
+        efficient_niche.sort(key=lambda x: (x['period_local_lift'] or 0), reverse=True)
+        declining.sort(key=lambda x: x['slope'])
 
-        # 주목할 만한 태그
-        all_categorized_tags = set(t['tag'] for t in rising_tags + falling_tags + stable_popular_tags + volatile_tags)
-        noteworthy_tags = [t for t in analyzed_tags if t['tag'] not in all_categorized_tags and t['max_score'] >= 450]
-        noteworthy_tags.sort(key=lambda x: x['max_score'], reverse=True)
-        noteworthy_tags = noteworthy_tags[:20]
-        
-        # Remove temporary total_score before returning
         final_response = {
-            "rising_trend": rising_tags or [],
-            "falling_trend": falling_tags or [],
-            "stable_popular": stable_popular_tags or [],
-            "volatile_tags": volatile_tags or [],
-            "noteworthy": noteworthy_tags or []
+            "trend_leader": trend_leader[:20],
+            "broad_popular": broad_popular[:20],
+            "efficient_niche": efficient_niche[:20],
+            "declining": declining[:20],
         }
 
+        # 내부 임시 필드 제거
         for category_list in final_response.values():
             for tag_data in category_list:
-                # Remove temporary or redundant fields before returning
-                tag_data.pop('total_score', None)
-                if category_list is not final_response['stable_popular'] and category_list is not final_response['volatile_tags']:
-                    tag_data.pop('total_score_series', None)
+                tag_data.pop('total_log_score', None)
 
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return final_response

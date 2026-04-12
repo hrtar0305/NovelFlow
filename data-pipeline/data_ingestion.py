@@ -120,41 +120,40 @@ def process_csv_row(item):
 def calculate_and_store_tag_trends(items):
     """
     Calculates tag trends based on all items and stores them in DynamoDB.
+
+    Metrics:
+    - TagCounts: total appearances in top 500
+    - TagCountsTop100: appearances in top 100 (for Local Lift calculation)
+    - TagWeightedScoresLogarithmic: Power Score = sum(1 / ln(rank + 1))
     """
     if not items:
         return
 
     tag_counts = {}
-    tag_weighted_scores_inverse_rank = {}
-    tag_weighted_scores_inverse_linear = {}
+    tag_counts_top100 = {}
     tag_weighted_scores_logarithmic = {}
 
-    total_ranks = len(items) # Use total number of items as dynamic MAX_RANK
-    
     for item in items:
         rank = item.get('Ranking')
         if not isinstance(rank, int) or rank <= 0:
             continue
 
-        # 1. Inverse Rank Weighting: 1/rank
-        weight_inverse_rank = 1 / rank 
-
-        # 2. Inverse Linear Weighting: (total_ranks - rank + 1)
-        weight_inverse_linear = total_ranks - rank + 1
-
-        # 3. Logarithmic Weighting: 1 / ln(rank + 1)
-        weight_logarithmic = 1 / math.log(rank + 1)
+        weight_log = 1 / math.log(rank + 1)
 
         tags = item.get('Tags', [])
         if isinstance(tags, list):
             for tag in tags:
-                # Simple count
                 tag_counts[tag] = tag_counts.get(tag, 0) + 1
-                
-                # Sum weights (for each method)
-                tag_weighted_scores_inverse_rank[tag] = tag_weighted_scores_inverse_rank.get(tag, 0) + weight_inverse_rank
-                tag_weighted_scores_inverse_linear[tag] = tag_weighted_scores_inverse_linear.get(tag, 0) + weight_inverse_linear
-                tag_weighted_scores_logarithmic[tag] = tag_weighted_scores_logarithmic.get(tag, 0) + weight_logarithmic
+                tag_weighted_scores_logarithmic[tag] = tag_weighted_scores_logarithmic.get(tag, 0) + weight_log
+                if rank <= 100:
+                    tag_counts_top100[tag] = tag_counts_top100.get(tag, 0) + 1
+
+    # Pruning: remove tags appearing only once to keep DynamoDB item under 400KB
+    rare_tags = {t for t, c in tag_counts.items() if c < 2}
+    for t in rare_tags:
+        tag_counts.pop(t, None)
+        tag_counts_top100.pop(t, None)
+        tag_weighted_scores_logarithmic.pop(t, None)
 
     # Get date from the first item
     date = items[0]['Date']
@@ -165,9 +164,8 @@ def calculate_and_store_tag_trends(items):
         'Date': date,
         'DataType': 'TAG_TRENDS',
         'TagCounts': tag_counts,
-        'TagWeightedScoresInverseRank': {k: Decimal(str(v)) for k, v in tag_weighted_scores_inverse_rank.items()}, # Convert to Decimal
-        'TagWeightedScoresInverseLinear': {k: Decimal(str(v)) for k, v in tag_weighted_scores_inverse_linear.items()}, # Convert to Decimal
-        'TagWeightedScoresLogarithmic': {k: Decimal(str(v)) for k, v in tag_weighted_scores_logarithmic.items()} # Convert to Decimal
+        'TagCountsTop100': tag_counts_top100,
+        'TagWeightedScoresLogarithmic': {k: Decimal(str(v)) for k, v in tag_weighted_scores_logarithmic.items()},
     }
 
     try:
