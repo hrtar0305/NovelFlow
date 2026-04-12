@@ -3,13 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!--
+      iOS Safari Dynamic Island/status bar 색상 갱신 우회:
+      Safari는 단일 theme-color meta의 content 변경을 일관되게 감지하지 못한다.
+      두 개의 meta를 미리 두고 media 속성("all" / "not all")만 swap 하면 안정적으로 갱신된다.
+      초기 media 값은 아래 inline script가 저장된 테마에 맞춰 설정한다.
+    -->
+    <meta id="theme-color-dark" name="theme-color" content="#0b1622" media="all" />
+    <meta id="theme-color-light" name="theme-color" content="#eef4fc" media="not all" />
     <title>노벨피아 랭킹 사이트</title>
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
     <script>
       (function() {
         var t = localStorage.getItem('theme') || 'dark';
         document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.style.backgroundColor = t === 'light' ? '#eef4fc' : '#0b1622';
+        var darkMeta = document.getElementById('theme-color-dark');
+        var lightMeta = document.getElementById('theme-color-light');
+        if (t === 'light') {
+          lightMeta.setAttribute('media', 'all');
+          darkMeta.setAttribute('media', 'not all');
+        } else {
+          darkMeta.setAttribute('media', 'all');
+          lightMeta.setAttribute('media', 'not all');
+        }
       })();
     </script>
   </head>

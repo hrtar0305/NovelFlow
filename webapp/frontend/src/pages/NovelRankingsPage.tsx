@@ -92,11 +92,9 @@ const NovelRankingsPage = () => {
   const [activeMaxEps, setActiveMaxEps] = useState<number | null>(null);
 
   const [showFilters, setShowFilters] = useState(false);
-  const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
   const [shouldRenderFilters, setShouldRenderFilters] = useState(false);
   const hasFetchedDates = useRef(false);
   const tableScrollRef = useRef<HTMLDivElement>(null);
-  const mobileScrollRef = useRef<HTMLDivElement>(null);
 
   // CSS 필터 패널 애니메이션 - showFilters가 false가 되면 300ms 뒤 내부 컨텐츠 언마운트
   useEffect(() => {
@@ -200,16 +198,8 @@ const NovelRankingsPage = () => {
     overscan: 10,
   });
 
-  const mobileVirtualizer = useVirtualizer({
-    count: processedRankings.length,
-    getScrollElement: () => mobileScrollRef.current,
-    estimateSize: () => 110,
-    overscan: 3,
-  });
-
   useEffect(() => {
     tableScrollRef.current?.scrollTo({ top: 0 });
-    mobileScrollRef.current?.scrollTo({ top: 0 });
   }, [processedRankings]);
 
   const unselectedTags = useMemo(() =>
@@ -363,12 +353,6 @@ const NovelRankingsPage = () => {
   };
 
 
-  const tableVirtualItems = tableVirtualizer.getVirtualItems();
-  const tablePaddingTop = tableVirtualItems[0]?.start ?? 0;
-  const lastTableItem = tableVirtualItems[tableVirtualItems.length - 1];
-  const tablePaddingBottom = lastTableItem ? tableVirtualizer.getTotalSize() - lastTableItem.end : 0;
-  const mobileVirtualItems = mobileVirtualizer.getVirtualItems();
-
   // --- Tag filter sidebar content (shared between desktop sidebar and mobile collapse) ---
   const tagFilterContent = (idSuffix: string) => (
     <div className="d-flex flex-column gap-2">
@@ -473,10 +457,6 @@ const NovelRankingsPage = () => {
           <span>필터</span>
           {showFilters ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </Button>
-        <ButtonGroup size="sm" className="ms-auto">
-          <Button variant={mobileViewMode === 'card' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('card')}>요약</Button>
-          <Button variant={mobileViewMode === 'table' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('table')}>상세</Button>
-        </ButtonGroup>
       </div>
 
       {/* Mobile filter panel — page-layout 밖에 배치 */}
@@ -545,8 +525,8 @@ const NovelRankingsPage = () => {
                 </div>
               )}
 
-              {/* Desktop & Mobile Table View */}
-              <div ref={tableScrollRef} className={`custom-table-wrapper border rounded h-100 ${mobileViewMode === 'table' ? 'd-block' : 'd-none d-md-block'}`} style={{ overflowY: 'auto', backgroundColor: 'var(--np-surface)' }}>
+              {/* Desktop Table View */}
+              <div ref={tableScrollRef} className="custom-table-wrapper border rounded h-100 d-none d-md-block" style={{ overflowY: 'auto', backgroundColor: 'var(--np-surface)' }}>
                 <Table hover className="custom-table novel-rankings-table" style={{ tableLayout: 'fixed' }}>
                   <colgroup>
                     <col style={{ width: '50px' }} />
@@ -575,33 +555,35 @@ const NovelRankingsPage = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {processedRankings.length > 0 ? (
-                      <>
-                        {tablePaddingTop > 0 && (
-                          <tr><td colSpan={10} style={{ height: `${tablePaddingTop}px`, padding: 0, border: 'none' }} /></tr>
-                        )}
-                        {tableVirtualItems.map((virtualRow) => {
-                          const novel = processedRankings[virtualRow.index];
-                          return (
-                            <tr key={novel.ID} data-index={virtualRow.index} ref={tableVirtualizer.measureElement}>
-                              <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Ranking}</td>
-                              <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} /></td>
-                              <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}><Link to={`/novels/${novel.ID}`} className="fw-bold">{novel.Title || '(제목 없음)'}</Link></td>
-                              <td style={{ fontSize: '0.9rem' }}>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{novel.Score.toLocaleString()}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{novel.Eps}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{novel.like_to_view_ratio != null ? `${(novel.like_to_view_ratio * 100).toFixed(2)}%` : '-'}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{typeof novel.EarlyRetentionRate === 'number' ? `${(novel.EarlyRetentionRate * 100).toFixed(1)}%` : '-'}</td>
-                              <td style={{ fontSize: '0.9rem' }}>{typeof novel.RecentRetentionRate === 'number' ? `${(novel.RecentRetentionRate * 100).toFixed(1)}%` : '-'}</td>
-                              <td style={{ fontSize: '0.9rem' }}><div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill">{tag}</Button>))}</div></td>
-                            </tr>
-                          );
-                        })}
-                        {tablePaddingBottom > 0 && (
-                          <tr><td colSpan={10} style={{ height: `${tablePaddingBottom}px`, padding: 0, border: 'none' }} /></tr>
-                        )}
-                      </>
-                    ) : (
+                    {processedRankings.length > 0 ? (() => {
+                      const vItems = tableVirtualizer.getVirtualItems();
+                      const paddingTop = vItems[0]?.start ?? 0;
+                      const last = vItems[vItems.length - 1];
+                      const paddingBottom = last ? tableVirtualizer.getTotalSize() - last.end : 0;
+                      return (
+                        <>
+                          {paddingTop > 0 && <tr><td colSpan={10} style={{ height: paddingTop, padding: 0, border: 'none' }} /></tr>}
+                          {vItems.map((vRow) => {
+                            const novel = processedRankings[vRow.index];
+                            return (
+                              <tr key={novel.ID} data-index={vRow.index} ref={tableVirtualizer.measureElement}>
+                                <td className="text-center" style={{ fontSize: '0.9rem' }}>{novel.Ranking}</td>
+                                <td className="text-center" style={{ fontSize: '0.9rem' }}><RankChangeIndicator value={novel.rank_change} /></td>
+                                <td style={{ fontSize: '0.9rem', whiteSpace: 'normal' }}><Link to={`/novels/${novel.ID}`} className="fw-bold">{novel.Title || '(제목 없음)'}</Link></td>
+                                <td style={{ fontSize: '0.9rem' }}>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`}>{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</td>
+                                <td style={{ fontSize: '0.9rem' }}>{novel.Score.toLocaleString()}</td>
+                                <td style={{ fontSize: '0.9rem' }}>{novel.Eps}</td>
+                                <td style={{ fontSize: '0.9rem' }}>{novel.like_to_view_ratio != null ? `${(novel.like_to_view_ratio * 100).toFixed(2)}%` : '-'}</td>
+                                <td style={{ fontSize: '0.9rem' }}>{typeof novel.EarlyRetentionRate === 'number' ? `${(novel.EarlyRetentionRate * 100).toFixed(1)}%` : '-'}</td>
+                                <td style={{ fontSize: '0.9rem' }}>{typeof novel.RecentRetentionRate === 'number' ? `${(novel.RecentRetentionRate * 100).toFixed(1)}%` : '-'}</td>
+                                <td style={{ fontSize: '0.9rem' }}><div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill">{tag}</Button>))}</div></td>
+                              </tr>
+                            );
+                          })}
+                          {paddingBottom > 0 && <tr><td colSpan={10} style={{ height: paddingBottom, padding: 0, border: 'none' }} /></tr>}
+                        </>
+                      );
+                    })() : (
                       <tr><td colSpan={10} className="text-center py-4">현재 필터와 일치하는 결과가 없습니다.</td></tr>
                     )}
                   </tbody>
@@ -609,45 +591,40 @@ const NovelRankingsPage = () => {
               </div>
 
               {/* Mobile Card View */}
-              <div ref={mobileScrollRef} className={mobileViewMode === 'card' ? 'd-md-none h-100 border rounded' : 'd-none'} style={{ overflowY: 'auto', overflowX: 'hidden' }}>
+              <div className="d-md-none">
                 {processedRankings.length > 0 ? (
-                  <div style={{ height: `${mobileVirtualizer.getTotalSize()}px`, position: 'relative' }}>
-                    {mobileVirtualItems.map((virtualRow) => {
-                      const novel = processedRankings[virtualRow.index];
-                      return (
-                        <div
-                          key={novel.ID}
-                          data-index={virtualRow.index}
-                          ref={mobileVirtualizer.measureElement}
-                          style={{ position: 'absolute', top: 0, left: '4px', right: '4px', paddingBottom: '4px', transform: `translateY(${virtualRow.start}px)` }}
-                        >
-                          <Card className="shadow-sm">
-                            <Card.Body className="p-2">
-                              <div className="d-flex justify-content-between align-items-start mb-2">
-                                <div className="flex-grow-1 me-2">
-                                  <div className="d-flex align-items-baseline gap-2">
-                                    <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Ranking}위</span>
-                                    <h5 className="mb-0 h6"><Link to={`/novels/${novel.ID}`} className="text-decoration-none">{novel.Title}</Link></h5>
-                                  </div>
-                                  <div className="text-muted small mt-1">
-                                    <span>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</span>
-                                    <span className="mx-1">·</span>
-                                    <span>{novel.Eps}화</span>
-                                  </div>
-                                </div>
-                                <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} /></div>
+                  processedRankings.map((novel) => (
+                    <div key={novel.ID} style={{ padding: '0 0 4px' }}>
+                      <Card className="shadow-sm">
+                        <Card.Body className="p-2">
+                          <div className="d-flex justify-content-between align-items-start mb-1">
+                            <div className="flex-grow-1 me-2">
+                              <div className="d-flex align-items-baseline gap-2">
+                                <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{novel.Ranking}위</span>
+                                <h5 className="mb-0 h6"><Link to={`/novels/${novel.ID}`} className="text-decoration-none">{novel.Title}</Link></h5>
                               </div>
-                              {novel.Tags && novel.Tags.length > 0 && (
-                                <div className="pt-2 border-top">
-                                  <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
-                                </div>
-                              )}
-                            </Card.Body>
-                          </Card>
-                        </div>
-                      );
-                    })}
-                  </div>
+                              <div className="text-muted small mt-1">
+                                <span>{novel.AuthorID ? (<Link to={`/authors/${novel.AuthorID}`} className="text-muted text-decoration-none">{novel.AuthorName || '(작자 미상)'}</Link>) : (novel.AuthorName || '(작자 미상)')}</span>
+                                <span className="mx-1">·</span>
+                                <span>{novel.Eps}화</span>
+                              </div>
+                              <div className="d-flex flex-wrap gap-2 mt-1" style={{ fontSize: '0.78rem', color: 'var(--np-text-secondary)' }}>
+                                {novel.like_to_view_ratio != null && <span>추천비 {(novel.like_to_view_ratio * 100).toFixed(2)}%</span>}
+                                {typeof novel.EarlyRetentionRate === 'number' && <span>초반 잔류율 {(novel.EarlyRetentionRate * 100).toFixed(1)}%</span>}
+                                {typeof novel.RecentRetentionRate === 'number' && <span>최신 잔류율 {(novel.RecentRetentionRate * 100).toFixed(1)}%</span>}
+                              </div>
+                            </div>
+                            <div className="flex-shrink-0 text-end"><RankChangeIndicator value={novel.rank_change} /></div>
+                          </div>
+                          {novel.Tags && novel.Tags.length > 0 && (
+                            <div className="pt-2 border-top">
+                              <div className="d-flex flex-wrap gap-1">{(novel.Tags || []).map((tag, index) => (<Button key={`${novel.ID}-${tag}-${index}`} variant={selectedTags.includes(tag) ? "primary" : "secondary"} size="sm" onClick={() => handleTagSelect(tag)} className="rounded-pill tag-button-compact">{tag}</Button>))}</div>
+                            </div>
+                          )}
+                        </Card.Body>
+                      </Card>
+                    </div>
+                  ))
                 ) : (
                   <Alert variant="info" className="text-center m-1">현재 필터와 일치하는 결과가 없습니다.</Alert>
                 )}

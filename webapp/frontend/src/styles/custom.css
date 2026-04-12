@@ -6,14 +6,21 @@ body {
 }
 
 /* Header Styles */
+/*
+ * NOTE: backdrop-filter는 의도적으로 제거됨.
+ * iOS Safari는 top:0 sticky/fixed 헤더에 backdrop-filter가 있을 경우 그 픽셀로
+ * status bar / Dynamic Island 색을 결정하고 lock-in 시켜, 테마 전환 시 theme-color
+ * 메타 갱신을 무시하는 알려진 렌더링 버그가 있다. 헤더 background 가 이미 불투명
+ * 이라 backdrop-filter는 시각적으로도 무의미하므로 제거한다.
+ *
+ */
 .app-header {
   position: sticky;
   top: 0;
   z-index: 100;
-  background-color: #0d1b2a;
+  background-color: var(--np-bg);
   border-bottom: 1px solid var(--np-border);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  padding-top: env(safe-area-inset-top);
 }
 
 .app-header-inner {
@@ -148,7 +155,7 @@ body {
   max-height: 0;
   overflow: hidden;
   transition: max-height 0.25s ease-out;
-  background-color: #0d1b2a;
+  background-color: var(--np-bg);
   border-top: 1px solid transparent;
 }
 .app-header-mobile-menu.is-open {
@@ -167,7 +174,6 @@ body {
   border-bottom: 1px solid var(--np-border);
 }
 .mobile-nav-link:last-child { border-bottom: none; }
-.mobile-nav-link:hover { color: var(--np-text-heading); background-color: rgba(255,255,255,0.04); }
 .mobile-nav-link--active { color: var(--np-accent) !important; background-color: rgba(61,180,242,0.07); }
 
 /* Wrapper for the search bar in the header to control its responsive size */
@@ -910,7 +916,7 @@ h1.fs-page-title {
 
 /* ── Page Height Manager ── */
 .page-height-manager {
-  height: calc(100dvh - 56px);
+  height: calc(100dvh - 56px - env(safe-area-inset-top));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1063,14 +1069,20 @@ h1.fs-page-title {
   .page-sidebar {
     display: none !important;
   }
+  .page-height-manager {
+    height: auto;
+    overflow: visible;
+  }
   .page-layout {
     margin-top: 0;
     margin-left: 0.5rem;
     margin-right: 0.5rem;
     width: auto;
+    overflow: visible;
   }
   .page-main {
     padding: 0.35rem 0.5rem 0;
+    overflow: visible;
   }
   .page-banner {
     padding: 0.5rem 0 0.5rem;
@@ -1142,10 +1154,23 @@ body, button, input, select, textarea {
 }
 
 /* --- Base --- */
+html {
+  background-color: #0b1622;
+}
+
+[data-theme="light"] html {
+  background-color: #eef4fc;
+}
+
 body {
-  background-color: var(--np-bg);
+  background-color: #0b1622;
   color: var(--np-text-primary);
   font-synthesis: none;
+  overscroll-behavior-y: none;
+}
+
+[data-theme="light"] body {
+  background-color: #eef4fc;
 }
 
 main {
@@ -1208,6 +1233,42 @@ h1, h2, h3, h4, h5, h6,
   border-radius: var(--np-radius-md);
   overflow: auto;
   position: relative;
+}
+
+@media (max-width: 767.98px) {
+  .custom-table-wrapper {
+    overscroll-behavior: contain;
+  }
+  .custom-table-wrapper::-webkit-scrollbar {
+    width: 14px;
+  }
+  .custom-table-wrapper::-webkit-scrollbar-thumb {
+    border-radius: 7px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+    background-color: var(--np-border);
+  }
+  .custom-table-wrapper::-webkit-scrollbar-thumb:active {
+    background-color: var(--np-text-secondary);
+  }
+
+  /* 모바일 카드뷰 가상 스크롤 컨테이너: 세로 스크롤바 터치 개선 */
+  .virtual-card-scroll {
+    overscroll-behavior: contain;
+    touch-action: pan-y; /* 브라우저에 세로 제스처 처리 주체 명시 → 페이지 스크롤 가로채기 방지 */
+  }
+  .virtual-card-scroll::-webkit-scrollbar {
+    width: 14px;
+  }
+  .virtual-card-scroll::-webkit-scrollbar-thumb {
+    border-radius: 7px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+    background-color: var(--np-border);
+  }
+  .virtual-card-scroll::-webkit-scrollbar-thumb:active {
+    background-color: var(--np-text-secondary);
+  }
 }
 
 /* 통합 박스 내 table-wrapper는 border/radius 제거 */
@@ -1563,9 +1624,25 @@ div.border.rounded {
 }
 
 /* --- Scrollbar --- */
-* {
+html {
   scrollbar-width: thin;
   scrollbar-color: var(--np-border) var(--np-surface);
+}
+
+/*
+ * --- Theme switching performance guard ---
+ * 테마 전환 시(html에 .theme-switching 클래스가 붙는 동안)에는 모든 transition을
+ * 끄서 수백 개 요소가 150ms 동안 color/background를 animated repaint 하는 상황을 방지한다.
+ * 이 규칙은 `.theme-switching` 이 붙은 짧은 순간(1~2 프레임)에만 활성화되므로
+ * `*` 선택자의 style-recalc 비용은 한 번만 지불된다.
+ */
+html.theme-switching,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+  animation-duration: 0.001ms !important;
+  animation-delay: 0s !important;
 }
 ::-webkit-scrollbar {
   width: 6px;
@@ -1809,8 +1886,8 @@ h2.fs-page-title,
 }
 
 [data-theme="light"] .app-header {
-  background-color: #d6e8f8;
-  border-bottom: none;
+  background-color: var(--np-bg);
+  border-bottom: 1px solid var(--np-border);
 }
 
 [data-theme="light"] .brand-icon {

@@ -334,7 +334,7 @@ const TagTrendsPage: React.FC = () => {
             </Tooltip>
           }
         >
-          <span className="d-md-none" style={{ cursor: 'pointer' }}>
+          <span className="d-md-none page-banner-info-icon" style={{ cursor: 'pointer' }}>
             <InfoCircle />
           </span>
         </OverlayTrigger>
