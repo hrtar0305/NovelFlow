@@ -476,8 +476,8 @@ def get_tags_by_date(date: str, response: Response):
 
         tag_data = []
         for tag in scores_log.keys():
-            count_total = counts_total.get(tag, 0)
-            count_top100 = counts_top100.get(tag, 0)
+            count_total = int(counts_total.get(tag, 0))
+            count_top100 = int(counts_top100.get(tag, 0))
             tag_data.append({
                 'tag': tag,
                 'power_score': scores_log.get(tag, 0),
