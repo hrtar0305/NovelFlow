@@ -199,6 +199,14 @@ class TagRankData(BaseModel):
     Rank: int
     rank_change: Optional[Any] = None  # 전일 대비 순위 변화 (양수=상승, 음수=하락, 'New'=신규)
 
+class ContestTagRankData(BaseModel):
+    tag: str
+    score_linear: float
+    score_inverse: float
+    score_log: float
+    count: int
+    Rank: int
+
 class ContestNovelData(BaseModel):
     ID: str
     Date: str
@@ -787,7 +795,7 @@ def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/contests/{year}/ranks/tags/{date}", response_model=List[TagRankData])
+@app.get("/api/contests/{year}/ranks/tags/{date}", response_model=List[ContestTagRankData])
 def get_contest_tags_by_date(year: int, date: str, response: Response):
     """
     특정 날짜의 공모전 태그 랭킹 데이터를 조회합니다.

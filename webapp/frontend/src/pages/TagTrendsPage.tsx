@@ -82,7 +82,7 @@ const TagCategoryCard: React.FC<{
   category: keyof AnalysisReport;
   variant: string;
   dates: string[];
-}> = ({ title, description, tags, category, variant, dates }) => {
+}> = ({ title, description, tags, variant, dates }) => {
   const [topN, setTopN] = useState(5);
   const [selectedTag, setSelectedTag] = useState<TagAnalysisResult | null>(null);
   const topNOptions = [5, 10, 20];

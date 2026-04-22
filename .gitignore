@@ -37,6 +37,10 @@ data/
 
 # Custom ignores
 todo.md
+WORKLOG.md
+WORKLOG*.md
+.codex
+.codex/
 
 # =============================================================================
 # Web Frontend (Node.js / Vite / React)
