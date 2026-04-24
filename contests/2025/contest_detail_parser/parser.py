@@ -3,6 +3,7 @@ import logging
 import json
 import os
 import requests
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from botocore.exceptions import ClientError as BotoClientError
 
@@ -21,6 +22,7 @@ class Config:
     MAX_INTERNAL_RETRIES = 3 # Max retries for individual novel parsing
     
     # Novelpia URLs & Settings
+    NOVELPIA_BASE_URL = "https://novelpia.com"
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
 
     # CSS Selectors
@@ -32,6 +34,8 @@ class Config:
         TAGS = "div.mobile_hidden p.writer-tag span.tag"
         SYNOPSIS = "div.synopsis-story"
         ALERT_MODAL = "#alert_modal"
+        COVER_IMAGE = "img.cover_img"
+        OG_IMAGE = 'meta[property="og:image"]'
 
 if not Config.SQS_RESULT_QUEUE_URL:
     raise ValueError("Environment variable SQS_RESULT_QUEUE_URL must be set.")
@@ -45,6 +49,27 @@ def _parse_int_from_raw_text(text, suffix_to_remove=""):
     """Helper to parse an integer from cleaned text, removing suffixes, prefixes, and commas."""
     cleaned_text = text.strip().replace(suffix_to_remove, "").replace(",", "")
     return int(cleaned_text)
+
+def _normalize_thumbnail_url(url):
+    if not url:
+        return ""
+    cleaned_url = url.strip()
+    if not cleaned_url:
+        return ""
+    if cleaned_url.startswith("//"):
+        return f"https:{cleaned_url}"
+    return urljoin(Config.NOVELPIA_BASE_URL, cleaned_url)
+
+def _extract_thumbnail_url(soup):
+    cover_image = soup.select_one(Config.Selectors.COVER_IMAGE)
+    if cover_image and cover_image.get("src"):
+        return _normalize_thumbnail_url(cover_image.get("src"))
+
+    og_image = soup.select_one(Config.Selectors.OG_IMAGE)
+    if og_image and og_image.get("content"):
+        return _normalize_thumbnail_url(og_image.get("content"))
+
+    return ""
 
 def _create_placeholder_item(novel_id, crawl_date, reason="N/A"):
     """Creates a placeholder dictionary for a failed novel parse."""
@@ -117,6 +142,7 @@ def parse_contest_novel_details_batch(event, context):
                         "Eps": _parse_int_from_raw_text(info_count2[2].get_text(strip=True), "회차"),
                         "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
                         "Synopsis": soup.select_one(Config.Selectors.SYNOPSIS).get_text(separator='\n', strip=True),
+                        "ThumbnailURL": _extract_thumbnail_url(soup),
                     }
 
                     item_to_send = parsed_item

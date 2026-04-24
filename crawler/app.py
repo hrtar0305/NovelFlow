@@ -7,6 +7,7 @@ import requests
 import time
 from datetime import datetime
 from pytz import timezone
+from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, expect
 from bs4 import BeautifulSoup
 
@@ -30,6 +31,7 @@ class Config:
     DEFAULT_ACTION_TIMEOUT = 30000      # 30 seconds
 
     # Novelpia URLs & Settings
+    NOVELPIA_BASE_URL = "https://novelpia.com"
     BASE_URL = "https://novelpia.com/mybook"
     RANK_MORE_URL = "https://novelpia.com/proc/rank_more"
     NOVEL_URL_TEMPLATE = "https://novelpia.com/novel/{}"
@@ -57,6 +59,8 @@ class Config:
         INFO_SPANS = "div.info-count2 span.gray-txt"
         TAGS = "div.mobile_hidden p.writer-tag span.tag"
         SYNOPSIS = "div.synopsis-story"
+        COVER_IMAGE = "img.cover_img"
+        OG_IMAGE = 'meta[property="og:image"]'
 
         # For episode list
         EPISODE_INFO_DIV = "div.ep_style2"
@@ -345,13 +349,34 @@ def _get_episode_view_counts(session, novel_id, episode_ids, execution_id):
         _log(logging.WARNING, execution_id, f"Failed to parse /proc/novel response: {e}", novel_id=novel_id)
         return {}
 
+def _normalize_thumbnail_url(url):
+    if not url:
+        return ""
+    cleaned_url = url.strip()
+    if not cleaned_url:
+        return ""
+    if cleaned_url.startswith("//"):
+        return f"https:{cleaned_url}"
+    return urljoin(Config.NOVELPIA_BASE_URL, cleaned_url)
+
+def _extract_thumbnail_url(soup):
+    cover_image = soup.select_one(Config.Selectors.COVER_IMAGE)
+    if cover_image and cover_image.get("src"):
+        return _normalize_thumbnail_url(cover_image.get("src"))
+
+    og_image = soup.select_one(Config.Selectors.OG_IMAGE)
+    if og_image and og_image.get("content"):
+        return _normalize_thumbnail_url(og_image.get("content"))
+
+    return ""
+
 def _create_placeholder_item(novel_info, reason="N/A"):
     """Creates a placeholder dictionary for a failed novel parse."""
     return {
         "Date": novel_info['date'], "Ranking": novel_info['ranking'], "ID": novel_info['id'],
         "Score": novel_info['score'], "Title": f"N/A ({reason})", "AuthorName": "N/A",
         "AuthorID": "0", "View": 0, "Like": 0, "Fav": 0, "Alr": 0, "Eps": 0,
-        "Tags": [], "Synopsis": "",
+        "Tags": [], "Synopsis": "", "ThumbnailURL": "",
         "FirstEpView": -1, "FirstEpNum": -1, "TargetLatestEpView": -1, "TargetLatestEpNum": -1,
     }
 
@@ -426,6 +451,7 @@ def parse_novel_details(event, context):
                     "Eps": _parse_int_from_raw_text(info_count2[2].get_text(strip=True), "회차"),
                     "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
                     "Synopsis": soup.select_one(Config.Selectors.SYNOPSIS).get_text(separator='\n', strip=True),
+                    "ThumbnailURL": _extract_thumbnail_url(soup),
                     "FirstEpView": -1, "FirstEpNum": -1,
                     "Ep30View": -1, "Ep30Num": -1,
                     "RecentBaseView": -1, "RecentBaseNum": -1,

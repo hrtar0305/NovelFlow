@@ -19,6 +19,7 @@ class Config:
     CSV_HEADERS = [
         "Date", "Ranking", "ID", "Score", "Title", "AuthorName", "AuthorID",
         "View", "Like", "Fav", "Alr", "Eps", "Tags", "Synopsis",
+        "ThumbnailURL",
         "FirstEpView", "FirstEpNum", "Ep30View", "Ep30Num",
         "RecentBaseView", "RecentBaseNum", "TargetLatestEpView", "TargetLatestEpNum"
     ]
