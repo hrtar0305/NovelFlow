@@ -199,6 +199,45 @@ def _fetch_rankings_with_requests(session, target_novel_count, today, execution_
         
     return novels
 
+def _serialize_auth_cookies(cookies):
+    """Keep only the cookie fields needed to recreate an authenticated requests session."""
+    serialized = []
+    for cookie in cookies:
+        name = cookie.get('name')
+        value = cookie.get('value')
+        if not name or value is None:
+            continue
+        serialized.append({
+            'name': name,
+            'value': value,
+            'domain': cookie.get('domain') or '.novelpia.com',
+            'path': cookie.get('path') or '/',
+        })
+    return serialized
+
+def _apply_auth_cookies(session, cookies, execution_id):
+    """Best-effort cookie injection. Malformed cookie entries must not break parsing."""
+    applied_count = 0
+    for cookie in cookies or []:
+        if not isinstance(cookie, dict):
+            continue
+        name = cookie.get('name')
+        value = cookie.get('value')
+        if not name or value is None:
+            continue
+        try:
+            session.cookies.set(
+                name,
+                value,
+                domain=cookie.get('domain') or '.novelpia.com',
+                path=cookie.get('path') or '/',
+            )
+            applied_count += 1
+        except Exception as e:
+            _log(logging.WARNING, execution_id, f"Skipped malformed auth cookie: {type(e).__name__}")
+    if applied_count:
+        _log(logging.INFO, execution_id, "Applied auth cookies to detail parser session.", cookie_count=applied_count)
+
 # =====================================================================================
 # LAMBDA HANDLER 1: Get Ranking List
 # =====================================================================================
@@ -263,11 +302,11 @@ def get_ranking_list(event, context):
             # --- Extract cookies from Playwright and set up requests session ---
             _log(logging.INFO, execution_id, "Extracting cookies from Playwright context...")
             cookies = pw_context.cookies()
+            auth_cookies = _serialize_auth_cookies(cookies)
             requests_session = requests.Session()
             requests_session.headers.update({"User-Agent": Config.USER_AGENT})
-            for cookie in cookies:
-                requests_session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
-            _log(logging.INFO, execution_id, "Requests session created with login cookies.")
+            _apply_auth_cookies(requests_session, auth_cookies, execution_id)
+            _log(logging.INFO, execution_id, "Requests session created with login cookies.", cookie_count=len(auth_cookies))
 
             # --- Retry loop for fetching data with requests ---
             for attempt in range(Config.MAX_INTERNAL_RETRIES):
@@ -283,7 +322,12 @@ def get_ranking_list(event, context):
                             "fetched_count": len(novels),
                             "fetched_novels": novels
                         }
-                    return {"novels": novels, "target_novel_count": target_novel_count, "date": today}
+                    return {
+                        "novels": novels,
+                        "target_novel_count": target_novel_count,
+                        "date": today,
+                        "auth_cookies": auth_cookies,
+                    }
 
                 except (ValueError, requests.exceptions.RequestException) as e:
                     if attempt < Config.MAX_INTERNAL_RETRIES - 1:
@@ -424,6 +468,7 @@ def parse_novel_details(event, context):
         else:
             session = requests.Session()
             session.headers.update({"User-Agent": Config.USER_AGENT})
+            _apply_auth_cookies(session, event.get("auth_cookies", []), execution_id)
 
             novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
             response = session.get(novel_url, timeout=10)
