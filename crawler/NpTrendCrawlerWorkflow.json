@@ -38,6 +38,7 @@
         "Input": {
           "novels.$": "$.getRankingOutput.novels",
           "date.$": "$.getRankingOutput.date",
+          "auth_cookies.$": "$.getRankingOutput.auth_cookies",
           "execution_id.$": "$$.Execution.Id"
         }
       },

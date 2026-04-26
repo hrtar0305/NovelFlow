@@ -9,7 +9,8 @@
       "Parameters": {
         "novel_item.$": "$$.Map.Item.Value",
         "execution_id.$": "$.execution_id",
-        "date.$": "$.date"
+        "date.$": "$.date",
+        "auth_cookies.$": "$.auth_cookies"
       },
       "Iterator": {
         "StartAt": "GetNovelData",
@@ -20,7 +21,8 @@
             "Parameters": {
               "date.$": "$.date",
               "novel.$": "$.novel_item",
-              "execution_id.$": "$.execution_id"
+              "execution_id.$": "$.execution_id",
+              "auth_cookies.$": "$.auth_cookies"
             },
             "Retry": [
               {
@@ -50,6 +52,7 @@
               "date.$": "$.date",
               "novel.$": "$.novel_item",
               "execution_id.$": "$.execution_id",
+              "auth_cookies.$": "$.auth_cookies",
               "is_placeholder": true
             },
             "Retry": [
