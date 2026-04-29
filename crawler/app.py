@@ -414,6 +414,50 @@ def _extract_thumbnail_url(soup):
 
     return ""
 
+def _get_html_title(soup):
+    """Returns the document title for diagnostics without logging response bodies."""
+    if not soup.title:
+        return ""
+    return soup.title.get_text(strip=True)[:120]
+
+def _get_required_detail_elements(soup, response, execution_id, novel_id):
+    """Validates detail-page selectors before dereferencing BeautifulSoup nodes."""
+    title_el = soup.select_one(Config.Selectors.TITLE)
+    author_el = soup.select_one(Config.Selectors.AUTHOR_LINK)
+    synopsis_el = soup.select_one(Config.Selectors.SYNOPSIS)
+    counter_line_a = soup.select(Config.Selectors.COUNTER_SPANS)
+    info_count2 = soup.select(Config.Selectors.INFO_SPANS)
+
+    missing = []
+    if title_el is None:
+        missing.append("TITLE")
+    if author_el is None:
+        missing.append("AUTHOR_LINK")
+    elif not author_el.get("href"):
+        missing.append("AUTHOR_LINK.href")
+    if synopsis_el is None:
+        missing.append("SYNOPSIS")
+    if len(counter_line_a) < 2:
+        missing.append(f"COUNTER_SPANS[{len(counter_line_a)}/2]")
+    if len(info_count2) < 3:
+        missing.append(f"INFO_SPANS[{len(info_count2)}/3]")
+
+    if missing:
+        _log(
+            logging.WARNING,
+            execution_id,
+            "Novel detail HTML is missing required selectors.",
+            novel_id=novel_id,
+            missing_selectors=missing,
+            status_code=response.status_code,
+            response_length=len(response.text or ""),
+            html_title=_get_html_title(soup),
+            has_alert_modal=bool(soup.select_one(Config.Selectors.ALERT_MODAL)),
+        )
+        raise ValueError(f"Missing required detail selectors: {', '.join(missing)}")
+
+    return title_el, author_el, synopsis_el, counter_line_a, info_count2
+
 def _create_placeholder_item(novel_info, reason="N/A"):
     """Creates a placeholder dictionary for a failed novel parse."""
     return {
@@ -480,22 +524,23 @@ def parse_novel_details(event, context):
                 item_to_send = _create_placeholder_item(novel_info, reason="Inaccessible")
                 status = "PLACEHOLDER_CREATED"
             else:
-                counter_line_a = soup.select(Config.Selectors.COUNTER_SPANS)
-                info_count2 = soup.select(Config.Selectors.INFO_SPANS)
+                title_el, author_el, synopsis_el, counter_line_a, info_count2 = _get_required_detail_elements(
+                    soup, response, execution_id, novel_id
+                )
                 tags_raw = [tag.get_text(strip=True) for tag in soup.select(Config.Selectors.TAGS)]
 
                 item = {
                     "Date": today, "Ranking": novel_info['ranking'], "ID": novel_id, "Score": novel_info['score'],
-                    "Title": soup.select_one(Config.Selectors.TITLE).get_text(strip=True),
-                    "AuthorName": soup.select_one(Config.Selectors.AUTHOR_LINK).get_text(strip=True),
-                    "AuthorID": str(soup.select_one(Config.Selectors.AUTHOR_LINK)['href'].split("/")[-1]),
+                    "Title": title_el.get_text(strip=True),
+                    "AuthorName": author_el.get_text(strip=True),
+                    "AuthorID": str(author_el['href'].split("/")[-1]),
                     "View": _parse_int_from_raw_text(counter_line_a[0].get_text(strip=True)),
                     "Like": _parse_int_from_raw_text(counter_line_a[1].get_text(strip=True)),
                     "Fav": _parse_int_from_raw_text(info_count2[0].get_text(strip=True)),
                     "Alr": _parse_int_from_raw_text(info_count2[1].get_text(strip=True)),
                     "Eps": _parse_int_from_raw_text(info_count2[2].get_text(strip=True), "회차"),
                     "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
-                    "Synopsis": soup.select_one(Config.Selectors.SYNOPSIS).get_text(separator='\n', strip=True),
+                    "Synopsis": synopsis_el.get_text(separator='\n', strip=True),
                     "ThumbnailURL": _extract_thumbnail_url(soup),
                     "FirstEpView": -1, "FirstEpNum": -1,
                     "Ep30View": -1, "Ep30Num": -1,
