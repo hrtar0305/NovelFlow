@@ -3,6 +3,7 @@ import csv
 import io
 import os
 import json
+import re
 import logging
 import math
 from decimal import Decimal
@@ -30,25 +31,34 @@ def lambda_handler(event, context):
     bucket_name = event['Records'][0]['s3']['bucket']['name']
     file_key = event['Records'][0]['s3']['object']['key']
 
-    if not file_key.endswith('.csv'):
-        logger.info(f"Non-CSV file ({file_key}) triggered the event. Skipping.")
-        return {'statusCode': 200, 'body': 'Not a CSV file.'}
+    # 원본 HTML(raw/ 접두)은 이 Lambda 가 다루지 않는다 — 같은 버킷을 쓰면 트리거가 걸린다.
+    if file_key.startswith('raw/'):
+        logger.info(f"Raw HTML object ({file_key}) — not an ingestion input. Skipping.")
+        return {'statusCode': 200, 'body': 'Raw object.'}
+
+    if not file_key.endswith(('.csv', '.jsonl')):
+        logger.info(f"Unsupported file ({file_key}) triggered the event. Skipping.")
+        return {'statusCode': 200, 'body': 'Unsupported file type.'}
 
     try:
-        # Read CSV file from S3
         response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
         content = response['Body'].read().decode('utf-8')
-        csv_reader = csv.DictReader(io.StringIO(content))
-        
-        items = list(csv_reader)
+
+        # NDJSON 과 CSV 를 모두 받는다. 전환 기간에는 두 형식이 섞이고, 과거 파일을
+        # 다시 적재해야 할 때도 옛 CSV 를 그대로 읽을 수 있어야 한다.
+        if file_key.endswith('.jsonl'):
+            items = [json.loads(line) for line in content.splitlines() if line.strip()]
+        else:
+            items = list(csv.DictReader(io.StringIO(content)))
+
         if not items:
-            logger.warning("CSV file is empty.")
-            return {'statusCode': 400, 'body': 'CSV file is empty.'}
+            logger.warning(f"{file_key} is empty.")
+            return {'statusCode': 400, 'body': 'Input file is empty.'}
 
         processed_items = []
         with table.batch_writer() as batch:
             for item_dict in items:
-                processed_item = process_csv_row(item_dict)
+                processed_item = process_row(item_dict)
                 final_item = {k: v for k, v in processed_item.items() if v != "" and v != -1}
                 batch.put_item(Item=final_item)
                 processed_items.append(processed_item)
@@ -58,11 +68,28 @@ def lambda_handler(event, context):
         # Analyze and store tag trends using the successfully processed items
         calculate_and_store_tag_trends(processed_items)
 
-        # Extract date from file_key (e.g., '2025-08-19.csv' -> '2025-08-19')
-        date_from_file = file_key.split('/')[-1].replace('.csv', '')
+        # 파일명에서 날짜를 뽑는다 ('2025-08-19.jsonl' -> '2025-08-19').
+        #
+        # **날짜 형태가 아니면 여기서 멈춘다.** 이 버킷의 S3 트리거에는 접미사 필터가
+        # 없어서 아무 `.csv`/`.jsonl` 을 올려도 이 함수가 깨어난다. 예전에는 그 파일명이
+        # 그대로 `AVAILABLE_DATES` 에 들어가(`notes.csv` → 'notes') 화면의 날짜 목록을
+        # 오염시켰다. 항목 적재까지는 이미 끝난 상태이므로 예외를 던지지 않고 반환한다.
+        date_from_file = file_key.split('/')[-1].rsplit('.', 1)[0]
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_from_file):
+            logger.warning(
+                f"파일명이 날짜 형식(YYYY-MM-DD)이 아니다: {file_key} — "
+                "날짜별 집계와 AVAILABLE_DATES 갱신을 건너뛴다."
+            )
+            return {
+                'statusCode': 200,
+                'body': json.dumps(f'Stored {len(items)} items from {file_key}; date-scoped steps skipped.')
+            }
 
         # Update AVAILABLE_DATES item in DynamoDB
         update_available_dates(date_from_file)
+
+        # 데이터 분석 리포트용 압축 스냅샷
+        store_ranking_snapshot(date_from_file, processed_items)
 
         return {
             'statusCode': 200,
@@ -73,22 +100,35 @@ def lambda_handler(event, context):
         logger.error(f"Error processing file {file_key} from bucket {bucket_name}: {e}")
         raise e
 
-def process_csv_row(item):
-    """
-    Transforms a CSV row into a Python dictionary with correct data types.
-    Raises an exception if any conversion fails.
+def process_row(item):
+    """레코드 하나를 DynamoDB 항목 형태로 맞춘다.
+
+    CSV 는 모든 값을 문자열로 실어 오므로 형 변환이 필요하고, NDJSON 은 이미 제 형을
+    갖고 있다. 두 경우를 같은 함수가 처리한다 — 이미 int/bool/list 인 값은 그대로 둔다.
+    **여기 나열되지 않은 키도 그대로 통과시킨다.** 예전 CSV 스키마처럼 아는 필드만
+    남기면 새로 추가된 값이 다시 조용히 사라진다.
     """
     # Convert numeric fields
     for key in ['Ranking', 'Score', 'View', 'Like', 'Fav', 'Alr', 'Eps',
                 'FirstEpView', 'FirstEpNum', 'Ep30View', 'Ep30Num',
                 'RecentBaseView', 'RecentBaseNum', 'TargetLatestEpView', 'TargetLatestEpNum']:
-        if item.get(key):
-            try:
-                item[key] = int(item[key])
-            except (ValueError, TypeError) as e:
-                logger.error(f"Could not convert {key} to int for value {item[key]}.")
-                raise e
+        v = item.get(key)
+        if v is None or v == "":
+            continue
+        if isinstance(v, bool):
+            continue
+        try:
+            item[key] = int(v)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Could not convert {key} to int for value {v}.")
+            raise e
     
+    # CSV는 bool을 "True"/"False" 문자열로 실어 오므로 되돌린다.
+    # 값이 없으면(구 CSV) 키를 만들지 않아 DynamoDB 항목에도 넣지 않는다.
+    if item.get('IsAdult') not in (None, ''):
+        if not isinstance(item['IsAdult'], bool):
+            item['IsAdult'] = str(item['IsAdult']).strip().lower() in ('true', '1', 'yes')
+
     # Keep ID and AuthorID as strings
     item['ID'] = str(item['ID'])
     if item.get('AuthorID'):
@@ -97,8 +137,9 @@ def process_csv_row(item):
     # Parse Tags field (string list -> actual list)
     if item.get('Tags'):
         try:
-            tags_list = literal_eval(item['Tags'])
-            
+            # NDJSON 은 이미 리스트다. CSV 만 문자열로 실어 온다.
+            tags_list = item['Tags'] if isinstance(item['Tags'], list) else literal_eval(item['Tags'])
+
             if not isinstance(tags_list, list):
                 raise ValueError(f"Tags field is not a list: {item['Tags']}")
             
@@ -173,6 +214,51 @@ def calculate_and_store_tag_trends(items):
         logger.info(f"Successfully calculated and stored tag trends for {date}.")
     except Exception as e:
         logger.error(f"Failed to store tag trends for {date}. Error: {e}")
+
+def store_ranking_snapshot(date, items):
+    """데이터 분석 리포트가 읽을 날짜별 압축 스냅샷(`RSNAP#<date>`)을 쓴다.
+
+    **왜 필요한가.** 분석 리포트는 기간 전체(최대 90일)를 봐야 하는데, 날짜당 랭킹은
+    364행 340KB이고 `DateRankIndex` 조회가 웜 0.37초·콜드 30초다. 90일을 요청 시점에
+    모으면 API Gateway 29초 제한을 넘고 브라우저 페이로드도 30MB가 된다.
+    여기서 날짜당 16KB로 줄여 두면 백엔드가 `batch_get_item` 한 번(100키)으로 다 읽는다.
+
+    **키를 반복하지 않고 병렬 배열로 담는다.** 행마다 `{"id":..,"rank":..}` 를 쓰면
+    같은 키 이름이 364번 들어가 항목이 몇 배로 커진다. 태그 시계열에서 쓴 방식과 같다.
+
+    **성인작을 여기서 걸러내지 않는다.** `IsAdult` 를 그대로 실어 보내고 판정은
+    백엔드의 `_is_adult_item()` 한 곳에서만 한다 — 차단 목록(`ADULT_BLOCKLIST`)은
+    과거 전 기간을 덮고 언제든 갱신되므로, 적재 시점에 굳혀 버리면 나중에 추가된
+    작품이 리포트에 남는다. 판정 로직을 두 군데 두지 않는 것이 이 설계의 핵심이다.
+
+    제목·작가·태그는 담지 않는다. 화면에 글자가 필요한 날짜는 기간의 마지막 날뿐이고,
+    그건 백엔드가 기존 조회로 가져온다.
+    """
+    try:
+        ids, rank, eps, view, like, adult = [], [], [], [], [], []
+        for it in items:
+            if not it.get('ID'):
+                continue
+            ids.append(str(it['ID']))
+            rank.append(int(it.get('Ranking') or 0))
+            eps.append(int(it.get('Eps') or 0))
+            view.append(int(it.get('View') or 0))
+            like.append(int(it.get('Like') or 0))
+            adult.append(bool(it.get('IsAdult')))
+
+        table.put_item(Item={
+            'ID': f'RSNAP#{date}',
+            'Date': date,
+            'ids': ids, 'rank': rank, 'eps': eps,
+            'view': view, 'like': like, 'adult': adult,
+        })
+        logger.info(f"Stored ranking snapshot RSNAP#{date} with {len(ids)} rows.")
+
+    except Exception as e:
+        # 리포트용 부가 데이터다. 여기서 실패해도 당일 적재 자체는 이미 끝났으므로
+        # 예외를 올리지 않는다 — 올리면 S3 트리거가 재시도해 중복 적재가 된다.
+        logger.error(f"Failed to store ranking snapshot for {date}. Error: {e}")
+
 
 def update_available_dates(date_from_file):
     """
