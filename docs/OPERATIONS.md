@@ -28,9 +28,24 @@ docker buildx build --platform linux/amd64 \
   --provenance=false --sbom=false \
   --output "type=image,name=$R/np-trend/crawler:<TAG>,oci-mediatypes=false,push=true" .
 
-aws lambda update-function-code --function-name np-trend-crawler-get-novel-data \
-  --image-uri $R/np-trend/crawler:<TAG>
+# ⚠️ crawler 이미지는 Lambda 두 개가 공유한다. 반드시 둘 다 갱신할 것.
+for FN in np-trend-crawler-get-ranking np-trend-crawler-get-novel-data; do
+  aws lambda update-function-code --function-name $FN --image-uri $R/np-trend/crawler:<TAG>
+done
 ```
+
+> ⚠️ **ECR 은 최신 이미지만 남기는 운영이라, 한쪽만 갱신하면 다른 쪽이 삭제된 다이제스트를
+> 가리키게 됩니다.** 그 상태로 스케줄이 돌면 파이프라인 첫 단계부터 실패합니다.
+> 갱신 후 아래로 전수 확인하세요.
+>
+> ```bash
+> for f in $(aws lambda list-functions --query 'Functions[?PackageType==`Image`].FunctionName' --output text); do
+>   echo "$f  $(aws lambda get-function --function-name $f --query 'Code.ImageUri' --output text)"
+> done
+> ```
+>
+> 같은 이유로 **이전 이미지로의 롤백은 보장되지 않습니다** — 되돌리려면 이전 커밋에서
+> 다시 빌드해야 합니다.
 
 확인: `aws ecr batch-get-image --repository-name np-trend/crawler --image-ids imageTag=<TAG> --query 'images[0].imageManifestMediaType'`
 가 `application/vnd.docker.distribution.manifest.v2+json` 이어야 합니다.
