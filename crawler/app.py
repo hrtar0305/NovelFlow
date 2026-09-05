@@ -11,6 +11,8 @@ from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, expect
 from bs4 import BeautifulSoup
 
+import raw_store
+
 # --- Basic Setup ---
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -20,6 +22,9 @@ class Config:
     """Houses all configuration variables for the crawler."""
     # AWS & SQS
     SQS_QUEUE_URL = os.environ.get('SQS_QUEUE_URL')
+    # 원본 HTML 적재 버킷(ELT). 비워 두면 적재를 건너뛰므로 기존 동작이 그대로다.
+    RAW_BUCKET = os.environ.get('RAW_HTML_BUCKET')
+    RAW_PREFIX = os.environ.get('RAW_HTML_PREFIX', 'raw')
     CREDENTIAL_PARAM_NAMES = ["/NP-Trend/NOVELPIA_ID", "/NP-Trend/NOVELPIA_PASS"]
     AWS_REGION = "ap-northeast-2"
 
@@ -59,6 +64,10 @@ class Config:
         INFO_SPANS = "div.info-count2 span.gray-txt"
         TAGS = "div.mobile_hidden p.writer-tag span.tag"
         SYNOPSIS = "div.synopsis-story"
+        # 소설 단위 성인 배지. 회차 목록에도 같은 class가 쓰이므로 소설 정보
+        # 영역(p.in-badge)으로 한정한다. 서버가 novel_age로 렌더하므로 로그인
+        # 여부와 무관하게 나타난다.
+        ADULT_BADGE = "p.in-badge span.b_19"
         COVER_IMAGE = "img.cover_img"
         OG_IMAGE = 'meta[property="og:image"]'
 
@@ -347,12 +356,21 @@ def get_ranking_list(event, context):
 # =====================================================================================
 # LAMBDA HANDLER 2: Parse Novel Details
 # =====================================================================================
-def _get_episode_list_html(session, novel_id, sort_order, page=0):
-    """Fetches the episode list HTML for a given sort order ('DOWN'=oldest first, 'UP'=newest first)."""
+def _get_episode_list_html(session, novel_id, sort_order, page=0, pages=None):
+    """Fetches the episode list HTML for a given sort order ('DOWN'=oldest first, 'UP'=newest first).
+
+    `pages` 를 주면 받은 응답을 그대로 담는다 — 원본 적재(ELT)용이다. 파싱 결과가
+    아니라 받은 것을 남겨야 나중에 다른 규칙으로 다시 뽑을 수 있다.
+    """
     payload = {"novel_no": novel_id, "sort": sort_order, "page": page}
     headers = {"Referer": Config.NOVEL_URL_TEMPLATE.format(novel_id), "X-Requested-With": "XMLHttpRequest"}
     response = session.post(Config.EPISODE_LIST_URL, data=payload, headers=headers, timeout=10)
     response.raise_for_status()
+    if pages is not None:
+        pages.append({
+            "kind": "episode_list", "url": Config.EPISODE_LIST_URL, "method": "POST",
+            "params": payload, "status": response.status_code, "html": response.text,
+        })
     return response.text
 
 def _parse_valid_episodes(soup):
@@ -414,6 +432,57 @@ def _extract_thumbnail_url(soup):
 
     return ""
 
+def _extract_badge_spans(soup):
+    """`p.in-badge` 안의 span 을 하나도 빼지 않고 기록한다. 해석은 하지 않는다.
+
+    **`b_*` class 만 모으면 안 된다.** 연재중단·연재지연 배지에는 class 가 `s_inv`
+    하나뿐이고 구분은 텍스트와 인라인 배경색으로만 되어 있다 — 실측(2026-09-05):
+
+        212573  <span class="s_inv" style="…background-color:#ea4a4a…">연재중단</span>
+        427211  <span class="s_inv" style="…background-color:#BAA576…">연재지연</span>
+        610     (해당 span 없음)
+
+    `p.in-badge` 안으로 한정하는 것은 반드시 지킨다 — 회차 목록에도 같은 class 가
+    쓰여서 문서 전체를 훑으면 회차 배지까지 잡힌다(docs/DECISIONS.md).
+    """
+    holder = soup.select_one("p.in-badge")
+    if holder is None:
+        return None
+    out = []
+    for sp in holder.find_all("span"):
+        classes = [c for c in (sp.get("class") or []) if c != "s_inv"]
+        m = re.search(r"background-color:\s*([^;]+)", sp.get("style") or "", re.I)
+        out.append({
+            "class": classes or None,
+            "text": sp.get_text(strip=True) or None,
+            "color": m.group(1).strip() if m else None,
+        })
+    return out
+
+
+def _serial_status_from_badges(spans):
+    """연재 상태. `b_*` class 가 없고 텍스트가 있는 배지의 텍스트다.
+
+    **아는 값으로 좁히지 않는다.** 모르는 상태(예: 완결)가 나오면 그 문자열이 그대로
+    남아야 한다 — 화이트리스트로 좁히면 새 상태가 조용히 사라진다.
+
+    상태 배지가 없으면(정상 연재) `None` 을 돌려주고 **항목에 필드를 싣지 않는다.**
+    한때 빈 문자열을 썼는데, 적재 Lambda 가 `if v != ""` 로 빈 값을 버리기 때문에
+    '정상 연재'와 '판정 불가'가 DynamoDB 에서 구별되지 않았다.
+
+    판정 가능성은 `Badges` 로 가린다:
+        SerialStatus 있음                → 그 상태
+        SerialStatus 없음 + Badges 리스트 → 상태 배지 없음(정상 연재)
+        둘 다 없음                        → 판정 불가(상세 페이지 또는 p.in-badge 없음)
+    """
+    if spans is None:
+        return None
+    for sp in spans:
+        if not sp["class"] and sp["text"]:
+            return sp["text"]
+    return None
+
+
 def _get_html_title(soup):
     """Returns the document title for diagnostics without logging response bodies."""
     if not soup.title:
@@ -464,7 +533,7 @@ def _create_placeholder_item(novel_info, reason="N/A"):
         "Date": novel_info['date'], "Ranking": novel_info['ranking'], "ID": novel_info['id'],
         "Score": novel_info['score'], "Title": f"N/A ({reason})", "AuthorName": "N/A",
         "AuthorID": "0", "View": 0, "Like": 0, "Fav": 0, "Alr": 0, "Eps": 0,
-        "Tags": [], "Synopsis": "", "ThumbnailURL": "",
+        "Tags": [], "Synopsis": "", "ThumbnailURL": "", "IsAdult": False,
         "FirstEpView": -1, "FirstEpNum": -1, "TargetLatestEpView": -1, "TargetLatestEpNum": -1,
     }
 
@@ -474,7 +543,7 @@ def _validate_item(item, novel_id):
     expected_types = {
         "Date": str, "Ranking": int, "ID": str, "Score": int, "Title": str, "AuthorName": str,
         "AuthorID": str, "View": int, "Like": int, "Fav": int, "Alr": int, "Eps": int,
-        "Tags": list, "Synopsis": str,
+        "Tags": list, "Synopsis": str, "IsAdult": bool,
         "FirstEpView": int, "FirstEpNum": int, "TargetLatestEpView": int, "TargetLatestEpNum": int,
     }
     for field, expected_type in expected_types.items():
@@ -500,6 +569,9 @@ def parse_novel_details(event, context):
     novel_id = novel_info['id']
     item_to_send = None
     status = "UNKNOWN"
+    # 받은 페이지를 그대로 모은다. 파싱이 실패해도 적재는 한다 —
+    # 예전에는 파싱 실패 시 placeholder 만 남고 HTML 은 영구히 사라졌다.
+    raw_pages: list = []
 
     if not novel_id:
         raise ValueError("Novel ID is missing from the event.")
@@ -517,6 +589,10 @@ def parse_novel_details(event, context):
             novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
             response = session.get(novel_url, timeout=10)
             response.raise_for_status()
+            raw_pages.append({
+                "kind": "detail", "url": novel_url, "method": "GET",
+                "status": response.status_code, "html": response.text,
+            })
             soup = BeautifulSoup(response.text, 'html.parser')
 
             if soup.select_one(Config.Selectors.ALERT_MODAL):
@@ -528,6 +604,8 @@ def parse_novel_details(event, context):
                     soup, response, execution_id, novel_id
                 )
                 tags_raw = [tag.get_text(strip=True) for tag in soup.select(Config.Selectors.TAGS)]
+                badge_spans = _extract_badge_spans(soup)
+                serial_status = _serial_status_from_badges(badge_spans)
 
                 item = {
                     "Date": today, "Ranking": novel_info['ranking'], "ID": novel_id, "Score": novel_info['score'],
@@ -542,6 +620,11 @@ def parse_novel_details(event, context):
                     "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
                     "Synopsis": synopsis_el.get_text(separator='\n', strip=True),
                     "ThumbnailURL": _extract_thumbnail_url(soup),
+                    "IsAdult": soup.select_one(Config.Selectors.ADULT_BADGE) is not None,
+                    # 배지 원문. 예전 CSV 스키마에서는 이 필드를 넣어도 CSV_HEADERS 에
+                    # 없어 사라졌을 것이다 — NDJSON 이라 그대로 실린다.
+                    # `SerialStatus` 는 상태 배지가 있을 때만 아래에서 덧붙인다.
+                    "Badges": badge_spans if badge_spans is not None else [],
                     "FirstEpView": -1, "FirstEpNum": -1,
                     "Ep30View": -1, "Ep30Num": -1,
                     "RecentBaseView": -1, "RecentBaseNum": -1,
@@ -559,7 +642,7 @@ def parse_novel_details(event, context):
                     early_seen_ids: set = set()
                     try:
                         for page_num in range(2):
-                            html = _get_episode_list_html(session, novel_id, 'DOWN', page=page_num)
+                            html = _get_episode_list_html(session, novel_id, 'DOWN', page=page_num, pages=raw_pages)
                             soup_ep = BeautifulSoup(html, 'html.parser')
                             if not soup_ep.select(Config.Selectors.EPISODE_INFO_DIV):
                                 break  # 진짜 빈 페이지
@@ -581,7 +664,7 @@ def parse_novel_details(event, context):
                     recent_seen_ids: set = set()
                     try:
                         for page_num in range(5):
-                            html = _get_episode_list_html(session, novel_id, 'UP', page=page_num)
+                            html = _get_episode_list_html(session, novel_id, 'UP', page=page_num, pages=raw_pages)
                             soup_ep = BeautifulSoup(html, 'html.parser')
                             if not soup_ep.select(Config.Selectors.EPISODE_INFO_DIV):
                                 break  # 진짜 빈 페이지
@@ -640,6 +723,9 @@ def parse_novel_details(event, context):
                 else:
                     _log(logging.INFO, execution_id, "Novel has 0 episodes. Skipping retention data.", novel_id=novel_id)
 
+                if serial_status:
+                    item["SerialStatus"] = serial_status
+
                 _validate_item(item, novel_id)
                 item_to_send = item
                 status = "SUCCESS"
@@ -651,6 +737,29 @@ def parse_novel_details(event, context):
         _log(logging.ERROR, execution_id, f"A non-retriable error occurred: {e}. Creating placeholder.", novel_id=novel_id, exc_info=True)
         item_to_send = _create_placeholder_item(novel_info, reason=f"ParsingFailed: {e}")
         status = "PLACEHOLDER_CREATED"
+
+    # 원본 HTML 을 **SQS 메시지에 얹어** consolidate 로 보낸다.
+    #
+    # 한때 소설마다 S3 에 하나씩 올렸는데(개별 gzip, 편당 91KB), 그러면 PUT 이 소설
+    # 수만큼 들고 나중에 하루치를 묶으려면 전부 다시 읽어야 했다. gzip 은 윈도가
+    # 32KB 라 묶어도 이득이 없어서(실측), consolidate 가 전건을 모아 zstd 로 한 번에
+    # 묶는 쪽으로 바꿨다 — 편당 91KB → 9KB, PUT 500회 → 1회.
+    #
+    # 파싱이 실패해 placeholder 를 보내는 경우에도 원본은 붙인다. 그래야 나중에
+    # "그날 그 페이지가 어떻게 생겼길래 실패했나"를 볼 수 있다.
+    if raw_pages and item_to_send is not None:
+        try:
+            encoded, summary = raw_store.build_message_payload(
+                novel_id, today, raw_pages,
+                meta={"parse_status": status, "user_agent": Config.USER_AGENT},
+            )
+            item_to_send[raw_store.RAW_FIELD] = encoded
+            _log(logging.INFO, execution_id, "Attached raw HTML to message.",
+                 novel_id=novel_id, **{k: v for k, v in summary.items() if k != 'suspect'})
+        except Exception as raw_e:  # noqa: BLE001
+            # 원본은 부가 정보다. 실패해도 항목 전송은 막지 않는다.
+            _log(logging.WARNING, execution_id, f"Failed to attach raw HTML: {raw_e}",
+                 novel_id=novel_id)
 
     if item_to_send:
         try:
