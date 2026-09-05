@@ -5,6 +5,8 @@ import os
 import requests
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
+
+import raw_store
 from botocore.exceptions import ClientError as BotoClientError
 
 # --- Basic Setup ---
@@ -12,6 +14,10 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 class Config:
+    # 원본 HTML 적재(ELT). 비워 두면 적재를 건너뛰므로 기존 동작 그대로다.
+    RAW_BUCKET = os.environ.get('RAW_HTML_BUCKET')
+    RAW_PREFIX = os.environ.get('RAW_HTML_PREFIX', 'raw')
+    CONTEST_YEAR = os.environ.get('CONTEST_YEAR', '2025')
     """Houses all configuration variables for the contest novel parser."""
     # AWS Configuration
     AWS_REGION = "ap-northeast-2"
@@ -82,6 +88,40 @@ def _create_placeholder_item(novel_id, crawl_date, reason="N/A"):
 # =====================================================================================
 # LAMBDA HANDLER: Parse Contest Novel Details
 # =====================================================================================
+def _upload_raw_batch(execution_id, raw_batch, crawl_date, context):
+    """이 배치가 받은 원본을 한 덩어리로 묶어 S3 에 올린다.
+
+    키는 `{prefix}/{year}/{date}/{request_id}.jsonl.zst` 다. 배치마다 객체가 하나씩
+    생기므로(4,719편 / batch 80 ≈ 59개) 이름이 겹치면 안 되는데, Lambda 요청 ID 가
+    호출마다 유일하고 재시도 시에도 새로 발급되므로 그대로 쓴다.
+
+    실패해도 예외를 올리지 않는다 — 원본은 부가 기능이고, 여기서 raise 하면 SQS 가
+    배치 전체를 재시도해 같은 소설을 다시 긁는다.
+    """
+    if not raw_batch or not Config.RAW_BUCKET:
+        return
+    try:
+        payloads = []
+        for novel_id, pages in raw_batch:
+            body, _ = raw_store.build_json_payload(
+                novel_id, crawl_date, pages,
+                meta={"pipeline": "contest", "year": Config.CONTEST_YEAR},
+            )
+            payloads.append(body)
+
+        blob = raw_store.bundle(payloads)
+        rid = getattr(context, 'aws_request_id', 'unknown')
+        key = f"{Config.RAW_PREFIX}/{Config.CONTEST_YEAR}/{crawl_date}/{rid}.jsonl.zst"
+        boto3.client('s3', region_name=Config.AWS_REGION).put_object(
+            Bucket=Config.RAW_BUCKET, Key=key, Body=blob, ContentType='application/zstd',
+        )
+        _log(logging.INFO, execution_id, "Uploaded raw batch.",
+             key=key, novels=len(payloads), bytes=len(blob),
+             per_novel_kb=round(len(blob) / len(payloads) / 1024, 1))
+    except Exception as e:  # noqa: BLE001
+        _log(logging.ERROR, execution_id, f"Failed to upload raw batch: {e}", exc_info=True)
+
+
 def parse_contest_novel_details_batch(event, context):
     """
     Parses detailed information for a BATCH of contest novels using a single
@@ -106,6 +146,18 @@ def parse_contest_novel_details_batch(event, context):
 
     success_count = 0
     placeholder_count = 0
+    # 이 배치가 받은 원본. 배치 끝에 한 덩어리로 묶어 올린다.
+    #
+    # **소설마다 올리지 않는다.** 실측(2026-09-05, 상세 1페이지 40편):
+    #   배치  1편 → 편당 67.5KB      배치 20편 → 편당  5.7KB
+    #   배치 10편 → 편당  9.1KB      배치 40편 → 편당  4.0KB
+    # 배치가 클수록 문서 간 중복이 걷힌다. 공모전 파서는 SQS batch 80 이라
+    # 편당 4KB 아래로 떨어진다.
+    #
+    # **데일리처럼 consolidate 에서 묶지 않는 이유**: 공모전은 4,719편이라
+    # 비압축 원본이 3.5GB 다. consolidate 가 전건을 들면 Lambda 메모리가 5GB 대가
+    # 된다. 배치 단위로 묶으면 80편 × 753KB = 60MB 뿐이다.
+    raw_batch = []
 
     for novel_id in batch_items:
         novel_id = str(novel_id).strip()
@@ -118,6 +170,10 @@ def parse_contest_novel_details_batch(event, context):
                 novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
                 response = session.get(novel_url, timeout=15)
                 response.raise_for_status()
+                raw_batch.append((novel_id, [{
+                    "kind": "detail", "url": novel_url, "method": "GET",
+                    "status": response.status_code, "html": response.text,
+                }]))
                 soup = BeautifulSoup(response.text, 'html.parser')
 
                 if soup.select_one(Config.Selectors.ALERT_MODAL):
@@ -174,6 +230,8 @@ def parse_contest_novel_details_batch(event, context):
             except BotoClientError as sqs_e:
                 _log(logging.ERROR, execution_id, f"Failed to send message to SQS for {novel_id}: {sqs_e}. The batch will be retried by SQS.", novel_id=novel_id, exc_info=True)
                 raise sqs_e
+
+    _upload_raw_batch(execution_id, raw_batch, crawl_date, context)
 
     _log(logging.INFO, execution_id, f"Batch processing complete. Success: {success_count}, Placeholders: {placeholder_count}, Total: {len(batch_items)}.")
     return {"status": "SUCCESS", "processed_count": success_count + placeholder_count}

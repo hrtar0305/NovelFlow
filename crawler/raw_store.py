@@ -99,23 +99,14 @@ def scan_for_secrets(html: str) -> list[str]:
     return out[:20]
 
 
-def build_payload(novel_id: str, date: str, pages: list[dict],
-                  meta: dict | None = None) -> tuple[bytes, dict]:
-    """적재할 gzip 바이트와 요약 정보를 만든다.
+def build_json_payload(novel_id: str, date: str, pages: list[dict],
+                       meta: dict | None = None) -> tuple[bytes, dict]:
+    """묶음(`bundle`)에 바로 넣을 **비압축 JSON 바이트**를 만든다.
 
-    `pages` 는 `{kind, url, status, html, ...}` 목록이다. 무엇을 어떤 순서로 받았는지
-    까지 남기므로, 재파싱 시 "회차 목록 3페이지까지만 받았다" 같은 사정도 재현된다.
+    gzip 은 SQS 전송용이다. 배치 안에서 곧바로 묶는 경로(공모전 파서)에서는 gzip 을
+    거칠 이유가 없다 — 만들었다가 바로 다시 푸는 낭비가 된다.
     """
-    redacted_pages = []
-    redactions = 0
-    leftovers: list[str] = []
-    for p in pages:
-        html, n = redact(p.get('html') or '')
-        redactions += n
-        if n == 0:
-            leftovers.extend(scan_for_secrets(html))
-        redacted_pages.append({**{k: v for k, v in p.items() if k != 'html'}, 'html': html})
-
+    redacted_pages, redactions, leftovers = _redact_pages(pages)
     obj = {
         'raw_format': RAW_FORMAT,
         'novel_id': str(novel_id),
@@ -123,13 +114,34 @@ def build_payload(novel_id: str, date: str, pages: list[dict],
         'pages': redacted_pages,
         **(meta or {}),
     }
-    body = gzip.compress(json.dumps(obj, ensure_ascii=False).encode('utf-8'), 6)
-    return body, {
-        'pages': len(redacted_pages),
-        'bytes': len(body),
-        'redactions': redactions,
-        'suspect': leftovers[:5],
-    }
+    body = json.dumps(obj, ensure_ascii=False).encode('utf-8')
+    return body, {'pages': len(redacted_pages), 'bytes': len(body),
+                  'redactions': redactions, 'suspect': leftovers[:5]}
+
+
+def _redact_pages(pages: list[dict]) -> tuple[list[dict], int, list[str]]:
+    """페이지마다 비밀값을 치환하고 (치환된 페이지, 치환 수, 의심 잔류)를 돌려준다."""
+    out, total, leftovers = [], 0, []
+    for p in pages:
+        html, n = redact(p.get('html') or '')
+        total += n
+        if n == 0:
+            leftovers.extend(scan_for_secrets(html))
+        out.append({**{k: v for k, v in p.items() if k != 'html'}, 'html': html})
+    return out, total, leftovers
+
+
+def build_payload(novel_id: str, date: str, pages: list[dict],
+                  meta: dict | None = None) -> tuple[bytes, dict]:
+    """적재할 gzip 바이트와 요약 정보를 만든다.
+
+    `pages` 는 `{kind, url, status, html, ...}` 목록이다. 무엇을 어떤 순서로 받았는지
+    까지 남기므로, 재파싱 시 "회차 목록 3페이지까지만 받았다" 같은 사정도 재현된다.
+    """
+    body, summary = build_json_payload(novel_id, date, pages, meta)
+    gz = gzip.compress(body, 6)
+    summary['bytes'] = len(gz)
+    return gz, summary
 
 
 def build_message_payload(novel_id: str, date: str, pages: list[dict],
