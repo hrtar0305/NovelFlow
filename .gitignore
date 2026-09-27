@@ -39,6 +39,8 @@ data/
 todo.md
 WORKLOG.md
 WORKLOG*.md
+bugfix.md
+INTERVIEW_PREP.md
 .codex
 .codex/
 
@@ -78,3 +80,7 @@ yarn-error.log*
 # OS-generated files
 .DS_Store
 Thumbs.db
+
+# 성인작 차단 목록 판정 캐시 (재실행 시 이어하기용)
+scripts/.blocklist_cache.jsonl
+.design-concepts/
