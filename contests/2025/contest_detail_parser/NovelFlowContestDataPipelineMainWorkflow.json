@@ -1,7 +1,69 @@
 {
   "Comment": "Main workflow to orchestrate the daily collection of contest novel data using a Fan-Out pattern with a dynamic completion check.",
-  "StartAt": "FanOutTasksToSQS",
+  "StartAt": "PurgeTaskQueue",
   "States": {
+    "PurgeTaskQueue": {
+      "Type": "Task",
+      "Comment": "Clears leftovers from previous runs. Must be followed by WaitForPurgeToFinish (see below).",
+      "Resource": "arn:aws:states:::aws-sdk:sqs:purgeQueue",
+      "Parameters": {
+        "QueueUrl": "https://sqs.YOUR_AWS_REGION.amazonaws.com/YOUR_AWS_ACCOUNT_ID/np-trend-contest-task-queue-2025"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 65,
+          "MaxAttempts": 2,
+          "BackoffRate": 1
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ],
+      "Next": "PurgeResultQueue"
+    },
+    "PurgeResultQueue": {
+      "Type": "Task",
+      "Comment": "Result messages carry no execution_id, so stale results would be counted as today's.",
+      "Resource": "arn:aws:states:::aws-sdk:sqs:purgeQueue",
+      "Parameters": {
+        "QueueUrl": "https://sqs.YOUR_AWS_REGION.amazonaws.com/YOUR_AWS_ACCOUNT_ID/np-trend-contest-result-queue-2025"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 65,
+          "MaxAttempts": 2,
+          "BackoffRate": 1
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ],
+      "Next": "WaitForPurgeToFinish"
+    },
+    "WaitForPurgeToFinish": {
+      "Type": "Wait",
+      "Comment": "PurgeQueue takes up to 60s and may delete messages sent while it runs (AWS recommends waiting 60s). Sending right after the purge lost 599 tasks on 2026-09-11.",
+      "Seconds": 65,
+      "Next": "FanOutTasksToSQS"
+    },
     "FanOutTasksToSQS": {
       "Type": "Task",
       "Comment": "Reads novel IDs from S3 and sends them as individual messages to a Task SQS Queue.",
@@ -96,5 +158,5 @@
       "Comment": "The data collection process completed successfully."
     }
   },
-  "TimeoutSeconds": 3600
+  "TimeoutSeconds": 1200
 }

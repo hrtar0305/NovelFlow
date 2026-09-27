@@ -256,13 +256,9 @@ def get_ranking_list(event, context):
     test_mode = input_payload.get('test_mode', False)
     _log(logging.INFO, execution_id, "Starting get ranking process...")
 
-    try:
-        _log(logging.INFO, execution_id, f"Attempting to purge SQS queue: {Config.SQS_QUEUE_URL}")
-        boto3.client('sqs').purge_queue(QueueUrl=Config.SQS_QUEUE_URL)
-        _log(logging.INFO, execution_id, "SQS queue purge request sent.")
-    except Exception as e:
-        _log(logging.ERROR, execution_id, f"Failed to purge SQS queue: {e}", exc_info=True)
-        raise ValueError(f"Critical step failed: Could not purge SQS queue. Error: {e}")
+    # 큐 purge 는 여기서 하지 않는다. 상태 머신이 purge → 65초 대기 → 이 함수 순서로 부른다.
+    # purge 는 최대 60초가 걸리고 그 사이 들어온 메시지를 지울 수 있는데, 여기서 purge 하면
+    # 약 20초 뒤부터 상세 파서 결과가 큐에 들어와 그 창 안에 놓인다.
 
     username, password = get_credentials(execution_id)
     today = datetime.now(Config.SEOUL_TIMEZONE).strftime("%Y-%m-%d")

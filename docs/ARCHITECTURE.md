@@ -11,8 +11,8 @@ NovelFlow는 두 개의 독립적인 서버리스 ETL 파이프라인(데일리 
 ```
 EventBridge (매일 오후 9시 KST)
   └─▶ Step Functions (Standard Workflow)
+        ├─▶ SQS 큐 Purge (SDK 통합) → Wait 65초   ← purge 완료 전 메시지는 지워질 수 있다
         ├─▶ Lambda: get_ranking_list (crawler/app.py)
-        │     ├ SQS 큐 Purge
         │     ├ Parameter Store에서 로그인 정보 조회
         │     ├ Playwright로 노벨피아 로그인 + 성인 모드 ON
         │     ├ 쿠키를 requests 세션에 주입 → 상위 500개 랭킹 크롤링
@@ -75,10 +75,10 @@ consolidate가 전건을 들면 Lambda 메모리가 5GB대가 됩니다. 배치 
 
 ```
 EventBridge (매일 오후 2시 KST)
-  └─▶ Step Functions (Standard Workflow)
+  └─▶ Step Functions (Standard Workflow, 제한 20분)
+        ├─▶ Task/Result SQS 큐 Purge (SDK 통합) → Wait 65초
         ├─▶ Lambda: get_id_list_from_s3 (contest_detail_parser/app.py)
-        │     ├ Task/Result SQS 큐 Purge + 비워질 때까지 대기
-        │     └ S3의 공모전 ID 목록을 Task 큐로 Fan-out (batch 10)
+        │     └ S3의 공모전 ID 목록을 Task 큐로 Fan-out (batch 10, 부분 실패 시 예외)
         │
         ├─▶ Wait & Check 루프
         │     └─▶ Lambda: check_completion (Result 큐 유니크 ID 수 확인)

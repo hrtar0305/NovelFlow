@@ -1,8 +1,42 @@
 {
   "Comment": "Crawl Novelpia daily rankings, parse details in parallel, and handle errors.",
-  "StartAt": "GetRankingAndPurgeQueue",
+  "StartAt": "PurgeQueue",
   "States": {
-    "GetRankingAndPurgeQueue": {
+    "PurgeQueue": {
+      "Type": "Task",
+      "Comment": "Clears leftover results from previous runs. Must be followed by WaitForPurgeToFinish.",
+      "Resource": "arn:aws:states:::aws-sdk:sqs:purgeQueue",
+      "Parameters": {
+        "QueueUrl": "https://sqs.YOUR_AWS_REGION.amazonaws.com/YOUR_AWS_ACCOUNT_ID/np-trend-crawler-queue"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 65,
+          "MaxAttempts": 2,
+          "BackoffRate": 1
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "CrawlFail"
+        }
+      ],
+      "Next": "WaitForPurgeToFinish"
+    },
+    "WaitForPurgeToFinish": {
+      "Type": "Wait",
+      "Comment": "PurgeQueue takes up to 60s and may delete messages sent while it runs (AWS recommends waiting 60s). Detail results used to arrive ~20s after the purge.",
+      "Seconds": 65,
+      "Next": "GetRanking"
+    },
+    "GetRanking": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_GET_RANKING_LAMBDA_FUNCTION_NAME",
       "Parameters": {
