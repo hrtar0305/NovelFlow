@@ -134,6 +134,41 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
   않아 전날 결과가 섞입니다.
 - 데일리 purge 제거는 crawler 이미지 변경입니다 — 위의 "Lambda 두 개 갱신"을 지키세요.
 
+## 실패 알림 (Discord 멘션 + 이메일)
+
+**즉시 알림은 Discord**(NovelFlow 서버, 실패·ALARM 은 본인 멘션), **기록은 이메일**(SNS 토픽
+`np-trend-crawler-failure-notifications`)입니다. Gmail 앱 푸시는 필터를 걸어도 오지 않아 즉시
+알림 수단에서 뺐습니다.
+
+| 리소스 | 잡는 것 | 보내는 곳 |
+|---|---|---|
+| EventBridge 규칙 `novelflow-pipeline-failure` | 두 상태 머신의 `FAILED`·`TIMED_OUT`·`ABORTED` | Discord(멘션) + 이메일 |
+| 알람 `novelflow-daily-no-success-26h`, `novelflow-contest-no-success-26h` | `ExecutionsSucceeded` 가 26시간 연속 0 — **실행 자체가 없는 날**(스케줄 비활성·시작 실패)까지 | 이메일(알람 액션) + Discord(아래 규칙) |
+| 알람 `np-trend-crawler-dlq-alarm` (기존) | 데일리 크롤러 DLQ 에 메시지 | 이메일 + Discord |
+| EventBridge 규칙 `novelflow-alarm-state` | 위 세 알람의 상태 변경 | Discord — ALARM 은 멘션, ALARM→OK 는 멘션 없이, 그 외(생성 직후 등)는 보내지 않음 |
+
+### Discord 알림 Lambda `novelflow-discord-notify`
+
+코드 `utils/discord_notify.py`(표준 라이브러리만, 파일 하나). 역할 `novelflow-discord-notify-role`
+(로그 권한만). 환경변수 `DISCORD_WEBHOOK_URL`(비밀 — 커밋 금지), `DISCORD_MENTION_USER_ID`.
+
+- **자동화 메시지(CI/CD 등)도 이 Lambda 로 보냅니다.** 입구를 하나로 모읍니다.
+
+      aws lambda invoke --function-name novelflow-discord-notify --cli-binary-format raw-in-base64-out \
+        --payload '{"content":"배포 완료: crawler 1.5.0","mention":false}' /dev/stdout
+
+  멘션이 필요한 일에만 `"mention": true`. 채널을 멘션 알림만 받도록 해 두었으므로 멘션을 남발하면
+  실패 알림의 신호가 흐려집니다.
+- 멘션은 `allowed_mentions` 로 지정 사용자 한 명만 허용 — 원인 문자열에 `@everyone` 이 섞여도 무시됩니다.
+- 코드 갱신: `cd utils && zip -q /tmp/dn.zip discord_notify.py && aws lambda update-function-code --function-name novelflow-discord-notify --zip-file fileb:///tmp/dn.zip`
+- 웹훅을 새로 만들면 환경변수만 바꾸면 됩니다. 로그(30일 보존)에는 URL 을 남기지 않습니다.
+
+- 규칙이 토픽에 게시하려면 토픽 정책의 `AllowNovelFlowFailureRule` 문장이 필요합니다(이 규칙 ARN 으로 한정).
+- **실패 이벤트만으로는 부족합니다.** 실행이 시작되지 않으면 실패 이벤트도 없습니다 — 성공 부재 알람이 그 빈틈을 덮습니다.
+- 상태 머신 이름을 바꾸면 규칙 패턴의 `stateMachineArn` 과 알람 차원도 같이 바꾸세요. 안 바꾸면 **조용히 감시가 끊깁니다.**
+- 알림 경로 점검: Fail 상태 하나짜리 임시 상태 머신을 만들어 규칙 패턴에 잠시 넣고 실행 → 메일 확인 → 되돌리고 삭제.
+  운영 상태 머신으로 시험하지 마세요(큐를 purge 합니다).
+
 ## 설정 / 시크릿
 
 > 현재 AWS 리소스 식별자는 기존 프로젝트명인 `NP-Trend`/`np-trend`를 유지합니다. 코드의 식별자를 변경하려면 Parameter Store, ECR, Lambda 및 Step Functions 리소스를 함께 마이그레이션해야 합니다.
