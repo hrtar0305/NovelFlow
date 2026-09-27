@@ -16,7 +16,7 @@
     python scripts/reparse_raw.py --date 2026-09-05 --dry-run
     python scripts/reparse_raw.py --date 2026-09-05 --fields Badges
     python scripts/reparse_raw.py --from 2026-09-01 --to 2026-09-05 --fields Badges
-    python scripts/reparse_raw.py --date 2026-09-05 --novel-id 610 --dry-run --show
+    python scripts/reparse_raw.py --date 2026-09-05 --novel-id 610 --dry-run --show 3
 """
 
 import argparse
