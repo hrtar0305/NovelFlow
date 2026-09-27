@@ -120,6 +120,20 @@ npm run build          # dist/ 생성 → S3 업로드 → CloudFront 캐시 무
 배포 순서: **`data_ingestion` 먼저**(`.jsonl` 읽기 추가) → `consolidate`(`.jsonl` 쓰기)
 → 크롤러 이미지. 반대로 하면 그날 적재가 빕니다.
 
+## 큐 purge (두 파이프라인 공통)
+
+purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQueue`)에서 하고, 곧바로
+**Wait 65초**를 둡니다. purge 는 끝나는 데 최대 60초가 걸리고 그 사이 보낸 메시지를 지울 수
+있습니다(AWS 문서가 60초 대기를 권장). 2026-09-11 공모전이 이 때문에 작업 599건을 잃었습니다.
+근거는 DECISIONS.md 「purge 는 상태 머신에서, 60초 기다린 뒤 보낸다」.
+
+- 상태 머신 실행 역할 `NpTrendCrawlerStepFunctionExecutionRole` 에 세 큐에 대한
+  `sqs:PurgeQueue` 권한이 있어야 합니다(인라인 정책 `PurgePipelineQueues`).
+- **배포 순서: 상태 머신 먼저 → Lambda 나중.** 상태 머신만 바뀐 동안에는 옛 Lambda 가 한 번 더
+  purge 할 뿐 지금과 같습니다. 반대로 Lambda 가 먼저 바뀌면 그 사이 실행은 큐를 전혀 비우지
+  않아 전날 결과가 섞입니다.
+- 데일리 purge 제거는 crawler 이미지 변경입니다 — 위의 "Lambda 두 개 갱신"을 지키세요.
+
 ## 설정 / 시크릿
 
 > 현재 AWS 리소스 식별자는 기존 프로젝트명인 `NP-Trend`/`np-trend`를 유지합니다. 코드의 식별자를 변경하려면 Parameter Store, ECR, Lambda 및 Step Functions 리소스를 함께 마이그레이션해야 합니다.
@@ -168,7 +182,9 @@ npm run build          # dist/ 생성 → S3 업로드 → CloudFront 캐시 무
 
     export AWS_DEFAULT_REGION=ap-northeast-2
     arn=$(aws stepfunctions list-state-machines \
-      --query "stateMachines[?name=='NovelFlowCrawlerWorkflow'].stateMachineArn" --output text)
+      --query "stateMachines[?name=='NpTrendCrawlerWorkflow'].stateMachineArn" --output text)
+    # 리포의 정의 파일 이름은 NovelFlow* 지만 배포된 상태 머신 이름은 NpTrend* 다.
+    # 공모전: NpTrendContestDataPipelineMainWorkflow
     aws stepfunctions list-executions --state-machine-arn "$arn" --max-items 40 \
       --query 'executions[].{S:status,Start:startDate,Stop:stopDate}' --output json
 
