@@ -22,7 +22,3 @@ body {
   flex-direction: column;
 }
 
-.content-wrapper {
-  max-width: 1600px;
-  margin: 0 auto;
-}

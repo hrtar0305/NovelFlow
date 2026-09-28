@@ -1,5 +1,5 @@
 import { SunFill, MoonFill } from 'react-bootstrap-icons';
-import { useTheme } from '../theme/ThemeProvider';
+import { useTheme } from '../theme/themeContext';
 
 const ThemeToggle = () => {
   const { theme, toggleTheme } = useTheme();

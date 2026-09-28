@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { EyeFill, EyeSlashFill } from 'react-bootstrap-icons';
-import { useCoverMask } from '../theme/CoverMaskProvider';
+import { useCoverMask } from '../theme/coverMaskContext';
 
 type NovelCoverProps = {
   url?: string | null;

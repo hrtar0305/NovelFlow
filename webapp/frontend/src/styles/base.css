@@ -131,7 +131,6 @@ p {
 .filter-control-label,
 .panel-card__meta,
 .data-table-shell__description,
-.ranking-module__meta,
 .compact-meta {
   font-size: var(--np-fs-micro) !important;
 }

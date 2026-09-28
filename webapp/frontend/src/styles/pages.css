@@ -27,10 +27,7 @@
   background-color: var(--np-border);
 }
 
-.tag-ranking-panel,
-.tag-ranking-panel--left,
 .chart-card,
-.author-novel-card-body,
 .novel-detail-header {
   border: 1px solid var(--np-border);
   border-radius: var(--np-radius-lg);
@@ -38,57 +35,16 @@
   box-shadow: var(--np-shadow-sm);
 }
 
-.tag-ranking-panel__header,
 .chart-card-header {
   padding: 0.9rem 1rem 0.8rem;
   border-bottom: 1px solid var(--np-border);
   background-color: color-mix(in srgb, var(--np-surface-alt) 78%, transparent);
 }
 
-.tag-ranking-panel__title,
 .chart-card-title {
   font-size: 0.95rem;
   font-weight: 800;
   color: var(--np-text-heading);
-}
-
-.tag-ranking-panel__body {
-  padding: 1rem;
-}
-
-.tag-ranking-column-guide {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
-  margin-bottom: 0.85rem;
-}
-
-.tag-ranking-column-guide__item,
-.tag-chart-meta-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background-color: color-mix(in srgb, var(--np-surface-alt) 78%, transparent);
-  font-size: var(--np-fs-meta);
-  color: var(--np-text-secondary);
-}
-
-.tag-ranking-column-guide__item strong,
-.tag-chart-meta-item strong {
-  color: var(--np-text-heading);
-}
-
-.tag-ranking-column-guide__subnote {
-  grid-column: 1 / -1;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-}
-
-.tag-ranking-table-wrapper {
-  position: relative;
 }
 
 .tag-rankings-page {
@@ -140,44 +96,6 @@
   gap: 0.75rem;
 }
 
-.tag-bubble-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.9rem;
-  align-items: center;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-}
-
-.tag-bubble-legend span {
-  display: inline-flex;
-  gap: 0.35rem;
-  align-items: center;
-}
-
-.tag-bubble-legend__dot {
-  width: 0.58rem;
-  height: 0.58rem;
-  border-radius: 999px;
-  background: var(--np-text-secondary);
-}
-
-.tag-bubble-legend__dot--up {
-  background: var(--np-rank-up);
-}
-
-.tag-bubble-legend__dot--down {
-  background: var(--np-rank-down);
-}
-
-.tag-bubble-legend__dot--new {
-  background: var(--np-accent);
-}
-
-.tag-bubble-legend__dot--muted {
-  background: var(--np-text-secondary);
-}
-
 .tag-ranking-chart-area {
   height: 400px;
 }
@@ -199,13 +117,6 @@
   color: var(--np-text-secondary);
   font-size: 0.9rem;
   text-align: center;
-}
-
-.tag-ranking-panel__footer {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.65rem;
-  margin-top: 0.85rem;
 }
 
 .tag-bubble-tooltip {
@@ -253,48 +164,6 @@
   display: grid;
   align-content: center;
   min-height: 100%;
-}
-
-.tag-ranking-table-panel {
-  min-width: 0;
-}
-
-.tag-ranking-table-wrapper {
-  min-width: 0;
-}
-
-.tag-ranking-table th,
-.tag-ranking-table td {
-  font-size: 0.86rem;
-}
-
-.tag-ranking-table tbody tr {
-  cursor: pointer;
-}
-
-.tag-ranking-table__name {
-  color: var(--np-text-heading);
-  font-weight: 850;
-}
-
-.tag-ranking-table .tag-rank-col {
-  width: 64px;
-}
-
-.tag-ranking-table .tag-change-col {
-  width: 86px;
-}
-
-.tag-ranking-table .tag-score-col {
-  width: 112px;
-}
-
-.tag-ranking-table .tag-lift-col {
-  width: 128px;
-}
-
-.tag-ranking-table .tag-count-col {
-  width: 104px;
 }
 
 .tag-ranking-pending {
@@ -404,114 +273,9 @@
   height: 100%;
 }
 
-.segmented-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.22rem;
-  border: 1px solid var(--np-border);
-  border-radius: 999px;
-  background-color: var(--np-surface);
-}
-
-.segmented-control__item {
-  min-width: 2.25rem;
-  padding: 0.38rem 0.65rem;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-  font-weight: 800;
-}
-
-.segmented-control__item.is-active {
-  color: var(--np-text-heading);
-  background-color: var(--np-surface-raised);
-}
-
-.segmented-control__item.is-active--positive {
-  background-color: color-mix(in srgb, var(--np-positive) 18%, var(--np-surface-raised) 82%);
-  color: var(--np-positive);
-}
-
-.segmented-control__item.is-active--accent {
-  background-color: color-mix(in srgb, var(--np-accent) 16%, var(--np-surface-raised) 84%);
-  color: var(--np-accent);
-}
-
-.segmented-control__item.is-active--warm {
-  background-color: color-mix(in srgb, var(--np-accent-warm) 18%, var(--np-surface-raised) 82%);
-  color: var(--np-accent-warm);
-}
-
-.segmented-control__item.is-active--negative {
-  background-color: color-mix(in srgb, var(--np-negative) 16%, var(--np-surface-raised) 84%);
-  color: var(--np-negative);
-}
-
 .tag-rank-list {
   display: grid;
   gap: 0.6rem;
-}
-
-.tag-rank-item {
-  width: 100%;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.8rem;
-  align-items: center;
-  padding: 0.78rem 0.9rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: color-mix(in srgb, var(--np-surface-alt) 70%, transparent);
-  text-align: left;
-  transition: border-color var(--np-transition), background-color var(--np-transition), transform var(--np-transition);
-}
-
-.tag-rank-item:hover,
-.tag-rank-item.is-active {
-  border-color: color-mix(in srgb, var(--np-accent) 24%, var(--np-border) 76%);
-  background-color: color-mix(in srgb, var(--np-accent-soft) 72%, var(--np-surface) 28%);
-  transform: translateY(-1px);
-}
-
-.tag-rank-item__rank {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 3rem;
-  padding: 0.32rem 0.55rem;
-  border-radius: 999px;
-  background: var(--np-surface-raised);
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-  font-weight: 800;
-}
-
-.tag-rank-item__copy {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.tag-rank-item__name {
-  color: var(--np-text-heading);
-  font-weight: 800;
-}
-
-.tag-rank-item__meta {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tag-rank-item__score {
-  color: var(--np-text-heading);
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
 }
 
 .selected-tag-panel {
@@ -862,14 +626,6 @@
   justify-content: space-between;
 }
 
-.author-novel-card-body {
-  padding: 1rem 1.05rem !important;
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 0.9rem;
-  align-items: start;
-}
-
 .author-novel-cover {
   aspect-ratio: 2 / 3;
   width: 74px;
@@ -1028,27 +784,6 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 0.55rem;
-}
-
-.ranking-info-link {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.28rem 0.62rem;
-  border: 1px solid color-mix(in srgb, var(--np-accent) 28%, var(--np-border) 72%);
-  border-radius: 999px;
-  background-color: var(--np-accent-ghost);
-  color: var(--np-accent-strong);
-  font-size: var(--np-fs-meta);
-  font-weight: 800;
-  line-height: 1;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.ranking-info-link:hover {
-  color: var(--np-text-heading);
-  background-color: var(--np-accent-soft);
-  text-decoration: none;
 }
 
 .novel-rankings-page {
@@ -1552,7 +1287,6 @@
   .novel-rankings-page {
   }
 
-
   .novel-rankings-page {
     padding-top: 0.65rem;
   }
@@ -1563,13 +1297,6 @@
 
   .novel-rankings-page > .showcase-section {
     margin-bottom: 1.05rem;
-  }
-
-  .contest-rank-control-bar {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.48rem;
   }
 
   .contest-rank-control-tabs {
@@ -1621,11 +1348,6 @@
 
   .novel-detail-cover {
     min-height: 144px;
-  }
-
-  .author-novel-card-body {
-    grid-template-columns: 58px minmax(0, 1fr);
-    gap: 0.75rem;
   }
 
   .author-novel-cover {
@@ -1785,7 +1507,6 @@
 [data-theme="light"] .panel-card,
 [data-theme="light"] .page-sidebar,
 [data-theme="light"] .chart-card,
-[data-theme="light"] .tag-ranking-panel,
 [data-theme="light"] .tag-leader-card,
 [data-theme="light"] .novel-detail-header,
 [data-theme="light"] .media-rank-card--poster {
@@ -1927,18 +1648,6 @@
   gap: 0.72rem;
   min-height: 0;
   align-items: stretch;
-}
-
-.contest-rank-control-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin: 0 0 0.72rem;
-  padding: 0.4rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background: color-mix(in srgb, var(--np-surface) 86%, transparent);
 }
 
 .contest-rank-tabs-row {
@@ -2403,13 +2112,6 @@
     overflow-y: auto !important;
   }
 
-  .contest-rank-control-bar {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.48rem;
-  }
-
   .contest-rank-control-tabs {
     width: 100%;
   }
@@ -2634,11 +2336,6 @@
     grid-template-columns: 1fr;
   }
 
-  .tag-ranking-column-guide,
-  .tag-ranking-panel__footer {
-    grid-template-columns: 1fr 1fr;
-  }
-
   .tag-leader-strip,
   .tag-analysis-grid {
     grid-template-columns: 1fr;
@@ -2655,10 +2352,6 @@
 }
 
 @media (max-width: 767.98px) {
-  .tag-ranking-column-guide,
-  .tag-ranking-panel__footer {
-    grid-template-columns: 1fr;
-  }
 
   .novel-stats-stack,
   .novel-stats-row {
@@ -2683,30 +2376,16 @@
     height: 360px;
   }
 
-  .tag-rankings-page .tag-ranking-table-wrapper {
-    display: none;
-  }
-
   .tag-rankings-page .tag-ranking-mobile-list {
     display: grid;
     gap: 0.55rem;
   }
 
-  .selected-tag-panel__header,
-  .tag-rank-item {
+  .selected-tag-panel__header {
     grid-template-columns: 1fr;
   }
 
-  .tag-rank-item__score {
-    justify-self: start;
-  }
-
-  .segmented-control {
-    width: 100%;
-    justify-content: space-between;
-  }
 }
-
 
 /* 공모전 쇼케이스: 태블릿 구간(768~991px)이 비어 있어 데스크톱 30열 모자이크가
    적용됐고, 카드가 85px까지 좁아져 제목이 카드를 넘치고 서로 겹쳤다. 2열 레이아웃을
@@ -3691,43 +3370,6 @@
 /* 링크가 하나뿐이라 auto-fit 2열이면 카드가 화면 절반만 차지하고 옆이 빈다.
    글이 읽히는 폭(약 46em)까지만 넓히고 왼쪽 정렬로 둔다. 항목이 늘면 그때
    열을 늘리면 된다. */
-.analysis-links {
-  display: grid;
-  grid-template-columns: minmax(0, 46em);
-  gap: 0.7rem;
-  margin-top: 0.2rem;
-}
-
-.analysis-link {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 1.15rem 1.25rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background: var(--np-surface);
-  text-decoration: none;
-  transition: background-color var(--np-transition), border-color var(--np-transition);
-}
-
-.analysis-link:hover {
-  border-color: var(--np-border-strong);
-  background: var(--np-surface-alt);
-}
-
-.analysis-link__title {
-  font-size: 1.02rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  color: var(--np-text-heading);
-}
-
-.analysis-link__desc {
-  font-size: var(--np-fs-meta);
-  line-height: 1.65;
-  color: var(--np-text-secondary);
-  word-break: keep-all;
-}
 
 /* ── 태그 트렌드 ────────────────────────────────────────────────────── */
 
@@ -4020,16 +3662,6 @@
   line-height: 1.6;
 }
 
-.report-warn {
-  margin: 0 0 0.9rem;
-  padding: 0.65rem 0.8rem;
-  border-radius: var(--np-radius-sm);
-  background-color: color-mix(in srgb, var(--np-warning) 12%, transparent);
-  color: var(--np-text-primary);
-  font-size: var(--np-fs-meta);
-  line-height: 1.6;
-}
-
 .report-subtitle {
   margin: 1.2rem 0 0.6rem;
   color: var(--np-text-heading);
@@ -4257,19 +3889,13 @@
   font-size: var(--np-fs-micro);
 }
 
-/* ── 코호트 곡선 ── */
+/* ── 리포트 차트 ── */
 .report-chart { height: 260px; }
 
 /* Recharts 는 범례 글자색을 선 색과 같게 인라인으로 박는다. 라이트에서 --np-chart-2
    (#0e93b8)가 흰 배경 위 3.57로 미달했다. 색 구분은 옆의 선 표식이 이미 하고 있으므로
    글자는 본문 보조색으로 되돌린다. */
 .report-chart .recharts-legend-item-text { color: var(--np-text-secondary) !important; }
-
-.report-legend {
-  display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem;
-  margin: 0.6rem 0 0; padding: 0; list-style: none;
-  color: var(--np-text-secondary); font-size: var(--np-fs-micro);
-}
 
 /* ── 태그 조합 ── */
 .report-pairs {

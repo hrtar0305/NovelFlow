@@ -47,11 +47,7 @@
    한때 아래 __header 규칙과 하나로 합쳐져 있어서 컨테이너에 헤더 스타일
    (가로 플렉스 + 아래 테두리 + 헤더 배경)이 걸렸고, 제목과 본문이 나란히
    놓이면서 패널 모서리도 사라졌다. 두 그룹은 반드시 분리해 둔다. */
-.panel-card,
-.data-table-shell,
-.ranking-module,
-.spotlight-card,
-.featured-tag-card {
+.panel-card {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -62,9 +58,7 @@
 }
 
 /* 패널 헤더 */
-.panel-card__header,
-.data-table-shell__header,
-.ranking-module__header {
+.panel-card__header {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -73,26 +67,20 @@
   background-color: color-mix(in srgb, var(--np-surface-alt) 78%, transparent);
 }
 
-.panel-card__title,
-.data-table-shell__title,
-.ranking-module__title {
+.panel-card__title {
   font-size: 0.95rem;
   font-weight: 800;
   color: var(--np-text-heading);
 }
 
-.panel-card__meta,
-.data-table-shell__description,
-.ranking-module__meta {
+.panel-card__meta {
   margin-top: 0.2rem;
   color: var(--np-text-secondary);
   font-size: var(--np-fs-meta);
   line-height: 1.45;
 }
 
-.panel-card__body,
-.data-table-shell__body,
-.ranking-module__body {
+.panel-card__body {
   padding: 1rem;
 }
 
@@ -108,73 +96,6 @@
   font-weight: 800;
   letter-spacing: 0;
   color: var(--np-accent);
-}
-
-.showcase-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-  gap: 0.9rem;
-}
-
-.spotlight-card {
-  position: relative;
-  padding: 1rem;
-  min-height: 236px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  overflow: hidden;
-}
-
-.spotlight-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, transparent 12%, rgba(8, 9, 12, 0.78) 100%);
-}
-
-.spotlight-card > * {
-  position: relative;
-  z-index: 1;
-}
-
-.spotlight-card__rank {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 3rem;
-  height: 3rem;
-  padding: 0 0.8rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  color: #fff;
-  font-size: 1.05rem;
-  font-weight: 800;
-}
-
-.spotlight-card__label {
-  font-size: var(--np-fs-micro);
-  font-weight: 800;
-  letter-spacing: 0;
-  color: rgba(248, 251, 255, 0.82);
-}
-
-.spotlight-card__title {
-  margin-top: 0.35rem;
-  font-size: clamp(1.05rem, 1.8vw, 1.45rem);
-  font-weight: 800;
-  color: #fff;
-}
-
-.spotlight-card__meta {
-  margin-top: 0.55rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
 }
 
 .spotlight-chip {
@@ -194,68 +115,11 @@
   gap: 0.75rem;
 }
 
-.metric-mini-card {
-  display: grid;
-  gap: 0.3rem;
-  justify-items: start;
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--np-surface-alt) 80%, transparent) 0%, var(--np-surface) 100%);
-}
-
 /* 이 카드는 JSX에서 클래스 없는 <strong>/<span>을 직접 쓴다.
    색을 명시하지 않으면 상위(PageHero)의 secondary 색을 물려받아
    다크 테마에서 배경과 구분되지 않으므로 토큰으로 고정한다. */
-.metric-mini-card > strong {
-  font-size: 0.98rem;
-  font-weight: 800;
-  line-height: 1.3;
-  color: var(--np-text-heading);
-}
 
-.metric-mini-card > span:not(.spotlight-chip) {
-  font-size: var(--np-fs-meta);
-  line-height: 1.45;
-  color: var(--np-text-primary);
-}
-
-.metric-mini-card__title {
-  font-size: var(--np-fs-micro);
-  font-weight: 800;
-  letter-spacing: 0;
-  color: var(--np-text-secondary);
-}
-
-.metric-mini-card__value {
-  margin-top: 0.35rem;
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--np-text-heading);
-}
-
-.metric-mini-card__sub {
-  margin-top: 0.2rem;
-  font-size: var(--np-fs-meta);
-  color: var(--np-text-secondary);
-}
-
-.media-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.ranking-showcase-mosaic {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-template-rows: repeat(6, 1fr);
-  gap: 0.75rem;
-  height: clamp(360px, 34vw, 420px);
-}
-
-.media-rank-card,
-.featured-tag-card {
+.media-rank-card {
   padding: 0.9rem;
 }
 
@@ -318,8 +182,7 @@
   min-height: 0;
 }
 
-.media-rank-card__cover,
-.featured-tag-card__cover {
+.media-rank-card__cover {
   position: relative;
   overflow: hidden;
   height: 104px;
@@ -411,7 +274,6 @@
     rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0.75) 58%, #000 76%);
 }
 
-
 .media-rank-card--mosaic .media-rank-card__overlay {
   min-height: 100%;
 }
@@ -420,8 +282,7 @@
   padding: 0.72rem;
 }
 
-.media-rank-card__rank,
-.featured-tag-card__rank {
+.media-rank-card__rank {
   margin-top: -14px;
   display: inline-flex;
   align-items: center;
@@ -463,8 +324,7 @@
   letter-spacing: 0.04em;
 }
 
-.media-rank-card__title,
-.featured-tag-card__title {
+.media-rank-card__title {
   margin-top: 0.6rem;
   font-size: 0.95rem;
   font-weight: 800;
@@ -496,8 +356,7 @@
   line-height: 1.28;
 }
 
-.media-rank-card__meta,
-.featured-tag-card__meta {
+.media-rank-card__meta {
   margin-top: 0.35rem;
   display: flex;
   flex-wrap: wrap;
@@ -527,32 +386,6 @@
   color: var(--np-text-secondary);
   font-size: var(--np-fs-meta);
   font-weight: 700;
-}
-
-.tag-feature-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.featured-tag-card__cover {
-  display: flex;
-  align-items: end;
-  padding: 0.7rem;
-  color: #f5f7fa;
-  font-size: var(--np-fs-micro);
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.featured-tag-card__meta {
-  flex-direction: column;
-  gap: 0.28rem;
-}
-
-.featured-tag-card__sub {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
 }
 
 .custom-table-wrapper {
@@ -835,19 +668,6 @@
   border-color: color-mix(in srgb, var(--np-accent) 24%, var(--np-border) 76%) !important;
 }
 
-.notice-box {
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: color-mix(in srgb, var(--np-accent-soft) 46%, transparent);
-}
-
-.analysis-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.9rem;
-}
-
 .analysis-status {
   display: inline-flex;
   align-items: center;
@@ -865,34 +685,6 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.9rem;
-}
-
-.analysis-brief-card {
-  padding: 1rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: color-mix(in srgb, var(--np-surface-alt) 72%, transparent);
-}
-
-.analysis-brief-card__label {
-  font-size: var(--np-fs-micro);
-  letter-spacing: 0;
-  color: var(--np-accent);
-  font-weight: 800;
-}
-
-.analysis-brief-card__title {
-  margin-top: 0.45rem;
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--np-text-heading);
-}
-
-.analysis-brief-card__description {
-  margin: 0.4rem 0 0;
-  color: var(--np-text-secondary);
-  line-height: 1.55;
-  font-size: var(--np-fs-meta);
 }
 
 .empty-state {
@@ -924,17 +716,6 @@
   line-height: 1.6;
 }
 
-@media (max-width: 991.98px) {
-  .ranking-showcase-mosaic {
-    height: clamp(330px, 42vw, 390px);
-    gap: 0.65rem;
-  }
-
-  .showcase-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 767.98px) {
   .theme-toggle-btn span:not(.theme-toggle-btn__icon) {
     display: none;
@@ -944,16 +725,7 @@
     padding: 0.5rem;
   }
 
-  .ranking-showcase-mosaic {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: 260px 180px 160px;
-    height: auto;
-    gap: 0.65rem;
-  }
-
-        .panel-card__header,
-  .data-table-shell__header,
-  .ranking-module__header {
+        .panel-card__header {
     flex-direction: column;
     align-items: stretch;
   }

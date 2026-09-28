@@ -1,5 +1,5 @@
 import { EyeFill, EyeSlashFill } from 'react-bootstrap-icons';
-import { useCoverMask } from '../theme/CoverMaskProvider';
+import { useCoverMask } from '../theme/coverMaskContext';
 
 const CoverMaskToggle = () => {
   const { maskAll, toggleMaskAll } = useCoverMask();
