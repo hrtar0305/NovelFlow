@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Spinner, Alert } from 'react-bootstrap';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { format, parseISO, isValid, subDays } from 'date-fns';
 import { getTagRankingsByDate, getAvailableDates, getTagSeries } from '../services/api';
 import TagRankChart, { type TagRankPoint } from '../components/tag/TagRankChart';
@@ -648,8 +648,11 @@ const TagRankingsPage = () => {
 
   return (
     <div className="page-shell tag-rankings-page">
+      {/* 헤더 내비에서 태그 트렌드를 뺐으므로(태그 하나로 묶음) 두 페이지를 서로 잇는다.
+          계획 3에서 태그 페이지 안의 전환으로 바뀐다. */}
       <PageHero
         title="태그 랭킹"
+        titleAction={<Link to="/tags/trends" className="page-hero__switch">기간 트렌드</Link>}
       />
 
       <div className="tag-ranking-control-bar">

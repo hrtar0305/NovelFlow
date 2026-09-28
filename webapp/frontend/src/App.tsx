@@ -13,6 +13,7 @@ const ContestNovelDetailPage = lazy(() => import('./pages/ContestNovelDetailPage
 const ContestTagRankingsPage = lazy(() => import('./pages/ContestTagRankingsPage'));
 const DataCollectionPage = lazy(() => import('./pages/DataCollectionPage'));
 const TagTrendsPage = lazy(() => import('./pages/TagTrendsPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 const routeFallback = (
   <div className="route-loading" aria-live="polite">
@@ -41,6 +42,8 @@ function App() {
           <Route path='/contests/:year/novels/:novelId' element={<ContestNovelDetailPage />} />
           <Route path='/authors/:authorId' element={<AuthorPage />} />
           <Route path='/data-collection-info' element={<DataCollectionPage />} />
+          <Route path='/trends/novels' element={<Navigate to="/novels/rankings" replace />} />
+          <Route path='*' element={<NotFoundPage />} />
         </Routes>
       </Suspense>
     </AppShell>

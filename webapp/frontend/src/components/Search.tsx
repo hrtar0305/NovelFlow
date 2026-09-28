@@ -82,7 +82,7 @@ function SearchContent() {
 export function Search() {
   if (!appId || appId === 'YOUR_APP_ID') {
     return (
-      <div className="search-placeholder">검색 기능이 설정되지 않았습니다. Algolia 인증 정보를 추가해주세요.</div>
+      <div className="search-placeholder">검색을 잠시 쓸 수 없습니다.</div>
     );
   }
 

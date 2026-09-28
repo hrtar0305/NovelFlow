@@ -3,6 +3,7 @@ import { Spinner, Alert } from 'react-bootstrap';
 import { format, parseISO, subDays } from 'date-fns';
 import { getAvailableDates, getTagSeries } from '../services/api';
 import TagRankChart from '../components/tag/TagRankChart';
+import { Link } from 'react-router-dom';
 import PageHero from '../components/ui/PageHero';
 import PanelCard from '../components/ui/PanelCard';
 import DateRangePicker from '../components/novel/DateRangePicker';
@@ -306,8 +307,11 @@ const TagTrendsPage = () => {
 
   return (
     <div className="page-shell tag-trends-page">
+      {/* 헤더 내비에서 태그 트렌드를 뺐으므로(태그 하나로 묶음) 두 페이지를 서로 잇는다.
+          계획 3에서 태그 페이지 안의 전환으로 바뀐다. */}
       <PageHero
         title="태그 트렌드"
+        titleAction={<Link to="/tags/rankings" className="page-hero__switch">오늘 랭킹</Link>}
       />
 
       <div className="tag-trend-range">

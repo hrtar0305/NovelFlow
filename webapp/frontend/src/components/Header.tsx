@@ -1,40 +1,35 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Search } from './Search';
 import ThemeToggle from './ThemeToggle';
 import CoverMaskToggle from './CoverMaskToggle';
 import { List } from 'react-bootstrap-icons';
 
+// '태그'는 태그 랭킹과 태그 트렌드 두 경로에서 모두 켜진다 — 트렌드는 태그 페이지 안에서 전환한다.
 const NAV_LINKS = [
-  { to: '/novels/rankings', label: '소설 랭킹' },
-  { to: '/tags/rankings',   label: '태그 랭킹' },
-  { to: '/trends',          label: '데이터 분석' },
-  { to: '/tags/trends',     label: '태그 트렌드' },
-  { to: '/contests',        label: '공모전' },
+  { to: '/novels/rankings', label: '랭킹', match: ['/novels'] },
+  { to: '/tags/rankings', label: '태그', match: ['/tags'] },
+  { to: '/contests', label: '공모전', match: ['/contests'] },
+  { to: '/trends', label: '분석', match: ['/trends'] },
 ];
 
 const Header = () => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { pathname } = useLocation();
+  const isOn = (match: string[]) => match.some(m => pathname === m || pathname.startsWith(m + '/'));
 
   return (
     <header className="app-header">
       <div className="app-header-inner">
-        <NavLink to="/" className="app-header-brand" onClick={() => setMenuOpen(false)}>
-          <span className="brand-icon">N</span>
-          <span className="brand-copy">
-            <span className="brand-text">노벨피아 랭킹</span>
-          </span>
-        </NavLink>
+        <NavLink to="/" className="app-header-brand" onClick={() => setMenuOpen(false)}>NovelFlow</NavLink>
 
         <div className="app-header-center">
           <nav className="app-header-nav" aria-label="주요 이동">
-            {NAV_LINKS.map(({ to, label }) => (
+            {NAV_LINKS.map(({ to, label, match }) => (
               <NavLink
                 key={to}
                 to={to}
-                className={({ isActive }) =>
-                  `app-header-link${isActive ? ' app-header-link--active' : ''}`
-                }
+                className={`app-header-link${isOn(match) ? ' app-header-link--active' : ''}`}
                 onClick={() => setMenuOpen(false)}
               >
                 {label}
@@ -66,13 +61,11 @@ const Header = () => {
           <div className="app-header-search">
             <Search />
           </div>
-          {NAV_LINKS.map(({ to, label }) => (
+          {NAV_LINKS.map(({ to, label, match }) => (
             <NavLink
               key={to}
               to={to}
-              className={({ isActive }) =>
-                `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`
-              }
+              className={`mobile-nav-link${isOn(match) ? ' mobile-nav-link--active' : ''}`}
               onClick={() => setMenuOpen(false)}
             >
               {label}
