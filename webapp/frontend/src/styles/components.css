@@ -143,9 +143,18 @@
 }
 
 .media-rank-card--poster:hover {
-  transform: translateY(-3px);
   border-color: color-mix(in srgb, var(--np-accent) 34%, var(--np-border) 66%);
   box-shadow: var(--np-shadow-md);
+}
+
+/* 카드(누르는 영역)를 들어 올리면 커서가 아래 가장자리 3px에 있을 때 hover가 풀렸다 걸렸다를
+   매 프레임 반복해 카드가 떨렸다(2026-09-29 실측: 91프레임 중 90번 위치 변경). 영역은 그대로 두고
+   카드 안에서 잘리는 표지만 살짝 키운다. */
+.media-rank-card--poster { overflow: hidden; }
+.media-rank-card--poster .media-rank-card__cover-image { transition: transform 240ms ease; }
+.media-rank-card--poster:hover .media-rank-card__cover-image { transform: scale(1.04); }
+@media (prefers-reduced-motion: reduce) {
+  .media-rank-card--poster .media-rank-card__cover-image { transition: none; }
 }
 
 .media-rank-card--link {
