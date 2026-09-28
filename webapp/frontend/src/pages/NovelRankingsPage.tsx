@@ -7,6 +7,7 @@ import DateNav from '../components/ui/DateNav';
 import TabBar from '../components/ui/TabBar';
 import TagLinks from '../components/ui/TagLinks';
 import ChangeMark from '../components/ui/ChangeMark';
+import Footnotes from '../components/ui/Footnotes';
 import NovelCover from '../components/NovelCover';
 import Showcase from '../components/ranking/Showcase';
 import FilterDrawer from '../components/ranking/FilterDrawer';
@@ -18,6 +19,13 @@ import {
   type RankingFilter, type RankingNovel, type RankingView, type SortConfig, type SortKey,
 } from '../utils/rankingQuery';
 import { formatInt, formatRatio } from '../utils/format';
+
+// 산식은 머리글 title(마우스)과 표 아래 각주(터치·좁은 폭)에 같은 문구로 둔다(스펙 3.3).
+const FORMULA = {
+  ratio: '추천 ÷ 누적 조회',
+  early: '30번째 유효 회차 조회 ÷ 1화 조회',
+  recent: '최신화 조회 ÷ 역순 30번째 회차 조회',
+};
 
 const VIEWS: Array<{ key: RankingView; label: string }> = [
   { key: 'all', label: '전체' },
@@ -97,9 +105,9 @@ export default function NovelRankingsPage() {
       render: n => n.AuthorID ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" onClick={e => e.stopPropagation()}>{n.AuthorName}</Link> : <span className="rank-author">{n.AuthorName || '(작자 미상)'}</span> },
     { key: 'score', header: '점수', width: '76px', align: 'right', sortKey: 'Score', render: n => <b className="rank-strong">{formatInt(n.Score)}</b> },
     { key: 'eps', header: '회차', width: '54px', align: 'right', sortKey: 'Eps', render: n => formatInt(n.Eps) },
-    { key: 'ratio', header: '추천비', width: '62px', align: 'right', sortKey: 'like_to_view_ratio', title: '추천 ÷ 누적 조회', render: n => formatRatio(n.like_to_view_ratio, 2) },
-    { key: 'early', header: '초반 잔류', width: '66px', align: 'right', sortKey: 'EarlyRetentionRate', title: '30번째 유효 회차 조회 ÷ 1화 조회', render: n => formatRatio(n.EarlyRetentionRate, 0) },
-    { key: 'recent', header: '최신 잔류', width: '66px', align: 'right', sortKey: 'RecentRetentionRate', title: '최신화 조회 ÷ 역순 30번째 회차 조회', render: n => formatRatio(n.RecentRetentionRate, 0) },
+    { key: 'ratio', header: <>추천비<sup className="fn-mark">①</sup></>, width: '62px', align: 'right', sortKey: 'like_to_view_ratio', title: FORMULA.ratio, render: n => formatRatio(n.like_to_view_ratio, 2) },
+    { key: 'early', header: <>초반 잔류<sup className="fn-mark">②</sup></>, width: '66px', align: 'right', sortKey: 'EarlyRetentionRate', title: FORMULA.early, render: n => formatRatio(n.EarlyRetentionRate, 0) },
+    { key: 'recent', header: <>최신 잔류<sup className="fn-mark">③</sup></>, width: '66px', align: 'right', sortKey: 'RecentRetentionRate', title: FORMULA.recent, render: n => formatRatio(n.RecentRetentionRate, 0) },
     { key: 'tags', header: '태그', width: 'minmax(0,1fr)', render: n => <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} /> },
   ];
 
@@ -147,6 +155,14 @@ export default function NovelRankingsPage() {
               emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 랭킹 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
           )}
       </div>
+
+      {!error && !loading && rows.length > 0 ? (
+        <Footnotes notes={[
+          <>추천비 = {FORMULA.ratio}</>,
+          <>초반 잔류 = {FORMULA.early}. 유효 회차가 30개 미만이면 계산하지 않습니다(–).</>,
+          <>최신 잔류 = {FORMULA.recent}. 표시 조회수 기반이라 같은 독자가 계속 읽는 비율은 아닙니다.</>,
+        ]} />
+      ) : null}
 
       <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={update}
         tagStats={stats} resultCount={sorted.length} error={result.error} />
