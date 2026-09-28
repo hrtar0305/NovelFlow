@@ -91,14 +91,16 @@ cd webapp/backend && python api/main.py        # http://localhost:8000
 cd webapp/frontend && npm install && npm run dev
 cd webapp/frontend && npm run build            # tsc -b && vite build
 cd webapp/frontend && npm run lint             # eslint
+cd webapp/frontend && npm test                 # vitest (src/**/*.test.ts, 순수 로직)
+cd webapp/frontend && scripts/shots.sh /tmp/shots /novels/rankings   # 360/768/1200 × 라이트·다크 스크린샷(dev 서버 필요)
 
 # 과거 데이터 소급 (예시 — 전체 옵션은 각 스크립트 docstring)
 python scripts/reparse_raw.py --date 2026-09-05 --novel-id 610 --dry-run --show 3
 python scripts/backfill_ranking_snapshots.py --dry-run
 ```
 
-**자동화된 테스트는 없습니다.** 변경 검증은 프론트 `npm run build`(타입 체크 포함)와 `npm run lint`,
-백엔드는 로컬 서버를 띄워 해당 엔드포인트를 직접 호출하는 방식입니다. 로컬 백엔드도 실제 DynamoDB를 읽습니다(AWS 자격증명 필요, 리전 `ap-northeast-2`).
+**자동화된 테스트는 프론트 순수 로직(`src/utils/*.test.ts`, vitest)뿐입니다.** 화면은 `npm run build`(타입 체크 포함)·
+`npm run lint`·`scripts/shots.sh` 스크린샷으로, 백엔드는 로컬 서버를 띄워 해당 엔드포인트를 직접 호출해 검증합니다. 로컬 백엔드도 실제 DynamoDB를 읽습니다(AWS 자격증명 필요, 리전 `ap-northeast-2`).
 
 배포 절차는 [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
@@ -118,6 +120,8 @@ python scripts/backfill_ranking_snapshots.py --dry-run
 - DECISIONS.md는 **append-only**입니다. 항목을 지우지 말고, 바뀐 결정은 새 항목을 쓰고 이전 항목 `상태`를 `대체됨 (→ 날짜)`로 바꿉니다. 템플릿은 파일 상단 「작성 규칙」.
 - DynamoDB Decimal은 `_convert_decimals()`로 변환합니다(`json.loads(json.dumps())` 이중 변환 대신).
 - 태그 통계 pruning(등장 < 2회)의 근거는 **용량이 아니라 노이즈 제거**입니다 — STATS 항목 실측 12.9KB로 400KB 상한의 3%뿐입니다.
+- 색은 `webapp/frontend/src/styles/tokens.css` 토큰으로만. 글자색을 바꾸면 `node webapp/frontend/scripts/contrast.mjs`로 4.5:1을 확인합니다.
+- 프론트 스타일은 `bootstrap.min.css`보다 **먼저** 로드됩니다(`main.tsx` import 순서). 같은 우선순위의 `body` 규칙과 `:root`의 `--bs-*`는 Bootstrap이 이기니, 서체·제목색은 토큰이 아니라 선택자로 직접 지정하세요.
 - iOS Safari: sticky `top:0` 헤더에 `backdrop-filter` 금지(상태바 색상 lock-in 버그). theme-color는 이중 meta의 `media` 속성 swap으로 갱신.
 
 ## Git — trunk 기반 (1인, PR 없음)
