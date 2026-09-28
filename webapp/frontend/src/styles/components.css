@@ -307,21 +307,25 @@
   min-width: 1.65rem;
   height: 1.65rem;
   padding: 0 0.5rem;
-  border-radius: var(--np-radius-sm);
+  border-radius: 13px;
   border-color: rgba(255, 255, 255, 0.14);
   background-color: rgba(10, 11, 14, 0.66);
   color: #eceef3;
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
   backdrop-filter: blur(8px);
 }
 
+/* 상승 칩은 빨강 바탕 흰 글자(▲135). 표지 위라 두 테마 모두 같은 색이다. */
 .media-rank-card--mover .media-rank-card__rank {
   min-width: 0;
-  height: 1.9rem;
-  padding: 0 0.52rem;
-  gap: 0.15rem;
-  font-size: 0.68rem;
-  letter-spacing: 0.04em;
+  height: 1.65rem;
+  padding: 0 0.55rem;
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  border-color: transparent;
+  background-color: #d42a44;
+  color: #ffffff;
 }
 
 .media-rank-card__title {
