@@ -116,6 +116,7 @@ export default function NovelRankingsPage() {
   );
 
   const count = activeFilterCount(filter);
+  // 10열은 992px 미만에서 제목 칸이 남지 않는다 — 그 폭부터 모바일 행(RankTable compactBelow)으로 그린다.
   return (
     <div className="page-shell novel-rankings-page">
       <PageTitle title="일간 랭킹"
@@ -137,7 +138,7 @@ export default function NovelRankingsPage() {
         {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => window.location.reload()}>다시 시도</button></p>
           : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
           : (
-            <RankTable ariaLabel="일간 랭킹" rows={sorted} rowKey={n => n.ID} columns={columns}
+            <RankTable ariaLabel="일간 랭킹" compactBelow={992} rows={sorted} rowKey={n => n.ID} columns={columns}
               sort={sort} onSort={k => setSort(s => nextSort(s, k as SortKey))}
               expandedKey={openId}
               onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}

@@ -1,6 +1,6 @@
 import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
-import { useIsMobile } from '../../hooks/useIsMobile';
+import { useMediaQuery } from '../../hooks/useIsMobile';
 
 export interface RankColumn<T> {
   key: string;
@@ -27,13 +27,15 @@ interface RankTableProps<T> {
   emptyText: string;
   rowHeight?: number;
   ariaLabel: string;
+  /** 이 폭(px) 미만이면 표 대신 renderMobileRow로 그린다. 열이 많은 표는 md(768)보다 넓게 잡는다. */
+  compactBelow?: number;
 }
 
 const ariaSort = (on: boolean, dir?: 'ascending' | 'descending') => (on ? dir : 'none') as 'ascending' | 'descending' | 'none';
 
 export default function RankTable<T>(props: RankTableProps<T>) {
-  const { rows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, renderMobileRow, emptyText, rowHeight = 60, ariaLabel } = props;
-  const isMobile = useIsMobile();
+  const { rows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768 } = props;
+  const isMobile = useMediaQuery(`(max-width: ${compactBelow - 0.02}px)`);
   const listRef = useRef<HTMLDivElement>(null);
   // 창 스크롤 가상화는 목록이 문서 맨 위에서 얼마나 떨어져 있는지(scrollMargin)를 알아야 한다.
   // 위쪽 쇼케이스·적용 조건 줄이 늦게 그려져 목록이 밀리므로, 레이아웃 뒤에 재고 크기 변화마다 다시 잰다.

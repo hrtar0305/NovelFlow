@@ -11,21 +11,27 @@ const MOBILE_QUERY = '(max-width: 767.98px)';
  * 바뀌는 순간 대량의 레이아웃 비용이 발생합니다. 이 훅을 사용해 해당 뷰포트에 필요한
  * 뷰만 실제로 마운트하여 비용을 줄일 수 있습니다.
  */
-export function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState<boolean>(() => {
+/** 임의의 미디어 쿼리가 맞는지 반환한다. useIsMobile은 md 기준으로 이것을 쓴다. */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    return window.matchMedia(MOBILE_QUERY).matches;
+    return window.matchMedia(query).matches;
   });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const mql = window.matchMedia(MOBILE_QUERY);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    const mql = window.matchMedia(query);
+    setMatches(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
-  }, []);
+  }, [query]);
 
-  return isMobile;
+  return matches;
+}
+
+export function useIsMobile(): boolean {
+  return useMediaQuery(MOBILE_QUERY);
 }
 
 export default useIsMobile;

@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosResponse } from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -42,17 +42,20 @@ const getCachedRequest = <T>(
   return promise;
 };
 
-const _novelRankingCache: Record<string, TimedCacheEntry<any>> = {};
-const _tagRankingCache: Record<string, TimedCacheEntry<any>> = {};
-const _tagTrendAnalysisCache: Record<string, TimedCacheEntry<any>> = {};
-const _novelTrendCache: Record<string, TimedCacheEntry<any>> = {};
-const _novelAvailableDatesCache: Record<string, TimedCacheEntry<any>> = {};
-const _latestNovelDetailsCache: Record<string, TimedCacheEntry<any>> = {};
-const _availableDatesCache: Record<string, TimedCacheEntry<any>> = {};
-const _tagSeriesCache: Record<string, TimedCacheEntry<any>> = {};
-const _analysisReportCache: Record<string, TimedCacheEntry<any>> = {};
-const _novelShowcaseCache: Record<string, TimedCacheEntry<any>> = {};
-const _authorNovelsCache: Record<string, TimedCacheEntry<any>> = {};
+// 응답 모양은 호출부가 안다(r.data). 캐시는 AxiosResponse 단위로만 다룬다.
+type ApiCache = Record<string, TimedCacheEntry<AxiosResponse>>;
+
+const _novelRankingCache: ApiCache = {};
+const _tagRankingCache: ApiCache = {};
+const _tagTrendAnalysisCache: ApiCache = {};
+const _novelTrendCache: ApiCache = {};
+const _novelAvailableDatesCache: ApiCache = {};
+const _latestNovelDetailsCache: ApiCache = {};
+const _availableDatesCache: ApiCache = {};
+const _tagSeriesCache: ApiCache = {};
+const _analysisReportCache: ApiCache = {};
+const _novelShowcaseCache: ApiCache = {};
+const _authorNovelsCache: ApiCache = {};
 
 export const getNovelRankingsByDate = (date: string) => {
   return getCachedRequest(
@@ -157,7 +160,7 @@ export const getAuthorNovels = (authorId: string) => {
 
 // --- CONTEST API FUNCTIONS ---
 
-const _contestDataCache: Record<string, TimedCacheEntry<any>> = {};
+const _contestDataCache: ApiCache = {};
 export const getContestDataByDate = (year: number, date: string) => {
   return getCachedRequest(
     _contestDataCache,
@@ -167,7 +170,7 @@ export const getContestDataByDate = (year: number, date: string) => {
   );
 };
 
-const _contestShowcaseCache: Record<string, TimedCacheEntry<any>> = {};
+const _contestShowcaseCache: ApiCache = {};
 export const getContestShowcase = (year: number) => {
   return getCachedRequest(
     _contestShowcaseCache,
@@ -177,7 +180,7 @@ export const getContestShowcase = (year: number) => {
   );
 };
 
-const _contestAvailableDatesCache: Record<string, TimedCacheEntry<any>> = {};
+const _contestAvailableDatesCache: ApiCache = {};
 export const getContestAvailableDates = (year: number) => {
   return getCachedRequest(
     _contestAvailableDatesCache,
@@ -187,7 +190,7 @@ export const getContestAvailableDates = (year: number) => {
   );
 };
 
-const _latestContestNovelDetailsCache: Record<string, TimedCacheEntry<any>> = {};
+const _latestContestNovelDetailsCache: ApiCache = {};
 export const getLatestContestNovelDetails = (year: number, novelId: string) => {
   return getCachedRequest(
     _latestContestNovelDetailsCache,
@@ -197,7 +200,7 @@ export const getLatestContestNovelDetails = (year: number, novelId: string) => {
   );
 };
 
-const _contestNovelAvailableDatesCache: Record<string, TimedCacheEntry<any>> = {};
+const _contestNovelAvailableDatesCache: ApiCache = {};
 export const getContestNovelAvailableDates = (year: number, novelId: string) => {
   return getCachedRequest(
     _contestNovelAvailableDatesCache,
@@ -207,7 +210,7 @@ export const getContestNovelAvailableDates = (year: number, novelId: string) => 
   );
 };
 
-const _contestNovelTrendCache: Record<string, TimedCacheEntry<any>> = {};
+const _contestNovelTrendCache: ApiCache = {};
 export const getContestNovelTrend = (year: number, novelId: string, startDate: string, endDate: string) => {
   return getCachedRequest(
     _contestNovelTrendCache,
@@ -217,7 +220,7 @@ export const getContestNovelTrend = (year: number, novelId: string, startDate: s
   );
 };
 
-const _contestTagRankingCache: Record<string, TimedCacheEntry<any>> = {};
+const _contestTagRankingCache: ApiCache = {};
 export const getContestTagRankingsByDate = (year: number, date: string) => {
   return getCachedRequest(
     _contestTagRankingCache,
