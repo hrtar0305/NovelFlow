@@ -12,6 +12,7 @@ import Showcase from '../components/ranking/Showcase';
 import FilterDrawer from '../components/ranking/FilterDrawer';
 import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
+import NovelRowExpand from '../components/ranking/NovelRowExpand';
 import {
   DEFAULT_SORT, EMPTY_FILTER, activeFilterCount, applyRankingFilter, nextSort, normalizeNovels, sortRankings, tagCounts, toggleTag,
   type RankingFilter, type RankingNovel, type RankingView, type SortConfig, type SortKey,
@@ -40,6 +41,7 @@ export default function NovelRankingsPage() {
   });
   const [sort, setSort] = useState<SortConfig>(DEFAULT_SORT);
   const [drawer, setDrawer] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     getAvailableDates()
@@ -60,6 +62,7 @@ export default function NovelRankingsPage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setOpenId(null);
     getNovelRankingsByDate(dateParam)
       .then(r => { if (!cancelled) setRows(normalizeNovels(r.data.message ? [] : r.data)); })
       .catch(() => { if (!cancelled) { setRows([]); setError('랭킹을 불러오지 못했습니다.'); } })
@@ -136,6 +139,9 @@ export default function NovelRankingsPage() {
           : (
             <RankTable ariaLabel="일간 랭킹" rows={sorted} rowKey={n => n.ID} columns={columns}
               sort={sort} onSort={k => setSort(s => nextSort(s, k as SortKey))}
+              expandedKey={openId}
+              onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}
+              renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} />}
               renderMobileRow={mobileRow}
               emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 랭킹 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
           )}
