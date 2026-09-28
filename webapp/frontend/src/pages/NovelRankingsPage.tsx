@@ -7,7 +7,6 @@ import DateNav from '../components/ui/DateNav';
 import TabBar from '../components/ui/TabBar';
 import TagLinks from '../components/ui/TagLinks';
 import ChangeMark from '../components/ui/ChangeMark';
-import Footnotes from '../components/ui/Footnotes';
 import NovelCover from '../components/NovelCover';
 import Showcase from '../components/ranking/Showcase';
 import FilterDrawer from '../components/ranking/FilterDrawer';
@@ -20,9 +19,9 @@ import {
 } from '../utils/rankingQuery';
 import { formatInt, formatRatio } from '../utils/format';
 
-// 산식은 머리글 title(마우스)과 표 아래 각주(터치·좁은 폭)에 같은 문구로 둔다(스펙 3.3).
+// 잔류율 산식은 표 머리 바로 위 한 줄에 둔다 — 표 아래 각주는 아무도 보지 않는다.
+// 추천비는 이름으로 뜻이 전해져 설명을 두지 않는다.
 const FORMULA = {
-  ratio: '추천 ÷ 누적 조회',
   early: '30번째 유효 회차 조회 ÷ 1화 조회',
   recent: '최신화 조회 ÷ 역순 30번째 회차 조회',
 };
@@ -95,20 +94,20 @@ export default function NovelRankingsPage() {
   const onTag = useCallback((t: string) => update(toggleTag(filter, t)), [filter, update]);
 
   const columns: RankColumn<RankingNovel>[] = [
-    { key: 'rank', header: '순위', width: '48px', align: 'center', sortKey: 'Ranking',
+    { key: 'rank', header: '순위', width: '48px', sortKey: 'Ranking',
       render: n => <span className={`rank-num${n.Ranking <= 3 ? ' is-top' : ''}`}>{n.Ranking}</span> },
-    { key: 'chg', header: '변동', width: '52px', align: 'center', sortKey: 'rank_change', render: n => <ChangeMark value={n.rank_change} /> },
+    { key: 'chg', header: '변동', width: '52px', sortKey: 'rank_change', render: n => <ChangeMark value={n.rank_change} /> },
     { key: 'cover', header: '', width: '48px', render: n => <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span> },
-    { key: 'title', header: '제목', width: 'minmax(0,1.5fr)',
+    { key: 'title', header: '제목', width: 'minmax(0,1fr)',
       render: n => <Link to={`/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link> },
     { key: 'author', header: '작가', width: '108px',
       render: n => n.AuthorID ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" onClick={e => e.stopPropagation()}>{n.AuthorName}</Link> : <span className="rank-author">{n.AuthorName || '(작자 미상)'}</span> },
-    { key: 'score', header: '점수', width: '76px', align: 'right', sortKey: 'Score', render: n => <b className="rank-strong">{formatInt(n.Score)}</b> },
-    { key: 'eps', header: '회차', width: '54px', align: 'right', sortKey: 'Eps', render: n => formatInt(n.Eps) },
-    { key: 'ratio', header: <>추천비<sup className="fn-mark">①</sup></>, width: '62px', align: 'right', sortKey: 'like_to_view_ratio', title: FORMULA.ratio, render: n => formatRatio(n.like_to_view_ratio, 2) },
-    { key: 'early', header: <>초반 잔류<sup className="fn-mark">②</sup></>, width: '66px', align: 'right', sortKey: 'EarlyRetentionRate', title: FORMULA.early, render: n => formatRatio(n.EarlyRetentionRate, 0) },
-    { key: 'recent', header: <>최신 잔류<sup className="fn-mark">③</sup></>, width: '66px', align: 'right', sortKey: 'RecentRetentionRate', title: FORMULA.recent, render: n => formatRatio(n.RecentRetentionRate, 0) },
-    { key: 'tags', header: '태그', width: 'minmax(0,1fr)', render: n => <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} /> },
+    { key: 'score', header: '점수', width: '76px', sortKey: 'Score', render: n => <b className="rank-strong">{formatInt(n.Score)}</b> },
+    { key: 'eps', header: '회차', width: '54px', sortKey: 'Eps', render: n => formatInt(n.Eps) },
+    { key: 'ratio', header: '추천비', width: '62px', sortKey: 'like_to_view_ratio', render: n => formatRatio(n.like_to_view_ratio, 2) },
+    { key: 'early', header: '초반 잔류', width: '66px', sortKey: 'EarlyRetentionRate', title: FORMULA.early, render: n => formatRatio(n.EarlyRetentionRate, 0) },
+    { key: 'recent', header: '최신 잔류', width: '66px', sortKey: 'RecentRetentionRate', title: FORMULA.recent, render: n => formatRatio(n.RecentRetentionRate, 0) },
+    { key: 'tags', header: '태그', width: 'minmax(0,1.3fr)', render: n => <TagLinks tags={n.Tags} limit={n.Tags.length} wrap highlighted={hit} onSelect={onTag} /> },
   ];
 
   const mobileRow = (n: RankingNovel) => (
@@ -119,7 +118,7 @@ export default function NovelRankingsPage() {
         <Link to={`/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title}</Link>
         <p>{n.AuthorName} · 점수 <b>{formatInt(n.Score)}</b> · {formatInt(n.Eps)}화</p>
         <p>추천비 <b>{formatRatio(n.like_to_view_ratio, 2)}</b> · 초반 <b>{formatRatio(n.EarlyRetentionRate, 0)}</b> · 최신 <b>{formatRatio(n.RecentRetentionRate, 0)}</b></p>
-        <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} limit={4} />
+        <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} limit={n.Tags.length} wrap />
       </div>
     </div>
   );
@@ -142,6 +141,9 @@ export default function NovelRankingsPage() {
         </button>
       </TabBar>
       <AppliedFilters filter={filter} onChange={update} />
+      {!error && !loading && rows.length > 0 ? (
+        <p className="rank-formula">초반 잔류 = {FORMULA.early}<span aria-hidden="true"> · </span>최신 잔류 = {FORMULA.recent}</p>
+      ) : null}
 
       <div className={isPending ? 'is-pending' : undefined}>
         {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => window.location.reload()}>다시 시도</button></p>
@@ -157,13 +159,6 @@ export default function NovelRankingsPage() {
           )}
       </div>
 
-      {!error && !loading && rows.length > 0 ? (
-        <Footnotes notes={[
-          <>추천비 = {FORMULA.ratio}</>,
-          <>초반 잔류 = {FORMULA.early}. 유효 회차가 30개 미만이면 계산하지 않습니다(–).</>,
-          <>최신 잔류 = {FORMULA.recent}. 표시 조회수 기반이라 같은 독자가 계속 읽는 비율은 아닙니다.</>,
-        ]} />
-      ) : null}
 
       <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={update}
         tagStats={stats} resultCount={sorted.length} error={result.error} />

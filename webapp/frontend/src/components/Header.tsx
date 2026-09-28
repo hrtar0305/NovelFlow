@@ -21,7 +21,7 @@ const Header = () => {
   return (
     <header className="app-header">
       <div className="app-header-inner">
-        <NavLink to="/" className="app-header-brand" onClick={() => setMenuOpen(false)}>NovelFlow</NavLink>
+        <NavLink to="/" className="app-header-brand" onClick={() => setMenuOpen(false)}>노벨피아 랭킹</NavLink>
 
         <div className="app-header-center">
           <nav className="app-header-nav" aria-label="주요 이동">

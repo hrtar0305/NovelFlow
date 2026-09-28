@@ -157,7 +157,10 @@
 .detail-sec__range { display: flex; align-items: center; flex-wrap: wrap; gap: 0.625rem 0.875rem; font-size: 0.875rem; }
 .detail-sec__range > button { border: 0; background: none; padding: 0; font-weight: 600; color: var(--np-text-faint); white-space: nowrap; }
 .detail-sec__range > button.is-on { color: var(--np-text-heading); }
-.fn-mark { margin-left: 1px; font-size: 0.625rem; color: var(--np-text-faint); vertical-align: super; line-height: 0; }
 .stable-label { display: inline-grid; }
 .stable-label > * { grid-area: 1 / 1; }
 .stable-label__ghost { visibility: hidden; }
+.tag-links--wrap { white-space: normal; overflow: visible; line-height: 1.55; }
+.rank-formula { margin: 0; padding: 0.6rem 0 0.1rem; font-size: 0.78rem; color: var(--np-text-faint); }
+/* 표 안 제목은 두 줄까지 — 태그 열에 폭을 내주면서 한 줄이면 대부분 잘린다(행 높이 84px에 두 줄이 맞는다). */
+.rank-table__td .rank-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
