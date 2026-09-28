@@ -119,7 +119,7 @@
 .rank-mrow__rank { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .rank-mrow__rank .rank-num { font-size: 1.1875rem; line-height: 1.1; white-space: nowrap; }
 .rank-mrow__main p { margin: 3px 0 0; font-size: 0.78rem; color: var(--np-text-secondary); } .rank-mrow__main b { color: var(--np-text-heading); font-weight: 600; }
-.rank-mrow__main .tag-links { margin-top: 4px; font-size: 0.75rem; }
+.rank-mrow__main .tag-links { margin-top: 4px; font-size: 0.8125rem; }
 .rank-skeleton div { height: 60px; border-bottom: 1px solid var(--np-border); background: linear-gradient(90deg, transparent, var(--np-surface-alt), transparent); background-size: 200% 100%; animation: rank-skel 1.2s linear infinite; }
 @keyframes rank-skel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .rank-skeleton div { animation: none; } }
@@ -189,3 +189,7 @@
 .filter-drawer__statuses button.is-on { font-weight: 700; color: var(--np-text-heading); }
 .filter-drawer__statuses button.is-on span::before { content: "✓ "; color: var(--np-accent); }
 .filter-drawer__notice { margin: 0.6rem 0 0; font-size: 0.8125rem; line-height: 1.6; color: var(--np-text-secondary); }
+/* 표 안 태그는 다른 값(14px)과 같은 크기 — 13px이면 한 단계 작아 잘 안 읽혔다. */
+.rank-table__td .tag-links { font-size: 0.875rem; }
+/* 표 안 작가명도 제목처럼 두 줄까지. 띄어쓰기 없는 긴 이름(예: 왕뚜껑국물라면…)도 줄이 바뀌도록 글자 단위로 끊는다. */
+.rank-table__td .rank-author { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
