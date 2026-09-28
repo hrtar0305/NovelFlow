@@ -6,6 +6,7 @@ import PageTitle from '../components/ui/PageTitle';
 import DateNav from '../components/ui/DateNav';
 import TagLinks from '../components/ui/TagLinks';
 import ChangeMark from '../components/ui/ChangeMark';
+import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import NovelCover from '../components/NovelCover';
 import Showcase from '../components/ranking/Showcase';
 import FilterDrawer from '../components/ranking/FilterDrawer';
@@ -18,12 +19,12 @@ import {
 } from '../utils/rankingQuery';
 import { formatInt, formatRatio } from '../utils/format';
 
-// 잔류율 산식은 그 열 머리글 바로 아래 한 줄로 짧게 둔다(좁은 폭은 목록 위 한 줄).
-// 열 폭에 맞춰 '조회'는 툴팁에만 쓴다. 추천비는 이름으로 뜻이 전해져 설명을 두지 않는다.
-const FORMULA = {
-  early: { short: '30화 / 1화', full: '30화 조회수 ÷ 1화 조회수' },
-  recent: { short: '최신화 / 30화 전', full: '최신화 조회수 ÷ 30화 전 조회수' },
-};
+// 잔류율 산식은 책 주석처럼 표 아래에 두고, 열 이름 옆 작은 번호로 잇는다 — 머리글 아래에 두면
+// 그 두 열만 머리글이 높아져 어색했다. 추천비는 이름으로 뜻이 전해져 설명을 두지 않는다.
+const NOTES = [
+  { id: 'early', content: <>초반 잔류 = 30화 조회수 ÷ 1화 조회수</> },
+  { id: 'recent', content: <>최신 잔류 = 최신화 조회수 ÷ 30화 전 조회수</> },
+];
 
 export default function NovelRankingsPage() {
   const { date: dateParam } = useParams();
@@ -98,8 +99,8 @@ export default function NovelRankingsPage() {
     { key: 'score', header: '점수', width: '76px', sortKey: 'Score', render: n => <b className="rank-strong">{formatInt(n.Score)}</b> },
     { key: 'eps', header: '회차', width: '54px', sortKey: 'Eps', render: n => formatInt(n.Eps) },
     { key: 'ratio', header: '추천비', width: '62px', sortKey: 'like_to_view_ratio', render: n => formatRatio(n.like_to_view_ratio, 2) },
-    { key: 'early', header: '초반 잔류', sub: FORMULA.early.short, width: '66px', sortKey: 'EarlyRetentionRate', title: FORMULA.early.full, render: n => formatRatio(n.EarlyRetentionRate, 0) },
-    { key: 'recent', header: '최신 잔류', sub: FORMULA.recent.short, width: '80px', sortKey: 'RecentRetentionRate', title: FORMULA.recent.full, render: n => formatRatio(n.RecentRetentionRate, 0) },
+    { key: 'early', header: '초반 잔류', aside: <FootnoteRef id="early" n={1} />, width: '72px', sortKey: 'EarlyRetentionRate', render: n => formatRatio(n.EarlyRetentionRate, 0) },
+    { key: 'recent', header: '최신 잔류', aside: <FootnoteRef id="recent" n={2} />, width: '72px', sortKey: 'RecentRetentionRate', render: n => formatRatio(n.RecentRetentionRate, 0) },
     { key: 'tags', header: '태그', width: 'minmax(0,1.3fr)', render: n => <TagLinks tags={n.Tags} limit={n.Tags.length} wrap highlighted={hit} onSelect={onTag} /> },
   ];
 
@@ -117,6 +118,7 @@ export default function NovelRankingsPage() {
   );
 
   const count = activeFilterCount(filter);
+  const filtered = count > 0 || filter.search.trim() !== '';
   // 10열은 992px 미만에서 제목 칸이 남지 않는다 — 그 폭부터 모바일 행(RankTable compactBelow)으로 그린다.
   return (
     <div className="page-shell novel-rankings-page">
@@ -128,7 +130,12 @@ export default function NovelRankingsPage() {
 
       {/* 급상승·신규 진입 탭은 두지 않는다 — 변동 열 내림차순이 곧 NEW → 상승 폭 순이다. */}
       <div className="rank-toolbar">
-        <span className="rank-toolbar__count">{sorted.length.toLocaleString('ko-KR')}편</span>
+        <h2 className="rank-toolbar__title">
+          전체 순위
+          <span className="rank-toolbar__count">
+            {filtered ? <>조건에 맞는 <b>{formatInt(sorted.length)}</b>편 / {formatInt(rows.length)}편</> : <>{formatInt(rows.length)}편</>}
+          </span>
+        </h2>
         <input className="toolbar-search" type="search" placeholder="제목·작가 검색" aria-label="제목·작가 검색"
           value={filter.search} onChange={e => update({ ...filter, search: e.target.value })} />
         <button type="button" className={`toolbar-filter${count ? ' is-on' : ''}`} onClick={() => setDrawer(true)} aria-haspopup="dialog">
@@ -136,9 +143,6 @@ export default function NovelRankingsPage() {
         </button>
       </div>
       <AppliedFilters filter={filter} onChange={update} />
-      {!error && !loading && rows.length > 0 ? (
-        <p className="rank-formula">초반 잔류 {FORMULA.early.short} · 최신 잔류 {FORMULA.recent.short} (조회수)</p>
-      ) : null}
 
       <div className={isPending ? 'is-pending' : undefined}>
         {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => window.location.reload()}>다시 시도</button></p>
@@ -154,6 +158,8 @@ export default function NovelRankingsPage() {
           )}
       </div>
 
+
+      {!error && !loading && rows.length > 0 ? <Footnotes notes={NOTES} /> : null}
 
       <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={update}
         tagStats={stats} resultCount={sorted.length} error={result.error} />

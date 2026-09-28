@@ -11,8 +11,8 @@ export interface RankColumn<T> {
   sortKey?: string;
   /** 머리글 툴팁(산식). 터치 기기용으로는 표 아래 Footnotes에도 같은 문구를 둔다. */
   title?: string;
-  /** 머리글 아래 작은 한 줄(산식 등). */
-  sub?: ReactNode;
+  /** 머리글 옆 주석 번호 등. 정렬 버튼 밖에 둔다(버튼 안에 링크를 넣지 않는다). */
+  aside?: ReactNode;
   render: (row: T) => ReactNode;
 }
 
@@ -72,11 +72,16 @@ export default function RankTable<T>(props: RankTableProps<T>) {
               <div key={c.key} role="columnheader" aria-sort={c.sortKey ? ariaSort(on, sort?.direction) : undefined}
                 className={`rank-table__th is-${c.align ?? 'left'}${c.sortKey ? ' is-sortable' : ''}${on ? ' is-on' : ''}`} title={c.title}>
                 {c.sortKey ? (
-                  <button type="button" onClick={() => onSort?.(c.sortKey!)}>
-                    {c.header}<span className="rank-table__sort" aria-hidden="true">{on ? (sort?.direction === 'ascending' ? '↑' : '↓') : '↕'}</span>
-                  </button>
-                ) : c.header}
-                {c.sub ? <span className="rank-table__sub">{c.sub}</span> : null}
+                  // 이름 → 주석 번호 → 정렬 표시 순서. 주석 링크를 버튼 안에 넣을 수 없어 버튼을 나눴다.
+                  // 정렬 표시도 눌리지만 키보드·낭독에서는 빼서 같은 버튼이 두 번 잡히지 않게 한다.
+                  <>
+                    <button type="button" onClick={() => onSort?.(c.sortKey!)}>{c.header}</button>
+                    {c.aside}
+                    <button type="button" className="rank-table__sort" tabIndex={-1} aria-hidden="true" onClick={() => onSort?.(c.sortKey!)}>
+                      {on ? (sort?.direction === 'ascending' ? '↑' : '↓') : '↕'}
+                    </button>
+                  </>
+                ) : <>{c.header}{c.aside}</>}
               </div>
             );
           })}

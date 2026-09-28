@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Offcanvas } from 'react-bootstrap';
-import { EMPTY_FILTER, toggleTag, type RankingFilter, type TagMode } from '../../utils/rankingQuery';
+import { resetFilter, toggleTag, type RankingFilter, type TagMode } from '../../utils/rankingQuery';
 
 type Mode = TagMode | 'rule';
 const MODES: Array<{ key: Mode; label: string }> = [
@@ -48,7 +48,7 @@ export default function FilterDrawer({ open, onClose, filter, onChange, tagStats
     if (m !== 'rule') onChange({ ...filter, tagMode: m, rule: '' });
   };
   const applyRule = () => onChange({ ...filter, rule: ruleText.trim(), tags: [] });
-  const reset = () => { setQ(''); setRuleText(''); setMode('include-and'); onChange({ ...EMPTY_FILTER, view: filter.view, search: filter.search }); };
+  const reset = () => { setQ(''); setRuleText(''); setMode('include-and'); onChange(resetFilter(filter)); };
 
   return (
     <Offcanvas show={open} onHide={onClose} placement="end" className="filter-drawer" aria-labelledby="filter-drawer-title">

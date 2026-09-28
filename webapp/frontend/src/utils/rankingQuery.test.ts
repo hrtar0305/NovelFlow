@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EMPTY_FILTER, DEFAULT_SORT, activeFilterCount, applyRankingFilter, nextSort, normalizeNovels,
+  EMPTY_FILTER, DEFAULT_SORT, activeFilterCount, resetFilter, applyRankingFilter, nextSort, normalizeNovels,
   sortRankings, tagCounts, toggleTag, type RankingNovel,
 } from './rankingQuery';
 
@@ -49,12 +49,6 @@ describe('applyRankingFilter', () => {
     const r = applyRankingFilter(rows, { ...EMPTY_FILTER, minEps: 50, maxEps: 200 });
     expect(r.items.map(x => x.ID)).toEqual(['1', '4']);
   });
-  it('급상승 보기는 상승한 작품만', () => {
-    expect(applyRankingFilter(rows, { ...EMPTY_FILTER, view: 'rising' }).items.map(x => x.ID)).toEqual(['4']);
-  });
-  it('신규 보기는 NEW만', () => {
-    expect(applyRankingFilter(rows, { ...EMPTY_FILTER, view: 'new' }).items.map(x => x.ID)).toEqual(['2']);
-  });
 });
 
 describe('sortRankings', () => {
@@ -93,6 +87,12 @@ describe('보조 함수', () => {
     expect(activeFilterCount(EMPTY_FILTER)).toBe(0);
     expect(activeFilterCount({ ...EMPTY_FILTER, tags: ['a', 'b'], minEps: 10 })).toBe(3);
     expect(activeFilterCount({ ...EMPTY_FILTER, tags: ['a'], rule: 'x OR y' })).toBe(1);
+  });
+  it('초기화는 검색어만 남기고 모든 조건을 푼다 — 전 행이 보인다', () => {
+    const f = resetFilter({ ...EMPTY_FILTER, search: '', tags: ['BL'], tagMode: 'exclude', minEps: 50, rule: 'a' });
+    expect(f).toEqual(EMPTY_FILTER);
+    expect(applyRankingFilter(rows, f).items).toHaveLength(rows.length);
+    expect(resetFilter({ ...EMPTY_FILTER, search: '티어' }).search).toBe('티어');
   });
   it('toggleTag는 조건식을 비우고 태그를 넣고 뺀다', () => {
     const f = toggleTag({ ...EMPTY_FILTER, rule: 'a' }, '판타지');

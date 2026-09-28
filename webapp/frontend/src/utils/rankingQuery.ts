@@ -20,11 +20,9 @@ export interface RankingNovel {
 }
 
 export type TagMode = 'include-and' | 'include-or' | 'exclude';
-export type RankingView = 'all' | 'rising' | 'new';
 
 /** 적용된 필터. `rule`이 비어 있지 않으면 `tags`/`tagMode` 대신 조건식으로 거른다. */
 export interface RankingFilter {
-  view: RankingView;
   search: string;
   minEps: number | null;
   maxEps: number | null;
@@ -34,7 +32,7 @@ export interface RankingFilter {
 }
 
 export const EMPTY_FILTER: RankingFilter = {
-  view: 'all', search: '', minEps: null, maxEps: null, tagMode: 'include-and', tags: [], rule: '',
+  search: '', minEps: null, maxEps: null, tagMode: 'include-and', tags: [], rule: '',
 };
 
 export type SortKey = 'Ranking' | 'rank_change' | 'Score' | 'Eps' | 'like_to_view_ratio' | 'EarlyRetentionRate' | 'RecentRetentionRate';
@@ -49,8 +47,6 @@ export const normalizeNovels = (items: RankingNovel[]): RankingNovel[] => items.
 
 export function applyRankingFilter(items: RankingNovel[], f: RankingFilter): { items: RankingNovel[]; error: string | null } {
   let out = items;
-  if (f.view === 'rising') out = out.filter(x => typeof x.rank_change === 'number' && x.rank_change > 0);
-  if (f.view === 'new') out = out.filter(x => x.rank_change === 'New');
 
   if (f.rule.trim()) {
     try {
@@ -117,4 +113,10 @@ export function activeFilterCount(f: RankingFilter): number {
 export function toggleTag(f: RankingFilter, tag: string): RankingFilter {
   const tags = f.tags.includes(tag) ? f.tags.filter(t => t !== tag) : [...f.tags, tag];
   return { ...f, rule: '', tags };
+}
+
+/** 초기화: 검색어만 남기고 모든 조건을 푼다. 화면에 보이지 않는 조건을 남기지 않는다
+ *  (예전의 급상승·신규 '보기' 조건이 초기화 뒤에도 남아 215편만 보인 적이 있다). */
+export function resetFilter(f: RankingFilter): RankingFilter {
+  return { ...EMPTY_FILTER, search: f.search };
 }
