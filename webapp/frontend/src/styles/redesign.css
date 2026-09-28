@@ -1,4 +1,6 @@
-/* 개편(2026-09-28) 이후 공통 컴포넌트 스타일. 기존 파일 뒤에 import 된다. */
+/* 개편(2026-09-28) 이후 공통 컴포넌트 스타일. 기존 파일 뒤에 import 된다.
+ * 제목 요소(h1~h5)에는 색을 직접 준다 — bootstrap.min.css가 이 스타일보다 뒤에 로드돼
+ * :root의 --bs-heading-color를 되돌리므로, 토큰만 믿으면 다크에서 제목이 검게 나온다. */
 .empty-line { padding: 3rem 0; color: var(--np-text-secondary); font-size: var(--np-fs-body-lg); }
 .empty-line a { color: var(--np-text-heading); text-decoration: underline; text-underline-offset: 3px; }
 .page-hero__switch { font-size: var(--np-fs-body); font-weight: 600; color: var(--np-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
@@ -10,7 +12,7 @@
 .change-mark--new { color: var(--np-new-text); font-size: 0.72rem; letter-spacing: 0.02em; }
 .page-title { padding: 2rem 0 0; }
 .page-title__row { display: flex; align-items: flex-end; gap: 1.25rem; flex-wrap: wrap; }
-.page-title__h { font-size: var(--np-fs-title-md); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
+.page-title__h { margin: 0; color: var(--np-text-heading); font-size: var(--np-fs-title-md); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
 .page-title__nav { padding-bottom: 0.2rem; }
 .page-title__aside { margin-left: auto; padding-bottom: 0.3rem; font-size: var(--np-fs-body); color: var(--np-text-secondary); }
 .page-title__meta { margin-top: 0.4rem; font-size: var(--np-fs-meta); color: var(--np-text-faint); }
@@ -47,7 +49,7 @@
 .filter-drawer.offcanvas { width: 440px; background: var(--np-canvas); color: var(--np-text-primary); border-left: 1px solid var(--np-border); box-shadow: var(--np-shadow-lg); }
 @media (max-width: 575.98px) { .filter-drawer.offcanvas { width: 100vw; } }
 .filter-drawer .offcanvas-header { padding: 1.5rem 1.75rem 0.5rem; }
-.filter-drawer__title { font-size: 1.25rem; font-weight: 800; }
+.filter-drawer__title { color: var(--np-text-heading); font-size: 1.25rem; font-weight: 800; }
 .filter-drawer__body { padding: 1rem 1.75rem; display: flex; flex-direction: column; }
 .filter-drawer__group { margin-bottom: 1.5rem; }
 .filter-drawer__group--tags { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
@@ -95,3 +97,27 @@
 .rank-table__td { min-width: 0; color: var(--np-text-secondary); font-variant-numeric: tabular-nums; }
 .rank-table__expand { background: var(--np-surface-alt); border-bottom: 1px solid var(--np-border); }
 .rank-table__mrow { border-bottom: 1px solid var(--np-border); }
+.rank-num { font-size: 1.3125rem; font-weight: 800; letter-spacing: -0.03em; color: var(--np-text-heading); }
+.rank-num.is-top { color: var(--np-accent); }
+.rank-cover { display: block; width: 34px; height: 48px; border-radius: 3px; overflow: hidden; background: var(--np-cover-bg); }
+.rank-cover .novel-cover-mask, .rank-cover__img { width: 100%; height: 100%; object-fit: cover; }
+.rank-cover .novel-cover-mask button { display: none; } /* 34px 표지에는 토글을 두지 않는다 — 전체 가리기 토글이 헤더에 있다 */
+.rank-title { display: block; font-size: 0.9375rem; font-weight: 700; letter-spacing: -0.02em; color: var(--np-text-heading); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-title--wrap { white-space: normal; }
+.rank-author { display: block; color: var(--np-text-secondary); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-strong { color: var(--np-text-heading); font-weight: 600; }
+.toolbar-search { width: 240px; border: 0; border-bottom: 1.5px solid var(--np-text-heading); background: none; color: var(--np-text-primary); padding: 4px 2px; font-size: 0.875rem; }
+.toolbar-filter { flex: 0 0 auto; white-space: nowrap; height: 34px; padding: 0 1rem; border-radius: 17px; border: 1.5px solid var(--np-text-heading); background: var(--np-canvas); color: var(--np-text-heading); font-weight: 700; font-size: 0.875rem; }
+.toolbar-filter.is-on { background: var(--np-accent-solid); color: var(--np-on-accent-solid); }
+.toolbar-filter__n { margin-left: 6px; font-size: 0.75rem; opacity: 0.8; }
+.rank-mrow { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 8px; padding: 11px 0; }
+.rank-mrow__rank { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rank-mrow__rank .rank-num { font-size: 1.1875rem; line-height: 1.1; }
+.rank-mrow__main p { margin: 3px 0 0; font-size: 0.78rem; color: var(--np-text-secondary); } .rank-mrow__main b { color: var(--np-text-heading); font-weight: 600; }
+.rank-mrow__main .tag-links { margin-top: 4px; font-size: 0.75rem; }
+.rank-skeleton div { height: 60px; border-bottom: 1px solid var(--np-border); background: linear-gradient(90deg, transparent, var(--np-surface-alt), transparent); background-size: 200% 100%; animation: rank-skel 1.2s linear infinite; }
+@keyframes rank-skel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .rank-skeleton div { animation: none; } }
+.is-pending { opacity: 0.7; transition: opacity var(--np-transition); }
+.link-button { border: 0; background: none; padding: 0; color: var(--np-text-heading); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 767.98px) { .tab-bar__tools { width: 100%; margin-left: 0; } .toolbar-search { flex: 1; width: auto; min-width: 0; } }

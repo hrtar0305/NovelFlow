@@ -1119,33 +1119,26 @@
 }
 
 /* 순위 칩 — 표지 위 유일한 요소 */
-/* 두 그룹의 칩은 '무게'가 같아야 한다. 상승 칩만 색 테두리 + 색 글자 + 틴트
-   배경으로 3중 강조를 받고 순위 칩은 전부 무채색이었더니, 정작 주인공인
-   상위 5작품보다 급상승 쪽으로 먼저 눈이 갔다.
-   순위 칩에 브랜드 인디고를 줘서 강조 수준을 맞춘다 — 색이 다르니 두 그룹이
-   다른 것을 말한다는 구분은 그대로 남는다.
-   표지 위에 얹히므로 테마 토큰이 아니라 고정값을 쓴다(가장 밝은 표지 위에서도
-   대비 5.75, 상승 칩 6.50과 비슷한 수준). */
+/* 쇼케이스 칩(2026-09-28 개편, 08-30 '강조 수준 맞춤'을 대체): 순위 칩은 검정 반투명 + 흰 글자,
+   상승 칩은 빨강 + 흰 글자(▲135). 한국 차트 관례대로 상승이 빨강이라 두 그룹이 다른 것을
+   말한다는 구분이 색으로 남는다. 표지 위라 테마 토큰이 아니라 고정값을 쓴다. */
 .novel-rankings-page .ranking-showcase-top-grid .media-rank-card__rank {
-  background: rgba(12, 14, 34, 0.82);
-  border-color: rgba(125, 140, 255, 0.38);
-  color: #a9b4ff;
-  font-size: 0.76rem !important;
+  background: rgba(10, 11, 14, 0.66);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 0.8125rem !important;
 }
 
-/* 상승 카드의 배지는 그 카드가 뽑힌 이유 자체다. 순위 칩과 같은 크기·색이면
-   두 그룹이 같은 것을 말하는 것처럼 보인다. 상승색을 주되 표지 위라
-   배경은 충분히 불투명해야 한다. */
 .novel-rankings-page .ranking-showcase-rising-grid .media-rank-card__rank {
   min-width: 0;
   height: 1.65rem;
-  padding: 0 0.5rem;
-  gap: 0.04rem;
-  background: rgba(6, 24, 17, 0.82);
-  border-color: rgba(61, 207, 142, 0.36);
-  color: #6fe0a8;
-  font-size: 0.78rem !important;
-  letter-spacing: -0.01em;
+  padding: 0 0.55rem;
+  background: #d42a44;
+  border-color: transparent;
+  color: #ffffff;
+  font-size: 0.8125rem !important;
+  letter-spacing: 0;
+  backdrop-filter: none;
 }
 
 .novel-rankings-page .media-rank-card__rank-icon {
