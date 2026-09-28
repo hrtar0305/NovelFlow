@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom';
 import { Spinner, Alert, Modal } from 'react-bootstrap';
 import { useNovelData } from '../hooks/useNovelData';
 import NovelHeader, { NovelDetailSections } from '../components/novel/NovelHeader';
-import { describeCurrentRank } from '../utils/currentRank';
+import { describeCurrentRank, previousCalendarDay } from '../utils/currentRank';
+import { getNovelTrend } from '../services/api';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { format, parseISO, subDays } from 'date-fns';
 
@@ -41,19 +42,19 @@ const NovelDetailPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
 
-  // 머리의 전일 대비는 '마지막 기록일과 그 전날'이 들어 있는 추이로 계산하고 작품 ID와 함께 붙잡아 둔다.
-  // 차트 기간을 과거로 옮기면 novelData에서 마지막 기록일이 빠지는데, 그때도 머리 값은 그대로여야 한다.
-  // 작품을 옮겨 가는 동안 남아 있는 이전 작품의 추이는 ID로 걸러낸다.
+  // 머리의 전일 대비는 차트 기간과 따로, 달력 기준 전날~마지막 기록일 2일치를 불러와 계산한다.
+  // 차트 창은 작품의 첫 기록일에서 잘리므로(처음 진입한 작품은 하루뿐) 거기서 계산하면 NEW가 빠진다.
   const latestDate = maxDate ? format(maxDate, 'yyyy-MM-dd') : null;
   const [head, setHead] = useState<{ id: string; series: Array<{ Date: string; Ranking: number | null }> } | null>(null);
   useEffect(() => {
     const lastDate = details?.Date;
-    // 순위권 밖인 날은 훅이 ID 없는 자리표시 행으로 채우므로, 이 작품의 행이 하나라도 있는지로 판단한다.
-    if (!novelId || !lastDate || details?.ID !== novelId || !novelData.some(d => d.ID === novelId)) return;
-    if (novelData.some(d => d.Date === lastDate) && novelData.some(d => d.Date < lastDate)) {
-      setHead({ id: novelId, series: novelData });
-    }
-  }, [novelId, details, novelData]);
+    if (!novelId || !lastDate || details?.ID !== novelId) return;
+    let cancelled = false;
+    getNovelTrend(novelId, previousCalendarDay(lastDate), lastDate)
+      .then(r => { if (!cancelled) setHead({ id: novelId, series: r.data }); })
+      .catch(() => { /* 실패하면 변동만 비워 둔다(순위는 상세 API 값으로 보인다) */ });
+    return () => { cancelled = true; };
+  }, [novelId, details]);
   const current = useMemo(
     () => describeCurrentRank({
       detailDate: details?.Date, detailRank: details?.Ranking, latestDate,

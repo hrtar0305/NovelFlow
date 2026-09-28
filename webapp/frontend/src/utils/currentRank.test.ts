@@ -17,8 +17,17 @@ describe('describeCurrentRank', () => {
     expect(describeCurrentRank({ detailDate: '2026-09-27', detailRank: 480, latestDate: '2026-09-27', series: s }))
       .toEqual({ kind: 'ranked', rank: 480, change: 'New' });
   });
-  it('전일 기록이 없으면 변동 없음이 아니라 null', () => {
-    expect(describeCurrentRank({ detailDate: '2026-09-27', detailRank: 8, latestDate: '2026-09-27', series: [{ Date: '2026-09-27', Ranking: 8 }] }))
+  it('처음 진입한 작품(전날 행 없음)은 NEW', () => {
+    expect(describeCurrentRank({ detailDate: '2026-09-27', detailRank: 137, latestDate: '2026-09-27', series: [{ Date: '2026-09-27', Ranking: 137 }] }))
+      .toEqual({ kind: 'ranked', rank: 137, change: 'New' });
+  });
+  it('전날은 달력 −1일이다 — 수집 공백이면 이전 수집일에 순위가 있어도 NEW(표의 rank_change와 같은 규칙)', () => {
+    const s = [{ Date: '2026-09-25', Ranking: 5 }, { Date: '2026-09-27', Ranking: 8 }];
+    expect(describeCurrentRank({ detailDate: '2026-09-27', detailRank: 8, latestDate: '2026-09-27', series: s }))
+      .toEqual({ kind: 'ranked', rank: 8, change: 'New' });
+  });
+  it('추이를 아직 못 불러왔으면(빈 배열) 변동을 표시하지 않는다', () => {
+    expect(describeCurrentRank({ detailDate: '2026-09-27', detailRank: 8, latestDate: '2026-09-27', series: [] }))
       .toEqual({ kind: 'ranked', rank: 8, change: null });
   });
   it('마지막 기록일이 최신 수집일이 아니면 순위권 밖', () => {

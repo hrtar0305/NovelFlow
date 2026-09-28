@@ -30,7 +30,7 @@ export default function NovelHeader({ details, current, backTo }: { details: Nov
           <div className="detail-head__now">
             {current.kind === 'ranked' ? (
               <><span className="detail-head__rank">{current.rank}<small>위</small></span>
-                <span className="detail-head__chg"><ChangeMark value={current.change} />{current.change != null ? <span>전일 대비</span> : null}</span></>
+                <span className="detail-head__chg"><ChangeMark value={current.change} />{typeof current.change === 'number' ? <span>전일 대비</span> : null}</span></>
             ) : current.kind === 'out' ? (
               <span className="detail-head__out">순위권 밖 · 마지막 기록 {formatDateKo(current.lastDate)} {current.lastRank}위</span>
             ) : null}
