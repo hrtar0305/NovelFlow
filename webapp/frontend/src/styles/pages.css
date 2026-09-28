@@ -27,7 +27,6 @@
   background-color: var(--np-border);
 }
 
-.chart-card,
 .novel-detail-header {
   border: 1px solid var(--np-border);
   border-radius: var(--np-radius-lg);
@@ -35,17 +34,10 @@
   box-shadow: var(--np-shadow-sm);
 }
 
-.chart-card-header {
-  padding: 0.9rem 1rem 0.8rem;
-  border-bottom: 1px solid var(--np-border);
-  background-color: color-mix(in srgb, var(--np-surface-alt) 78%, transparent);
-}
-
-.chart-card-title {
-  font-size: 0.95rem;
-  font-weight: 800;
-  color: var(--np-text-heading);
-}
+/* 차트는 상자가 아니다(2026-09-28). 섹션 안에 제목 한 줄 + 차트만 둔다. */
+.chart-card { border: 0; background: none; border-radius: 0; }
+.chart-card-header { padding: 0 0 0.4rem; background: none; border: 0; }
+.chart-card-title { font-size: 0.875rem; font-weight: 700; color: var(--np-text-heading); }
 
 .tag-rankings-page {
   display: grid;
@@ -2282,15 +2274,6 @@
 
 .detail-chart-area {
   min-height: 360px;
-}
-
-.detail-chart-panel .chart-card {
-  border-color: color-mix(in srgb, var(--np-border) 72%, transparent) !important;
-  box-shadow: none;
-}
-
-.detail-chart-panel .chart-card-header {
-  border-bottom-color: color-mix(in srgb, var(--np-border) 72%, transparent) !important;
 }
 
 .detail-chart-panel .chart-card:focus,

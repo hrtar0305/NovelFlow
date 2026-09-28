@@ -5,9 +5,7 @@ import { useNovelData } from '../hooks/useNovelData';
 import NovelHeader, { NovelDetailSections } from '../components/novel/NovelHeader';
 import { describeCurrentRank } from '../utils/currentRank';
 import DateRangePicker from '../components/novel/DateRangePicker';
-import { format, parseISO } from 'date-fns';
-import { InfoCircle } from 'react-bootstrap-icons';
-import PanelCard from '../components/ui/PanelCard';
+import { format, parseISO, subDays } from 'date-fns';
 
 const SmallMultiplesChart = lazy(() => import('../components/novel/SmallMultiplesChart'));
 
@@ -50,7 +48,8 @@ const NovelDetailPage = () => {
   const [head, setHead] = useState<{ id: string; series: Array<{ Date: string; Ranking: number | null }> } | null>(null);
   useEffect(() => {
     const lastDate = details?.Date;
-    if (!novelId || !lastDate || details?.ID !== novelId || novelData[0]?.ID !== novelId) return;
+    // 순위권 밖인 날은 훅이 ID 없는 자리표시 행으로 채우므로, 이 작품의 행이 하나라도 있는지로 판단한다.
+    if (!novelId || !lastDate || details?.ID !== novelId || !novelData.some(d => d.ID === novelId)) return;
     if (novelData.some(d => d.Date === lastDate) && novelData.some(d => d.Date < lastDate)) {
       setHead({ id: novelId, series: novelData });
     }
@@ -69,12 +68,30 @@ const NovelDetailPage = () => {
     }
   }, [loading, isInitialLoad, error]);
 
+  // 기간 바로가기. 끝은 작품의 마지막 기록일이다(maxDate는 전체 최신 수집일이라, 오늘 순위권 밖인
+  // 작품은 빈 차트가 된다). 훅의 초기 기간이 이미 '마지막 기록일로 끝나는 7일'이라 초기값 7과 맞는다.
+  const novelLastDate = useMemo(() => {
+    const last = [...novelAvailableDatesSet].sort().at(-1);
+    return last ? parseISO(last) : null;
+  }, [novelAvailableDatesSet]);
+  const [rangeDays, setRangeDays] = useState<number | null>(7);
+  const pickRange = (n: number) => {
+    if (!novelLastDate) return;
+    const start = subDays(novelLastDate, n - 1);
+    setRangeDays(n);
+    setStartDate(start);
+    setEndDate(novelLastDate);
+    fetchNovelData(start, novelLastDate);
+  };
+
   const handleStartDateChange = (date: Date | null) => {
+    setRangeDays(null);
     setStartDate(date);
     setEndDate(null);
   };
 
   const handleEndDateChange = (date: Date | null) => {
+    setRangeDays(null);
     setEndDate(date);
     if (startDate && date) {
       fetchNovelData(startDate, date);
@@ -103,6 +120,7 @@ const NovelDetailPage = () => {
         metricConfigs={metricConfigs}
         isModal={true}
         modalMetric={selectedMetric}
+        breakOutOfRank
       />
     )
   }
@@ -119,55 +137,38 @@ const NovelDetailPage = () => {
       <>
           {details ? <NovelHeader details={details} backTo={{ to: '/novels/rankings', label: '일간 랭킹' }} current={current} /> : null}
 
-          <div className="page-shell detail-chart-shell">
-            <PanelCard
-              title="지표별 상세 추이"
-              meta="기간을 선택해 랭킹·점수·조회 흐름을 비교합니다."
-              className="detail-chart-panel"
-              actions={(
-                <div className="detail-chart-controls">
-                  <DateRangePicker
-                    startDate={startDate}
-                    endDate={endDate}
-                    minDate={minDate}
-                    maxDate={maxDate}
-                    availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))}
-                    novelAvailableDatesSet={novelAvailableDatesSet}
-                    onStartDateChange={handleStartDateChange}
-                    onEndDateChange={handleEndDateChange}
-                    isNovelDetailPage={false}
-                    noMargin={true}
-                    showNovelDataIndicator={false}
-                  />
-                </div>
-              )}
-            >
-              <div className="detail-chart-area position-relative">
-                {loading && (
-                  <div className="position-absolute w-100 h-100 d-flex justify-content-center align-items-center" style={{ top: 0, left: 0, background: 'rgba(16,17,20,0.55)', zIndex: 10 }}>
-                    <Spinner animation="border" />
-                  </div>
-                )}
-                <div style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-                  {novelData.length > 0 ? (
-                    <>
-                      {hasBothPeriods && (
-                        <Alert variant="info" className="d-flex align-items-center text-center p-2 mb-2 small">
-                          <InfoCircle size={16} className="me-2 flex-shrink-0" />
-                          <span>참고: <strong>2025-07-21</strong>부터 집계 기준이 300위에서 500위로 변경되었습니다.</span>
-                        </Alert>
-                      )}
-                      <Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>
-                        <SmallMultiplesChart data={novelData} hasBothPeriods={hasBothPeriods} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} />
-                      </Suspense>
-                    </>
-                  ) : (
-                    !loading && <Alert variant="info">선택된 기간에 대한 데이터가 없습니다.</Alert>
-                  )}
-                </div>
+          <section className="detail-sec detail-chart-panel">
+            <div className="detail-sec__head">
+              <h2 className="detail-sec__h">지표 변화</h2>
+              <div className="detail-sec__range">
+                {[7, 30, 90].map(n => (
+                  <button key={n} type="button" className={rangeDays === n ? 'is-on' : ''} aria-pressed={rangeDays === n} onClick={() => pickRange(n)}>{n}일</button>
+                ))}
+                <DateRangePicker
+                  startDate={startDate}
+                  endDate={endDate}
+                  minDate={minDate}
+                  maxDate={maxDate}
+                  availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))}
+                  novelAvailableDatesSet={novelAvailableDatesSet}
+                  onStartDateChange={handleStartDateChange}
+                  onEndDateChange={handleEndDateChange}
+                  isNovelDetailPage={false}
+                  noMargin={true}
+                  showNovelDataIndicator={false}
+                />
               </div>
-            </PanelCard>
-          </div>
+            </div>
+            <div className="detail-chart-area position-relative" aria-busy={loading}>
+              <div style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+                {novelData.length > 0 ? (
+                  <Suspense fallback={<div className="rank-skeleton" aria-busy="true"><div /><div /><div /></div>}>
+                    <SmallMultiplesChart data={novelData} hasBothPeriods={hasBothPeriods} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} breakOutOfRank />
+                  </Suspense>
+                ) : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
+              </div>
+            </div>
+          </section>
           {details ? <NovelDetailSections details={details} /> : null}
           <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false} dialogClassName="detail-chart-modal">
             <Modal.Header closeButton>
