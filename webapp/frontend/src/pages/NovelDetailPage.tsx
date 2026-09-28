@@ -2,9 +2,10 @@ import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useParams } from 'react-router-dom';
 import { Spinner, Alert, Modal } from 'react-bootstrap';
 import { useNovelData } from '../hooks/useNovelData';
-import NovelDetailsCard from '../components/novel/NovelDetailsCard';
+import NovelHeader, { NovelDetailSections } from '../components/novel/NovelHeader';
+import { describeCurrentRank } from '../utils/currentRank';
 import DateRangePicker from '../components/novel/DateRangePicker';
-import { parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { InfoCircle } from 'react-bootstrap-icons';
 import PanelCard from '../components/ui/PanelCard';
 
@@ -41,6 +42,26 @@ const NovelDetailPage = () => {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
+
+  // 머리의 전일 대비는 '마지막 기록일과 그 전날'이 들어 있는 추이로 계산하고 작품 ID와 함께 붙잡아 둔다.
+  // 차트 기간을 과거로 옮기면 novelData에서 마지막 기록일이 빠지는데, 그때도 머리 값은 그대로여야 한다.
+  // 작품을 옮겨 가는 동안 남아 있는 이전 작품의 추이는 ID로 걸러낸다.
+  const latestDate = maxDate ? format(maxDate, 'yyyy-MM-dd') : null;
+  const [head, setHead] = useState<{ id: string; series: Array<{ Date: string; Ranking: number | null }> } | null>(null);
+  useEffect(() => {
+    const lastDate = details?.Date;
+    if (!novelId || !lastDate || details?.ID !== novelId || novelData[0]?.ID !== novelId) return;
+    if (novelData.some(d => d.Date === lastDate) && novelData.some(d => d.Date < lastDate)) {
+      setHead({ id: novelId, series: novelData });
+    }
+  }, [novelId, details, novelData]);
+  const current = useMemo(
+    () => describeCurrentRank({
+      detailDate: details?.Date, detailRank: details?.Ranking, latestDate,
+      series: head && head.id === novelId ? head.series : [],
+    }),
+    [details, latestDate, head, novelId],
+  );
 
   useEffect(() => {
     if (isInitialLoad && !loading) {
@@ -96,7 +117,7 @@ const NovelDetailPage = () => {
       <div className="np-page-container"><Alert variant="danger" className="text-center">{error}</Alert></div>
     ) : (
       <>
-          {details && <NovelDetailsCard details={details} />}
+          {details ? <NovelHeader details={details} backTo={{ to: '/novels/rankings', label: '일간 랭킹' }} current={current} /> : null}
 
           <div className="page-shell detail-chart-shell">
             <PanelCard
@@ -147,6 +168,7 @@ const NovelDetailPage = () => {
               </div>
             </PanelCard>
           </div>
+          {details ? <NovelDetailSections details={details} /> : null}
           <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false} dialogClassName="detail-chart-modal">
             <Modal.Header closeButton>
               <Modal.Title>{selectedMetric ? `${metricConfigs[selectedMetric]?.name || selectedMetric} 상세 보기` : ''}</Modal.Title>

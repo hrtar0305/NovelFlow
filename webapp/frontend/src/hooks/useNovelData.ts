@@ -4,6 +4,7 @@ import { format, parseISO, subDays, startOfDay, addDays } from 'date-fns';
 
 
 interface NovelData {
+  ID?: string;
   Date: string;
   Ranking: number | null;
   Title: string;
@@ -26,6 +27,11 @@ interface NovelDetails {
   Alr: number;
   Eps: number;
   RetentionRate?: number;
+  Date?: string;
+  Ranking?: number;
+  ThumbnailURL?: string | null;
+  EarlyRetentionRate?: number | null;
+  RecentRetentionRate?: number | null;
 }
 
 export const useNovelData = (novelId: string | undefined) => {
