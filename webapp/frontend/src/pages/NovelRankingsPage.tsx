@@ -93,7 +93,7 @@ export default function NovelRankingsPage() {
   const columns: RankColumn<RankingNovel>[] = [
     { key: 'rank', header: '순위', width: '48px', sortKey: 'Ranking',
       render: n => <span className={`rank-num${n.Ranking <= 3 ? ' is-top' : ''}`}>{n.Ranking}</span> },
-    { key: 'chg', header: '변동', width: '52px', sortKey: 'rank_change', render: n => <ChangeMark value={n.rank_change} /> },
+    { key: 'chg', header: '변동', width: '44px', sortKey: 'rank_change', render: n => <ChangeMark value={n.rank_change} /> },
     // 표지는 제목 열 안에 둔다 — 따로 열을 두면 머리글 없는 표지 칸이 빈 '제목' 열처럼 보였다.
     { key: 'title', header: '제목', width: 'minmax(0,1fr)',
       render: n => (
@@ -104,8 +104,9 @@ export default function NovelRankingsPage() {
       ) },
     // 볼드: 순위·제목·작가는 늘, 숫자 열은 지금 정렬 기준인 것만. 순위는 점수로 매기므로
     // 순위순(기본)일 때도 점수를 볼드로 둔다.
-    { key: 'author', header: '작가', width: '108px',
-      render: n => n.AuthorID ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" onClick={e => e.stopPropagation()}>{n.AuthorName}</Link> : <span className="rank-author">{n.AuthorName || '(작자 미상)'}</span> },
+    { key: 'author', header: '작가', width: '92px',
+      // 좁은 열이라 긴 이름은 줄임표로 잘린다 — title로 전체 이름을 보인다.
+      render: n => n.AuthorID ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" title={n.AuthorName} onClick={e => e.stopPropagation()}>{n.AuthorName}</Link> : <span className="rank-author" title={n.AuthorName}>{n.AuthorName || '(작자 미상)'}</span> },
     { key: 'score', header: '점수', width: '76px', sortKey: 'Score', render: n => strongIf(['Score', 'Ranking'], formatInt(n.Score)) },
     { key: 'eps', header: '회차', width: '54px', sortKey: 'Eps', render: n => strongIf(['Eps'], formatInt(n.Eps)) },
     { key: 'ratio', header: '추천비', width: '62px', sortKey: 'like_to_view_ratio', render: n => strongIf(['like_to_view_ratio'], formatRatio(n.like_to_view_ratio, 2)) },
@@ -144,7 +145,7 @@ export default function NovelRankingsPage() {
     <div className="page-shell novel-rankings-page">
       <PageTitle title="일간 랭킹"
         nav={<DateNav value={dateParam ?? null} availableDates={dates} onChange={d => navigate(`/novels/rankings/${d}`)} />}
-        meta={`밤 9시 · 노벨피아 7일 조회순 상위 ${rows.length || 500}`} />
+        meta={`노벨피아 7일 조회순 상위 ${rows.length || 500}작품`} />
 
       <Showcase top={showcase.top} movers={showcase.movers} showcaseDate={showcase.date} tableDate={dateParam ?? null} />
 
