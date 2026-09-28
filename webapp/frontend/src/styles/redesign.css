@@ -3,3 +3,8 @@
 .empty-line a { color: var(--np-text-heading); text-decoration: underline; text-underline-offset: 3px; }
 .page-hero__switch { font-size: var(--np-fs-body); font-weight: 600; color: var(--np-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
 .page-hero__switch:hover { color: var(--np-text-heading); }
+.change-mark { font-size: 0.78rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.change-mark--up { color: var(--np-rank-up); }
+.change-mark--down { color: var(--np-rank-down); }
+.change-mark--same { color: var(--np-text-faint); }
+.change-mark--new { color: var(--np-new-text); font-size: 0.72rem; letter-spacing: 0.02em; }
