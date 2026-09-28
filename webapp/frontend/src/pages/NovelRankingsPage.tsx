@@ -98,7 +98,7 @@ export default function NovelRankingsPage() {
     { key: 'rank', header: '순위', width: '48px', align: 'center', sortKey: 'Ranking',
       render: n => <span className={`rank-num${n.Ranking <= 3 ? ' is-top' : ''}`}>{n.Ranking}</span> },
     { key: 'chg', header: '변동', width: '52px', align: 'center', sortKey: 'rank_change', render: n => <ChangeMark value={n.rank_change} /> },
-    { key: 'cover', header: '', width: '34px', render: n => <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span> },
+    { key: 'cover', header: '', width: '48px', render: n => <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span> },
     { key: 'title', header: '제목', width: 'minmax(0,1.5fr)',
       render: n => <Link to={`/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link> },
     { key: 'author', header: '작가', width: '108px',
@@ -114,6 +114,7 @@ export default function NovelRankingsPage() {
   const mobileRow = (n: RankingNovel) => (
     <div className="rank-mrow">
       <div className="rank-mrow__rank"><span className={`rank-num${n.Ranking <= 3 ? ' is-top' : ''}`}>{n.Ranking}</span><ChangeMark value={n.rank_change} /></div>
+      <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span>
       <div className="rank-mrow__main">
         <Link to={`/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title}</Link>
         <p>{n.AuthorName} · 점수 <b>{formatInt(n.Score)}</b> · {formatInt(n.Eps)}화</p>
@@ -146,7 +147,7 @@ export default function NovelRankingsPage() {
         {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => window.location.reload()}>다시 시도</button></p>
           : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
           : (
-            <RankTable ariaLabel="일간 랭킹" compactBelow={992} rows={sorted} rowKey={n => n.ID} columns={columns}
+            <RankTable ariaLabel="일간 랭킹" compactBelow={992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
               sort={sort} onSort={k => setSort(s => nextSort(s, k as SortKey))}
               expandedKey={openId}
               onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}

@@ -99,9 +99,9 @@
 .rank-table__mrow { border-bottom: 1px solid var(--np-border); }
 .rank-num { font-size: 1.3125rem; font-weight: 800; letter-spacing: -0.03em; color: var(--np-text-heading); }
 .rank-num.is-top { color: var(--np-accent); }
-.rank-cover { display: block; width: 34px; height: 48px; border-radius: 3px; overflow: hidden; background: var(--np-cover-bg); }
+.rank-cover { display: block; width: 48px; height: 68px; border-radius: 4px; overflow: hidden; background: var(--np-cover-bg); }
 .rank-cover .novel-cover-mask, .rank-cover__img { width: 100%; height: 100%; object-fit: cover; }
-.rank-cover .novel-cover-mask button { display: none; } /* 34px 표지에는 토글을 두지 않는다 — 전체 가리기 토글이 헤더에 있다 */
+.rank-cover .novel-cover-mask button { display: none; } /* 표 안 작은 표지에는 토글을 두지 않는다 — 전체 가리기 토글이 헤더에 있다 */
 .rank-title { display: block; font-size: 0.9375rem; font-weight: 700; letter-spacing: -0.02em; color: var(--np-text-heading); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rank-title--wrap { white-space: normal; }
 .rank-author { display: block; color: var(--np-text-secondary); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -110,7 +110,7 @@
 .toolbar-filter { flex: 0 0 auto; white-space: nowrap; height: 34px; padding: 0 1rem; border-radius: 17px; border: 1.5px solid var(--np-text-heading); background: var(--np-canvas); color: var(--np-text-heading); font-weight: 700; font-size: 0.875rem; }
 .toolbar-filter.is-on { background: var(--np-accent-solid); color: var(--np-on-accent-solid); }
 .toolbar-filter__n { margin-left: 6px; font-size: 0.75rem; opacity: 0.8; }
-.rank-mrow { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 8px; padding: 11px 0; }
+.rank-mrow { display: grid; grid-template-columns: 34px 48px minmax(0, 1fr); gap: 10px; align-items: start; padding: 11px 0; }
 .rank-mrow__rank { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .rank-mrow__rank .rank-num { font-size: 1.1875rem; line-height: 1.1; }
 .rank-mrow__main p { margin: 3px 0 0; font-size: 0.78rem; color: var(--np-text-secondary); } .rank-mrow__main b { color: var(--np-text-heading); font-weight: 600; }
@@ -121,7 +121,7 @@
 .is-pending { opacity: 0.7; transition: opacity var(--np-transition); }
 .link-button { border: 0; background: none; padding: 0; color: var(--np-text-heading); text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 767.98px) { .tab-bar__tools { width: 100%; margin-left: 0; } .toolbar-search { flex: 1; width: auto; min-width: 0; } }
-.row-expand { display: flex; gap: 2.75rem; align-items: center; padding: 1rem 1.75rem 1.1rem 9rem; font-size: 0.875rem; color: var(--np-text-secondary); }
+.row-expand { display: flex; gap: 2.75rem; align-items: center; padding: 1rem 1.75rem 1.1rem 11.5rem; font-size: 0.875rem; color: var(--np-text-secondary); }
 .row-expand--loading { min-height: 84px; color: var(--np-text-faint); }
 .row-expand__cap { display: flex; justify-content: space-between; margin-top: 2px; font-size: 0.6875rem; color: var(--np-text-faint); }
 .row-expand__facts b { color: var(--np-text-heading); }
