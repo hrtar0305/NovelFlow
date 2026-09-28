@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Brush } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { isOutOfRank } from '../../utils/trendSummary';
+import { isolatedIndices } from '../../utils/chartPoints';
 
 // --- CONSTANTS ---
 const TOP_300_END_DATE = '2025-07-20';
@@ -43,6 +44,9 @@ interface CustomizedDotProps {
   cy?: number;
   payload?: ChartRow;
   dataKey?: string;
+  /** false면 isolated에 든 날만 찍는다(점 표시를 끈 긴 기간). */
+  showAll?: boolean;
+  isolated?: ReadonlySet<string>;
 }
 
 const formatNumberForMobile = (value: number): string => {
@@ -78,8 +82,9 @@ const CenteredBar = (props: unknown) => {
 };
 
 const CustomizedDot = React.memo((props: CustomizedDotProps) => {
-  const { cx, cy, payload, dataKey } = props;
+  const { cx, cy, payload, dataKey, showAll = true, isolated } = props;
   if (!dataKey || !payload || payload[dataKey] === null || payload[dataKey] === undefined) return null;
+  if (!showAll && !isolated?.has(payload.Date)) return null;
   
   const isRankOut = 
     dataKey.toLowerCase().includes('rank') && 
@@ -259,6 +264,12 @@ const MetricPanel = ({ metric, name, processedData, hasBothPeriods, isModal, isM
   };
   const xAxisInterval = getXAxisInterval(pointCount, isModal, isMobile);
   const shouldShowDots = pointCount <= (isModal ? 140 : 60);
+  // 선을 끊는 순위 차트에서 앞뒤가 순위권 밖인 하루는 선분이 없다 — 점 표시를 끈 긴 기간에도 그 점은 찍는다.
+  const isolatedDates = useMemo(() => {
+    if (!isRank || !breakOutOfRank) return new Set<string>();
+    const values = chartData.map(d => num(field(d, metric)));
+    return new Set(isolatedIndices(values).map(i => chartData[i].Date));
+  }, [chartData, metric, isRank, breakOutOfRank]);
   const shouldRenderRangeBars = pointCount <= (isModal ? 260 : 140);
   const brushGap = Math.max(1, Math.floor(pointCount / 90));
   const chartMargin = isModal
@@ -318,7 +329,9 @@ const MetricPanel = ({ metric, name, processedData, hasBothPeriods, isModal, isM
                 dataKey={metric}
                 stroke="var(--np-accent)"
                 strokeWidth={2}
-                dot={shouldShowDots ? <CustomizedDot dataKey={metric} /> : false}
+                dot={shouldShowDots || isolatedDates.size > 0
+                  ? <CustomizedDot dataKey={metric} showAll={shouldShowDots} isolated={isolatedDates} />
+                  : false}
                 activeDot={{ r: 4 }}
                 connectNulls={isRank && !breakOutOfRank}
                 isAnimationActive={false}
