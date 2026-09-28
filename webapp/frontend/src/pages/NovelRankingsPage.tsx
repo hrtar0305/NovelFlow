@@ -15,10 +15,11 @@ import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import NovelRowExpand from '../components/ranking/NovelRowExpand';
 import {
-  DEFAULT_SORT, EMPTY_FILTER, activeFilterCount, applyRankingFilter, nextSort, normalizeNovels, sortRankings, tagCounts, toggleTag,
+  DEFAULT_SORT, EMPTY_FILTER, activeFilterCount, hasStatusData, statusCounts, applyRankingFilter, nextSort, normalizeNovels, sortRankings, tagCounts, toggleTag,
   type RankingFilter, type RankingNovel, type SortConfig, type SortKey,
 } from '../utils/rankingQuery';
 import { formatInt, formatRatio } from '../utils/format';
+import { SERIAL_STATUS_NOTICE } from '../utils/serialStatusNotice';
 
 // 잔류율 산식은 책 주석처럼 표 아래에 두고, 열 이름 옆 작은 번호로 잇는다 — 머리글 아래에 두면
 // 그 두 열만 머리글이 높아져 어색했다. 추천비는 이름으로 뜻이 전해져 설명을 두지 않는다.
@@ -80,6 +81,10 @@ export default function NovelRankingsPage() {
   const result = useMemo(() => applyRankingFilter(rows, deferredFilter), [rows, deferredFilter]);
   const sorted = useMemo(() => sortRankings(result.items, sort), [result.items, sort]);
   const stats = useMemo(() => tagCounts(rows), [rows]);
+  const statusStats = useMemo(() => statusCounts(rows), [rows]);
+  const statusAvailable = useMemo(() => hasStatusData(rows), [rows]);
+  // 상태를 골랐는데 그날 기록이 없으면(2026-09-05 이전) 결과 0의 이유를 그대로 적는다.
+  const statusBlocked = (filter.statuses ?? []).length > 0 && !statusAvailable && rows.length > 0;
   const hit = useMemo(() => new Set(filter.rule ? [] : filter.tags), [filter]);
   const onTag = useCallback((t: string) => update(toggleTag(filter, t)), [filter, update]);
 
@@ -173,7 +178,7 @@ export default function NovelRankingsPage() {
               onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}
               renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} />}
               renderMobileRow={mobileRow}
-              emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 랭킹 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
+              emptyText={result.error ?? (statusBlocked ? SERIAL_STATUS_NOTICE : rows.length === 0 ? '이 날짜의 랭킹 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
           )}
       </div>
 
@@ -181,7 +186,8 @@ export default function NovelRankingsPage() {
       {!error && !loading && rows.length > 0 ? <Footnotes notes={NOTES} /> : null}
 
       <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={update}
-        tagStats={stats} resultCount={sorted.length} error={result.error} />
+        tagStats={stats} resultCount={sorted.length} error={result.error}
+        statusStats={statusStats} statusAvailable={statusAvailable} />
     </div>
   );
 }

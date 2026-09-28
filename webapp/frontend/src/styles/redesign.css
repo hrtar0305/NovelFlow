@@ -183,3 +183,9 @@
 @media (max-width: 767.98px) { .rank-toolbar .toolbar-searchform { flex: 1; min-width: 0; } }
 .toolbar-searchform .toolbar-search:focus { outline: none; box-shadow: none; }
 .toolbar-searchform:focus-within { border-bottom-color: var(--np-accent); }
+.filter-drawer__statuses { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }
+.filter-drawer__statuses button { display: inline-flex; align-items: baseline; gap: 0.3rem; padding: 0.2rem 0; border: 0; background: none; color: var(--np-text-primary); font-size: 0.9375rem; }
+.filter-drawer__statuses button i { font-style: normal; font-size: 0.8125rem; color: var(--np-text-faint); }
+.filter-drawer__statuses button.is-on { font-weight: 700; color: var(--np-text-heading); }
+.filter-drawer__statuses button.is-on span::before { content: "✓ "; color: var(--np-accent); }
+.filter-drawer__notice { margin: 0.6rem 0 0; font-size: 0.8125rem; line-height: 1.6; color: var(--np-text-secondary); }

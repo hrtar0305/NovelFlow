@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EMPTY_FILTER, DEFAULT_SORT, activeFilterCount, resetFilter, applyRankingFilter, nextSort, normalizeNovels,
+  EMPTY_FILTER, DEFAULT_SORT, SERIAL_STATUSES, activeFilterCount, hasStatusData, resetFilter, statusCounts, applyRankingFilter, nextSort, normalizeNovels,
   sortRankings, tagCounts, toggleTag, type RankingNovel,
 } from './rankingQuery';
 
@@ -98,5 +98,35 @@ describe('보조 함수', () => {
     const f = toggleTag({ ...EMPTY_FILTER, rule: 'a' }, '판타지');
     expect(f).toMatchObject({ rule: '', tags: ['판타지'] });
     expect(toggleTag(f, '판타지').tags).toEqual([]);
+  });
+});
+
+describe('연재 상태', () => {
+  const st = [
+    n({ ID: 'a', Ranking: 1, serial_status: '연재중' }),
+    n({ ID: 'b', Ranking: 2, serial_status: '완결' }),
+    n({ ID: 'c', Ranking: 3, serial_status: '연재지연' }),
+    n({ ID: 'd', Ranking: 4, serial_status: '휴재' }),
+    n({ ID: 'e', Ranking: 5, serial_status: null }),
+  ];
+  it('고른 상태 중 하나라도 맞으면 남긴다', () => {
+    expect(applyRankingFilter(st, { ...EMPTY_FILTER, statuses: ['완결', '연재지연'] }).items.map(x => x.ID)).toEqual(['b', 'c']);
+  });
+  it('기록 없는 행은 상태 조건에서 빠진다', () => {
+    expect(applyRankingFilter(st, { ...EMPTY_FILTER, statuses: ['연재중'] }).items.map(x => x.ID)).toEqual(['a']);
+  });
+  it('선택지는 네 가지를 늘 보이고, 모르는 상태는 뒤에 붙인다', () => {
+    expect(SERIAL_STATUSES).toEqual(['완결', '연재중단', '연재지연', '연재중']);
+    expect(statusCounts(st)).toEqual([
+      { status: '완결', count: 1 }, { status: '연재중단', count: 0 }, { status: '연재지연', count: 1 },
+      { status: '연재중', count: 1 }, { status: '휴재', count: 1 },
+    ]);
+  });
+  it('그날 기록이 하나도 없으면 hasStatusData는 false', () => {
+    expect(hasStatusData(st)).toBe(true);
+    expect(hasStatusData([n({ ID: 'x', Ranking: 1, serial_status: null }), n({ ID: 'y', Ranking: 2 })])).toBe(false);
+  });
+  it('상태 조건은 조건 수에 1로 센다', () => {
+    expect(activeFilterCount({ ...EMPTY_FILTER, statuses: ['완결', '연재중'] })).toBe(1);
   });
 });

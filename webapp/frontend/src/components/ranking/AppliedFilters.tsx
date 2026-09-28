@@ -1,4 +1,4 @@
-import { activeFilterCount, resetFilter, toggleTag, type RankingFilter } from '../../utils/rankingQuery';
+import { activeFilterCount, resetFilter, toggleStatus, toggleTag, type RankingFilter } from '../../utils/rankingQuery';
 
 const MODE_LABEL = { 'include-and': '모두 포함', 'include-or': '하나라도 포함', exclude: '제외' } as const;
 
@@ -17,6 +17,13 @@ export default function AppliedFilters({ filter, onChange }: { filter: RankingFi
             <span key={t}> <b className={filter.tagMode === 'exclude' ? 'is-exclude' : ''}>{t}</b>
               <button type="button" aria-label={`${t} 해제`} onClick={() => onChange(toggleTag(filter, t))}>×</button></span>
           ))} {MODE_LABEL[filter.tagMode]}</span>
+      ) : null}
+      {(filter.statuses ?? []).length > 0 ? (
+        <span className="applied-filters__part">연재 상태
+          {filter.statuses.map(st => (
+            <span key={st}> <b>{st}</b>
+              <button type="button" aria-label={`${st} 해제`} onClick={() => onChange(toggleStatus(filter, st))}>×</button></span>
+          ))}</span>
       ) : null}
       {eps ? (
         <span className="applied-filters__part">회차 <b>{eps}</b>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Offcanvas } from 'react-bootstrap';
-import { resetFilter, toggleTag, type RankingFilter, type TagMode } from '../../utils/rankingQuery';
+import { resetFilter, toggleStatus, toggleTag, type RankingFilter, type TagMode } from '../../utils/rankingQuery';
+import { SERIAL_STATUS_NOTICE } from '../../utils/serialStatusNotice';
 
 type Mode = TagMode | 'rule';
 const MODES: Array<{ key: Mode; label: string }> = [
@@ -19,6 +20,10 @@ interface FilterDrawerProps {
   resultCount: number;
   error: string | null;
   extra?: ReactNode;
+  /** 연재 상태 선택지와 그날 개수. 주면 '연재 상태' 칸을 그린다. */
+  statusStats?: Array<{ status: string; count: number }>;
+  /** 그날 목록에 연재 상태 기록이 있는가(2026-09-05 이전은 없음). */
+  statusAvailable?: boolean;
 }
 
 const toNum = (s: string): number | null => {
@@ -26,7 +31,7 @@ const toNum = (s: string): number | null => {
   return Number.isFinite(v) ? v : null;
 };
 
-export default function FilterDrawer({ open, onClose, filter, onChange, tagStats, resultCount, error, extra }: FilterDrawerProps) {
+export default function FilterDrawer({ open, onClose, filter, onChange, tagStats, resultCount, error, extra, statusStats, statusAvailable = true }: FilterDrawerProps) {
   const [mode, setMode] = useState<Mode>(filter.rule ? 'rule' : filter.tagMode);
   const [ruleText, setRuleText] = useState(filter.rule);
   const [q, setQ] = useState('');
@@ -67,6 +72,23 @@ export default function FilterDrawer({ open, onClose, filter, onChange, tagStats
             <span>화</span>
           </div>
         </section>
+
+        {statusStats ? (
+          <section className="filter-drawer__group">
+            <h3 className="filter-drawer__h">연재 상태</h3>
+            <div className="filter-drawer__statuses">
+              {statusStats.map(({ status, count }) => {
+                const on = (filter.statuses ?? []).includes(status);
+                return (
+                  <button key={status} type="button" aria-pressed={on} className={on ? 'is-on' : ''} onClick={() => onChange(toggleStatus(filter, status))}>
+                    <span>{status}</span>{statusAvailable ? <i>{count}</i> : null}
+                  </button>
+                );
+              })}
+            </div>
+            {!statusAvailable && (filter.statuses ?? []).length > 0 ? <p className="filter-drawer__notice">{SERIAL_STATUS_NOTICE}</p> : null}
+          </section>
+        ) : null}
 
         {extra ? <section className="filter-drawer__group">{extra}</section> : null}
 

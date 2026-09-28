@@ -144,6 +144,28 @@ def _server_error(context_msg: str) -> HTTPException:
     logger.exception(context_msg)
     return HTTPException(status_code=500, detail="Internal server error.")
 
+def _derive_serial_status(item: dict) -> str | None:
+    """그 스냅샷의 연재 상태. 판정은 여기 한 곳에서만 하고 적재 시점에 굳히지 않는다.
+
+    크롤러는 상세 페이지 `p.in-badge` 의 span 을 전부 `Badges` 로 싣고(2026-09-05~),
+    `b_*` class 가 없는 상태 배지(연재중단·연재지연 등)의 텍스트만 `SerialStatus` 로 따로 싣는다.
+    완결은 `b_comp` class 배지라 `SerialStatus` 에 들어가지 않으므로 여기서 합친다.
+
+        SerialStatus 있음            → 그 값(모르는 상태도 그대로 — 아는 값으로 좁히지 않는다)
+        Badges 에 b_comp             → '완결'
+        Badges 있음(위 둘 다 없음)   → '연재중'
+        Badges 없음                  → None (기록 없음: 2026-09-05 이전 스냅샷 등)
+    """
+    badges = item.get('Badges')
+    if not isinstance(badges, list):
+        return None
+    status = item.get('SerialStatus')
+    if status:
+        return str(status)
+    if any('b_comp' in (b.get('class') or []) for b in badges if isinstance(b, dict)):
+        return '완결'
+    return '연재중'
+
 def _compute_retention_rates(item: dict) -> dict:
     """DB 원본 수치에서 초반/최신 잔류율 계산 (단순 구간 비율).
 
@@ -444,6 +466,7 @@ def _enrich_novel_rank_items(items: list[dict], previous_items: list[dict]) -> l
         previous_rank = previous_ranks_map.get(item['ID'])
         item['rank_change'] = previous_rank - item['Ranking'] if previous_rank is not None else 'New'
         item.update(_compute_retention_rates(item))
+        item['serial_status'] = _derive_serial_status(item)
         item['like_to_view_ratio'] = (item.get('Like', 0) or 0) / item['View'] if item.get('View') else 0
     return items
 
@@ -531,6 +554,7 @@ class NovelRankData(BaseModel):
     RecentBaseNum: Optional[int] = None
     TargetLatestEpView: Optional[int] = None
     TargetLatestEpNum: Optional[int] = None
+    serial_status: Optional[str] = Field(None, description="그 날 스냅샷의 연재 상태(연재중·완결·연재지연·연재중단 등). 기록이 없는 날(2026-09-05 이전)은 null")
 
 class NovelDetails(BaseModel):
     # Required fields
@@ -753,6 +777,7 @@ def get_novels_by_date(date: str, response: Response):
                 item['rank_change'] = 'New' # 신규 진입
 
             item.update(_compute_retention_rates(item))
+            item['serial_status'] = _derive_serial_status(item)
 
         # 데이터는 하루에 한 번 바뀌므로 길게 캐싱 가능
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
