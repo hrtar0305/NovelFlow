@@ -4,7 +4,6 @@ import { isValid, parseISO } from 'date-fns';
 import { getAvailableDates, getNovelRankingShowcase, getNovelRankingsByDate } from '../services/api';
 import PageTitle from '../components/ui/PageTitle';
 import DateNav from '../components/ui/DateNav';
-import TabBar from '../components/ui/TabBar';
 import TagLinks from '../components/ui/TagLinks';
 import ChangeMark from '../components/ui/ChangeMark';
 import NovelCover from '../components/NovelCover';
@@ -15,22 +14,16 @@ import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import NovelRowExpand from '../components/ranking/NovelRowExpand';
 import {
   DEFAULT_SORT, EMPTY_FILTER, activeFilterCount, applyRankingFilter, nextSort, normalizeNovels, sortRankings, tagCounts, toggleTag,
-  type RankingFilter, type RankingNovel, type RankingView, type SortConfig, type SortKey,
+  type RankingFilter, type RankingNovel, type SortConfig, type SortKey,
 } from '../utils/rankingQuery';
 import { formatInt, formatRatio } from '../utils/format';
 
-// 잔류율 산식은 표 머리 바로 위 한 줄에 둔다 — 표 아래 각주는 아무도 보지 않는다.
-// 추천비는 이름으로 뜻이 전해져 설명을 두지 않는다.
+// 잔류율 산식은 그 열 머리글 바로 아래 한 줄로 짧게 둔다(좁은 폭은 목록 위 한 줄).
+// 열 폭에 맞춰 '조회'는 툴팁에만 쓴다. 추천비는 이름으로 뜻이 전해져 설명을 두지 않는다.
 const FORMULA = {
-  early: '30번째 유효 회차 조회 ÷ 1화 조회',
-  recent: '최신화 조회 ÷ 역순 30번째 회차 조회',
+  early: { short: '30화 / 1화', full: '30화 조회수 ÷ 1화 조회수' },
+  recent: { short: '최신화 / 30화 전', full: '최신화 조회수 ÷ 30화 전 조회수' },
 };
-
-const VIEWS: Array<{ key: RankingView; label: string }> = [
-  { key: 'all', label: '전체' },
-  { key: 'rising', label: '급상승' },
-  { key: 'new', label: '신규 진입' },
-];
 
 export default function NovelRankingsPage() {
   const { date: dateParam } = useParams();
@@ -81,11 +74,6 @@ export default function NovelRankingsPage() {
   // 입력은 즉시 반영하고 500행 필터·정렬만 늦춘다(제어 입력을 트랜지션으로 갱신하면 글자가 밀린다).
   const deferredFilter = useDeferredValue(filter);
   const isPending = deferredFilter !== filter;
-  const setView = (view: RankingView) => {
-    update({ ...filter, view });
-    // 급상승 보기는 오른 폭 순서가 곧 의미다.
-    setSort(view === 'rising' ? { key: 'rank_change', direction: 'descending' } : DEFAULT_SORT);
-  };
 
   const result = useMemo(() => applyRankingFilter(rows, deferredFilter), [rows, deferredFilter]);
   const sorted = useMemo(() => sortRankings(result.items, sort), [result.items, sort]);
@@ -97,16 +85,21 @@ export default function NovelRankingsPage() {
     { key: 'rank', header: '순위', width: '48px', sortKey: 'Ranking',
       render: n => <span className={`rank-num${n.Ranking <= 3 ? ' is-top' : ''}`}>{n.Ranking}</span> },
     { key: 'chg', header: '변동', width: '52px', sortKey: 'rank_change', render: n => <ChangeMark value={n.rank_change} /> },
-    { key: 'cover', header: '', width: '48px', render: n => <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span> },
+    // 표지는 제목 열 안에 둔다 — 따로 열을 두면 머리글 없는 표지 칸이 빈 '제목' 열처럼 보였다.
     { key: 'title', header: '제목', width: 'minmax(0,1fr)',
-      render: n => <Link to={`/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link> },
+      render: n => (
+        <span className="rank-titlecell">
+          <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span>
+          <Link to={`/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link>
+        </span>
+      ) },
     { key: 'author', header: '작가', width: '108px',
       render: n => n.AuthorID ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" onClick={e => e.stopPropagation()}>{n.AuthorName}</Link> : <span className="rank-author">{n.AuthorName || '(작자 미상)'}</span> },
     { key: 'score', header: '점수', width: '76px', sortKey: 'Score', render: n => <b className="rank-strong">{formatInt(n.Score)}</b> },
     { key: 'eps', header: '회차', width: '54px', sortKey: 'Eps', render: n => formatInt(n.Eps) },
     { key: 'ratio', header: '추천비', width: '62px', sortKey: 'like_to_view_ratio', render: n => formatRatio(n.like_to_view_ratio, 2) },
-    { key: 'early', header: '초반 잔류', width: '66px', sortKey: 'EarlyRetentionRate', title: FORMULA.early, render: n => formatRatio(n.EarlyRetentionRate, 0) },
-    { key: 'recent', header: '최신 잔류', width: '66px', sortKey: 'RecentRetentionRate', title: FORMULA.recent, render: n => formatRatio(n.RecentRetentionRate, 0) },
+    { key: 'early', header: '초반 잔류', sub: FORMULA.early.short, width: '66px', sortKey: 'EarlyRetentionRate', title: FORMULA.early.full, render: n => formatRatio(n.EarlyRetentionRate, 0) },
+    { key: 'recent', header: '최신 잔류', sub: FORMULA.recent.short, width: '80px', sortKey: 'RecentRetentionRate', title: FORMULA.recent.full, render: n => formatRatio(n.RecentRetentionRate, 0) },
     { key: 'tags', header: '태그', width: 'minmax(0,1.3fr)', render: n => <TagLinks tags={n.Tags} limit={n.Tags.length} wrap highlighted={hit} onSelect={onTag} /> },
   ];
 
@@ -133,16 +126,18 @@ export default function NovelRankingsPage() {
 
       <Showcase top={showcase.top} movers={showcase.movers} showcaseDate={showcase.date} tableDate={dateParam ?? null} />
 
-      <TabBar ariaLabel="보기" items={VIEWS} value={filter.view} onChange={setView}>
+      {/* 급상승·신규 진입 탭은 두지 않는다 — 변동 열 내림차순이 곧 NEW → 상승 폭 순이다. */}
+      <div className="rank-toolbar">
+        <span className="rank-toolbar__count">{sorted.length.toLocaleString('ko-KR')}편</span>
         <input className="toolbar-search" type="search" placeholder="제목·작가 검색" aria-label="제목·작가 검색"
           value={filter.search} onChange={e => update({ ...filter, search: e.target.value })} />
         <button type="button" className={`toolbar-filter${count ? ' is-on' : ''}`} onClick={() => setDrawer(true)} aria-haspopup="dialog">
           필터{count ? <span className="toolbar-filter__n">{count}</span> : null}
         </button>
-      </TabBar>
+      </div>
       <AppliedFilters filter={filter} onChange={update} />
       {!error && !loading && rows.length > 0 ? (
-        <p className="rank-formula">초반 잔류 = {FORMULA.early}<span aria-hidden="true"> · </span>최신 잔류 = {FORMULA.recent}</p>
+        <p className="rank-formula">초반 잔류 {FORMULA.early.short} · 최신 잔류 {FORMULA.recent.short} (조회수)</p>
       ) : null}
 
       <div className={isPending ? 'is-pending' : undefined}>

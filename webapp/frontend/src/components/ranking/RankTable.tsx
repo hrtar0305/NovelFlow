@@ -11,6 +11,8 @@ export interface RankColumn<T> {
   sortKey?: string;
   /** 머리글 툴팁(산식). 터치 기기용으로는 표 아래 Footnotes에도 같은 문구를 둔다. */
   title?: string;
+  /** 머리글 아래 작은 한 줄(산식 등). */
+  sub?: ReactNode;
   render: (row: T) => ReactNode;
 }
 
@@ -74,6 +76,7 @@ export default function RankTable<T>(props: RankTableProps<T>) {
                     {c.header}<span className="rank-table__sort" aria-hidden="true">{on ? (sort?.direction === 'ascending' ? '↑' : '↓') : '↕'}</span>
                   </button>
                 ) : c.header}
+                {c.sub ? <span className="rank-table__sub">{c.sub}</span> : null}
               </div>
             );
           })}
