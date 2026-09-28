@@ -16,6 +16,8 @@
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
     <script>
       (function() {
+        var q = new URLSearchParams(location.search).get('theme');
+        if (q === 'light' || q === 'dark') localStorage.setItem('theme', q);
         var t = localStorage.getItem('theme') || 'dark';
         document.documentElement.setAttribute('data-theme', t);
         document.documentElement.style.backgroundColor = t === 'light' ? '#f6f7f9' : '#101114';
