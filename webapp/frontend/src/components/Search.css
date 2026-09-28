@@ -5,28 +5,31 @@
 
 .search-wrapper {
   position: relative;
-  width: 100%; /* Ensure it takes full width of its parent */
+  width: 100%;
 }
 
-/* Style for the search box itself */
 .search-box {
   width: 100%;
 }
 
 .search-box .ais-SearchBox-input {
   width: 100%;
-  padding: 0.5rem 1rem;
+  min-height: 42px;
+  padding: 0.58rem 0.95rem;
   border: 1px solid var(--np-border);
-  border-radius: 20px; /* pill shape */
-  background-color: var(--np-surface-alt);
+  border-radius: 12px;
+  background-color: color-mix(in srgb, var(--np-surface-alt) 80%, transparent);
   color: var(--np-text-primary);
-  font-size: 0.9rem;
+  font-size: var(--np-fs-body);
+  line-height: 1.4;
+  transition: border-color var(--np-transition), box-shadow var(--np-transition), background-color var(--np-transition);
 }
 
 .search-box .ais-SearchBox-input:focus {
   outline: none;
-  box-shadow: none;
   border-color: var(--np-accent);
+  box-shadow: 0 0 0 3px var(--np-focus-ring);
+  background-color: var(--np-surface-overlay);
 }
 
 .search-box .ais-SearchBox-input::placeholder {
@@ -44,11 +47,11 @@
   position: absolute;
   top: 100%;
   left: 0;
-  width: 100%; /* Match search box width */
+  width: 100%;
   margin-top: 8px;
   background-color: var(--np-surface-overlay);
   border: 1px solid var(--np-border);
-  border-radius: 8px;
+  border-radius: 16px;
   box-shadow: var(--np-shadow-md);
   z-index: 100;
   max-height: 400px;
@@ -71,46 +74,46 @@
   display: block;
   text-decoration: none;
   color: inherit;
-  padding: 0.75rem 1rem;
-  border-radius: 4px;
+  padding: 0.72rem 0.82rem;
+  border-radius: 12px;
+  transition: background-color var(--np-transition), transform var(--np-transition);
 }
 
 .aa-ItemLink:hover {
-  background-color: var(--np-surface-raised);
+  background-color: var(--np-accent-ghost);
 }
 
 .aa-ItemContent {
   display: flex;
   flex-direction: column;
+  gap: 0.18rem;
 }
 
 .aa-ItemTitle {
   font-weight: 600;
   color: var(--np-text-heading);
+  font-size: var(--np-fs-body);
 }
 
 .aa-ItemContentDescription {
-  font-size: 0.8rem;
+  font-size: var(--np-fs-micro);
   color: var(--np-text-secondary);
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
-/* No results placeholder */
 .search-no-results {
   padding: 1rem;
   text-align: center;
   color: var(--np-text-secondary);
-  font-size: 0.9rem;
+  font-size: var(--np-fs-body);
 }
 
-/* Placeholder for when search is not configured */
 .search-placeholder {
-    color: #9ca3af; /* gray-400 */
-    font-size: 0.9rem;
-    padding: 0.5rem 0;
+  color: var(--np-text-secondary);
+  font-size: var(--np-fs-meta);
+  padding: 0.45rem 0;
 }
 
-/* Force-hide the loading indicator to prevent layout shifts */
 .ais-SearchBox-loadingIndicator {
-    display: none !important;
+  display: none !important;
 }

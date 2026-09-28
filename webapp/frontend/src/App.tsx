@@ -1,31 +1,40 @@
+import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import Header from './components/Header';
-import NovelRankingsPage from './pages/NovelRankingsPage';
-import TagRankingsPage from './pages/TagRankingsPage';
-import AnalysisDashboardPage from './pages/AnalysisDashboardPage';
-import NovelDetailPage from './pages/NovelDetailPage';
-import AuthorPage from './pages/AuthorPage';
-import ContestPage from './pages/ContestPage';
-import ContestNovelDetailPage from './pages/ContestNovelDetailPage'; // 새로 추가될 페이지
-import ContestTagRankingsPage from './pages/ContestTagRankingsPage';
-import DataCollectionPage from './pages/DataCollectionPage';
-import TagTrendsPage from './pages/TagTrendsPage';
-import NovelTrendsPage from './pages/NovelTrendsPage';
-import './styles/custom.css';
+import AppShell from './components/layout/AppShell';
+import './styles/index.css';
+
+const NovelRankingsPage = lazy(() => import('./pages/NovelRankingsPage'));
+const TagRankingsPage = lazy(() => import('./pages/TagRankingsPage'));
+const AnalysisDashboardPage = lazy(() => import('./pages/AnalysisDashboardPage'));
+const NovelDetailPage = lazy(() => import('./pages/NovelDetailPage'));
+const AuthorPage = lazy(() => import('./pages/AuthorPage'));
+const ContestPage = lazy(() => import('./pages/ContestPage'));
+const ContestNovelDetailPage = lazy(() => import('./pages/ContestNovelDetailPage'));
+const ContestTagRankingsPage = lazy(() => import('./pages/ContestTagRankingsPage'));
+const DataCollectionPage = lazy(() => import('./pages/DataCollectionPage'));
+const TagTrendsPage = lazy(() => import('./pages/TagTrendsPage'));
+
+const routeFallback = (
+  <div className="route-loading" aria-live="polite">
+    <span className="route-loading__spinner" />
+  </div>
+);
 
 function App() {
   return (
-    <>
-      <Header />
-      <main>
+    <AppShell>
+      <Suspense fallback={routeFallback}>
         <Routes>
           <Route path='/' element={<Navigate to="/novels/rankings" replace />} />
           <Route path='/contests' element={<Navigate to="/contests/2025" replace />} />
           <Route path='/novels/rankings/:date?' element={<NovelRankingsPage />} />
           <Route path='/tags/rankings/:date?' element={<TagRankingsPage />} />
           <Route path='/trends' element={<AnalysisDashboardPage />} />
-          <Route path='/trends/tags' element={<TagTrendsPage />} />
-          <Route path='/trends/novels' element={<NovelTrendsPage />} />
+          <Route path='/tags/trends' element={<TagTrendsPage />} />
+          {/* 태그 트렌드는 한때 데이터 분석의 하위 경로였다. 지금은 독립 화면이고
+              `/tags/rankings` 와 짝을 이루므로 `/tags/trends` 로 옮겼다.
+              옛 링크와 북마크를 위해 리다이렉트를 남긴다. */}
+          <Route path='/trends/tags' element={<Navigate to="/tags/trends" replace />} />
           <Route path='/novels/:novelId' element={<NovelDetailPage />} />
           <Route path='/contests/:year/:date?' element={<ContestPage />} />
           <Route path='/contests/:year/tags/rankings/:date?' element={<ContestTagRankingsPage />} />
@@ -33,8 +42,8 @@ function App() {
           <Route path='/authors/:authorId' element={<AuthorPage />} />
           <Route path='/data-collection-info' element={<DataCollectionPage />} />
         </Routes>
-      </main>
-    </>
+      </Suspense>
+    </AppShell>
   );
 }
 

@@ -5,6 +5,7 @@ import { useContestNovelData } from '../hooks/useContestNovelData';
 import { parseISO } from 'date-fns';
 import ContestNovelDetailsCard from '../components/ContestNovelDetailsCard';
 import DateRangePicker from '../components/novel/DateRangePicker';
+import PanelCard from '../components/ui/PanelCard';
 
 const SmallMultiplesChart = lazy(() => import('../components/novel/SmallMultiplesChart'));
 
@@ -79,34 +80,45 @@ const ContestNovelDetailPage = () => {
         <>
           <ContestNovelDetailsCard details={details} />
 
-          <div className="np-page-container pt-0">
-            <div className="mt-0 date-range-picker-container">
-              <h4 className="mb-2 fs-section-title-mobile">지표별 상세 추이</h4>
-              <DateRangePicker
-                startDate={startDate}
-                endDate={endDate}
-                minDate={minDate} maxDate={maxDate}
-                availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))}
-                novelAvailableDatesSet={novelAvailableDatesSet}
-                onStartDateChange={handleStartDateChange} onEndDateChange={handleEndDateChange} isNovelDetailPage={true}
-                showNovelDataIndicator={false} />
-            </div>
-
-            <div className="mt-2 position-relative">
-              {loading && <div className="position-absolute w-100 h-100 d-flex justify-content-center align-items-center" style={{ top: 0, left: 0, background: 'rgba(11,22,34,0.6)', zIndex: 10 }}><Spinner animation="border" /></div>}
-              <div style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-                {trendData.length > 0 ? (
-                  <Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>
-                    <SmallMultiplesChart data={trendData} hasBothPeriods={false} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} />
-                  </Suspense>
-                ) : (!loading && <Alert variant="info">선택된 기간에 대한 데이터가 없습니다.</Alert>)}
+          <div className="page-shell detail-chart-shell">
+            <PanelCard
+              title="지표별 상세 추이"
+              meta="기간을 선택해 공모전 참가작의 일별 흐름을 비교합니다."
+              className="detail-chart-panel"
+              actions={(
+                <div className="detail-chart-controls">
+                  <DateRangePicker
+                    startDate={startDate}
+                    endDate={endDate}
+                    minDate={minDate}
+                    maxDate={maxDate}
+                    availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))}
+                    novelAvailableDatesSet={novelAvailableDatesSet}
+                    onStartDateChange={handleStartDateChange}
+                    onEndDateChange={handleEndDateChange}
+                    isNovelDetailPage={false}
+                    noMargin={true}
+                    showNovelDataIndicator={false}
+                  />
+                </div>
+              )}
+            >
+              <div className="detail-chart-area position-relative">
+                {loading && <div className="position-absolute w-100 h-100 d-flex justify-content-center align-items-center" style={{ top: 0, left: 0, background: 'rgba(16,17,20,0.55)', zIndex: 10 }}><Spinner animation="border" /></div>}
+                <div style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+                  {trendData.length > 0 ? (
+                    <Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>
+                      <SmallMultiplesChart data={trendData} hasBothPeriods={false} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} />
+                    </Suspense>
+                  ) : (!loading && <Alert variant="info">선택된 기간에 대한 데이터가 없습니다.</Alert>)}
+                </div>
               </div>
-            </div>
+            </PanelCard>
           </div>
 
-          <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false}>
+          <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false} dialogClassName="detail-chart-modal">
             <Modal.Header closeButton><Modal.Title>{selectedMetric ? `${metricConfigs[selectedMetric]?.name || selectedMetric} 상세 보기` : ''}</Modal.Title></Modal.Header>
-            <Modal.Body style={{ height: '70vh' }}><Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>{renderChartInModal()}</Suspense></Modal.Body>
+            <Modal.Body style={{ height: '76vh' }}><Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>{renderChartInModal()}</Suspense></Modal.Body>
           </Modal>
         </>
       )}

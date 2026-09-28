@@ -1,0 +1,337 @@
+html,
+body,
+#root {
+  min-height: 100%;
+  background-color: var(--np-canvas);
+}
+
+html {
+  background: var(--np-canvas);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--np-text-primary);
+  /* 배경은 단색이다. 상단 코너의 파란 글로우 두 개와 세로 그라데이션이
+     '대시보드' 인상의 큰 부분이었다. 면 분리는 표면 밝기 차로만 한다. */
+  background: var(--np-canvas);
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui,
+    'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+  /* 한글은 어절 단위로 끊어야 한다. 기본값은 글자 단위라 "볼 수 있 / 습니다"처럼
+     낱말 중간이 잘린다. 전 화면이 한국어이므로 개별 요소가 아니라 여기서 한 번에
+     정한다. 끊을 곳이 없는 문자열(URL 등)만 예외로 강제 줄바꿈한다. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 화면 채우기는 .app-shell이 맡는다(layout.css 주석 참고).
+   여기에 min-height를 또 주면 높이가 중첩돼 페이지가 뷰포트보다 길어진다. */
+#root {
+  display: flow-root;
+}
+
+[data-theme="light"] body {
+  background: var(--np-canvas);
+}
+
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
+a {
+  color: inherit;
+}
+
+.text-dark,
+.text-body,
+.fw-bold {
+  color: var(--np-text-primary) !important;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.page-hero__title,
+.panel-card__title,
+.data-table-shell__title {
+  margin: 0;
+  color: var(--np-text-heading);
+  letter-spacing: -0.025em;
+}
+
+p {
+  margin: 0;
+}
+
+.text-muted {
+  color: var(--np-text-secondary) !important;
+}
+
+.border,
+.border-top,
+.border-bottom,
+.border-start,
+.border-end {
+  border-color: var(--np-border) !important;
+}
+
+.btn,
+.form-control,
+.form-select,
+.input-group-text,
+.dropdown-menu,
+.modal-content,
+.accordion-item,
+.list-group-item {
+  border-radius: var(--np-radius-sm);
+}
+
+.btn,
+.form-control,
+.form-select,
+.input-group-text {
+  min-height: 40px;
+  border-color: var(--np-border) !important;
+  background-color: var(--np-surface) !important;
+  color: var(--np-text-primary) !important;
+  font-size: var(--np-fs-meta);
+  box-shadow: none !important;
+}
+
+.btn {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.form-label,
+.sidebar-label,
+.filter-control-label,
+.panel-card__meta,
+.data-table-shell__description,
+.ranking-module__meta,
+.compact-meta {
+  font-size: var(--np-fs-micro) !important;
+}
+
+.dropdown-item {
+  font-size: var(--np-fs-meta);
+  color: var(--np-text-primary) !important;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus,
+.dropdown-item.active,
+.dropdown-item:active {
+  color: var(--np-text-heading) !important;
+  background-color: var(--np-accent-ghost) !important;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--np-accent) 0%, var(--np-accent-warm) 100%) !important;
+  border-color: transparent !important;
+  color: #f5f7fa !important;
+}
+
+.btn-primary:hover,
+.btn-primary:focus-visible {
+  filter: brightness(1.05);
+}
+
+.btn-secondary {
+  background-color: var(--np-surface-raised) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+}
+
+.btn-outline-secondary,
+.btn-outline-danger,
+.btn-outline-primary {
+  background-color: transparent !important;
+  border-color: var(--np-border-strong) !important;
+  color: var(--np-text-secondary) !important;
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-primary:hover,
+.btn-outline-danger:hover {
+  color: var(--np-text-heading) !important;
+  background-color: var(--np-accent-ghost) !important;
+  border-color: color-mix(in srgb, var(--np-accent) 25%, var(--np-border) 75%) !important;
+}
+
+.form-control::placeholder,
+.search-input::placeholder {
+  color: var(--np-text-secondary) !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+.btn:focus-visible,
+.theme-toggle-btn:focus-visible,
+.app-header-menu-button:focus-visible,
+.app-header-link:focus-visible,
+.mobile-nav-link:focus-visible,
+.search-box .ais-SearchBox-input:focus {
+  outline: none;
+  border-color: var(--np-accent) !important;
+  box-shadow: 0 0 0 3px var(--np-focus-ring) !important;
+}
+
+.card,
+.modal-content,
+.dropdown-menu,
+.accordion-item,
+.list-group-item,
+.alert {
+  background-color: var(--np-surface) !important;
+  border-color: var(--np-border) !important;
+  color: var(--np-text-primary) !important;
+  box-shadow: none;
+}
+
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--np-text-primary);
+  --bs-table-border-color: var(--np-border);
+  --bs-table-hover-bg: var(--np-accent-ghost);
+  --bs-table-hover-color: var(--np-text-heading);
+  color: var(--np-text-primary) !important;
+  border-color: var(--np-border) !important;
+}
+
+.table > :not(caption) > * > * {
+  color: var(--np-text-primary) !important;
+  border-color: var(--np-border) !important;
+  box-shadow: none !important;
+}
+
+.card-header,
+.accordion-button:not(.collapsed) {
+  background-color: var(--np-surface-alt) !important;
+  color: var(--np-text-heading) !important;
+}
+
+.accordion-button {
+  background-color: var(--np-surface) !important;
+  color: var(--np-text-heading) !important;
+}
+
+.accordion-button::after {
+  filter: invert(0.88);
+}
+
+[data-theme="light"] .accordion-button::after {
+  filter: saturate(0.7);
+}
+
+.badge {
+  font-weight: 700;
+}
+
+.spinner-border {
+  color: var(--np-accent);
+}
+
+.custom-tooltip,
+.recharts-default-tooltip {
+  border: 1px solid var(--np-border) !important;
+  background: var(--np-surface-overlay) !important;
+  border-radius: var(--np-radius-sm) !important;
+  box-shadow: var(--np-shadow-sm) !important;
+  color: var(--np-text-primary) !important;
+}
+
+.recharts-cartesian-grid line,
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick line {
+  stroke: var(--np-border);
+}
+
+.recharts-tooltip-cursor {
+  stroke: var(--np-border-strong);
+}
+
+.recharts-text {
+  fill: var(--np-text-secondary);
+}
+
+.react-datepicker {
+  --np-datepicker-day-size: 1.7rem;
+  --np-datepicker-day-margin: 0.166rem;
+  border: 1px solid var(--np-border) !important;
+  border-radius: var(--np-radius-md) !important;
+  background-color: var(--np-surface) !important;
+  color: var(--np-text-primary) !important;
+  box-shadow: var(--np-shadow-md);
+}
+
+.react-datepicker__header {
+  background-color: var(--np-surface-alt) !important;
+  border-bottom-color: var(--np-border) !important;
+}
+
+.react-datepicker__current-month,
+.react-datepicker-time__header,
+.react-datepicker-year-header,
+.react-datepicker__day-name {
+  color: var(--np-text-heading) !important;
+}
+
+.react-datepicker__day,
+.react-datepicker__month-text,
+.react-datepicker__quarter-text,
+.react-datepicker__year-text {
+  color: var(--np-text-primary) !important;
+}
+
+.react-datepicker__day-name,
+.react-datepicker__day {
+  width: var(--np-datepicker-day-size);
+  line-height: var(--np-datepicker-day-size);
+  margin: var(--np-datepicker-day-margin);
+}
+
+.react-datepicker__day:hover,
+.react-datepicker__month-text:hover,
+.react-datepicker__quarter-text:hover,
+.react-datepicker__year-text:hover {
+  background-color: var(--np-accent-soft) !important;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected,
+.react-datepicker__day--range-start,
+.react-datepicker__day--range-end,
+.react-datepicker__day--highlighted {
+  background-color: var(--np-accent) !important;
+  color: #f5f7fa !important;
+}
+
+.react-datepicker__day--in-range:not(.react-datepicker__day--range-start):not(.react-datepicker__day--range-end) {
+  background-color: var(--np-accent-soft) !important;
+  color: var(--np-text-primary) !important;
+}
+
+@media (max-width: 767.98px) {
+  .mobile-calendar-small.react-datepicker {
+    --np-datepicker-day-size: 1.5rem;
+    --np-datepicker-day-margin: 0.1rem;
+  }
+}

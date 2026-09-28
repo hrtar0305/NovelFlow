@@ -24,11 +24,11 @@ interface ChartConfig {
 const RANK_OUT_VALUE = 501; // Value to assign for 'Rank Out'
 
 const CHART_CONFIG: ChartConfig = {
-  Ranking: { name: '랭킹', color: '#8884d8' },
-  View: { name: '조회수', color: '#82ca9d' },
-  Fav: { name: '선호작', color: '#ffc658' },
-  Like: { name: '추천', color: '#ff7300' },
-  Score: { name: '스코어', color: '#0088FE' },
+  Ranking: { name: '랭킹', color: 'var(--np-chart-1)' },
+  View: { name: '조회수', color: 'var(--np-chart-2)' },
+  Fav: { name: '선호작', color: 'var(--np-chart-3)' },
+  Like: { name: '추천', color: 'var(--np-chart-4)' },
+  Score: { name: '스코어', color: 'var(--np-chart-5)' },
 };
 
 // --- CUSTOM TOOLTIP ---
@@ -150,7 +150,7 @@ const NovelTrendChart: React.FC<{ trendData: NovelData[] }> = memo(({ trendData 
       <div key={metric} className="mb-4 position-relative">
         <h5 className="mb-2 ps-2">{config.name}</h5>
         <SingleChart data={chartData} metric={metric} config={config} />
-        <Button variant="light" size="sm" onClick={() => handleZoomClick(metric)} style={{position: 'absolute', top: '5px', right: '5px', zIndex: 100}}>
+        <Button variant="secondary" size="sm" className="chart-zoom-btn" onClick={() => handleZoomClick(metric)} style={{position: 'absolute', top: '5px', right: '5px', zIndex: 100}}>
           확대
         </Button>
       </div>

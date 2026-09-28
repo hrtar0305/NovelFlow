@@ -1,5 +1,7 @@
-import React, { useState, useCallback, forwardRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, forwardRef, useMemo } from 'react';
 import DatePicker, { registerLocale } from 'react-datepicker';
+import type { DatePickerProps } from 'react-datepicker';
+import { offset } from '@floating-ui/react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { CalendarEvent } from 'react-bootstrap-icons';
@@ -29,26 +31,17 @@ const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?:
 
 const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateChange, availableDates, highlightDates }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [popperPlacement, setPopperPlacement] = useState<'bottom-start' | 'bottom'>('bottom-start');
+  const fixedBottomPopperProps = useMemo(() => ({
+    // react-datepicker adds flip() by default. Override middleware so the
+    // calendar keeps its top edge anchored and always expands downward.
+    middleware: [offset(10)],
+  }) as unknown as DatePickerProps['popperProps'], []);
 
   const maxDate = useMemo(() => {
     if (availableDates.size === 0) return undefined;
     const dates = Array.from(availableDates).sort();
     return new Date(dates[dates.length - 1]);
   }, [availableDates]);
-
-  useEffect(() => {
-    const updatePlacement = () => {
-      if (window.innerWidth < 768) {
-        setPopperPlacement('bottom-start');
-      } else {
-        setPopperPlacement('bottom');
-      }
-    };
-    updatePlacement();
-    window.addEventListener('resize', updatePlacement);
-    return () => window.removeEventListener('resize', updatePlacement);
-  }, []);
 
   const filterDate = useCallback((d: Date) => {
     return availableDates.has(format(d, 'yyyy-MM-dd'));
@@ -72,15 +65,19 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
         onChange={handleChange}
         filterDate={filterDate}
         maxDate={maxDate}
+        openToDate={selectedDate || maxDate}
         open={isOpen}
         onInputClick={() => setIsOpen(true)}
         onClickOutside={() => setIsOpen(false)}
         dateFormat="yyyy-MM-dd"
+        dateFormatCalendar="yyyy년 M월"
         customInput={<CustomDateDisplay />}
         locale={ko}
         highlightDates={highlightDates}
         calendarClassName="mobile-calendar-small"
-        popperPlacement={popperPlacement}
+        popperPlacement="bottom-start"
+        popperProps={fixedBottomPopperProps}
+        showPopperArrow={false}
       />
     </div>
   );

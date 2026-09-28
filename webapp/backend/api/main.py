@@ -17,15 +17,19 @@ import logging
 import boto3
 import decimal
 import json
+import math
+import time
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel, Field
 from boto3.dynamodb.conditions import Key, Attr
+from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
+import analysis_report as AR
 
 # 로거 설정 (Lambda root logger 사용 — basicConfig는 Lambda에서 무효)
 logger = logging.getLogger()
@@ -41,7 +45,7 @@ origins = [
 ]
 
 # 개발 환경을 위한 정규식
-dev_origin_regex = r"https?://(localhost|127\.0\.0\.1|172\..*):\d+"
+dev_origin_regex = r"https?://(localhost|127\.0\.0\.1|172\.\d+\.\d+\.\d+):\d+"
 
 app.add_middleware(
     CORSMiddleware,
@@ -58,14 +62,27 @@ handler = Mangum(app)
 # DynamoDB 리소스 초기화
 dynamodb = boto3.resource('dynamodb', region_name='ap-northeast-2')
 table = dynamodb.Table('NovelRanks')
+
+# 스레드에서 쓰는 조회는 이쪽으로. **`resource`·`Table` 은 스레드 안전하지 않고
+# botocore `client` 는 안전하다**(AWS 문서). 커넥션 풀 기본값이 10이라 동시 16으로
+# 도는 구간에서 그대로 두면 절반이 커넥션을 기다린다.
+ddb_client = boto3.client('dynamodb', region_name='ap-northeast-2',
+                          config=BotoConfig(max_pool_connections=32))
 contest_table = dynamodb.Table('ContestStats2025')
+NOVELPIA_COVER_URL_MARKER = "images.novelpia.com/imagebox/cover/"
 
 # 2025 공모전 수상작 ID 로드
 def load_ids_from_env(var_name):
     ids_str = os.environ.get(var_name)
     if ids_str:
-        return set(ids_str.split(','))
+        return {item.strip() for item in ids_str.split(',') if item.strip()}
     return set()
+
+def load_ordered_ids_from_env(var_name):
+    ids_str = os.environ.get(var_name)
+    if not ids_str:
+        return []
+    return [item.strip() for item in ids_str.split(',') if item.strip()]
 
 # 우선순위 순서대로 상을 정의합니다.
 AWARD_WINNERS_2025 = {
@@ -76,6 +93,30 @@ AWARD_WINNERS_2025 = {
     "특별상": load_ids_from_env('SPECIAL_AWARD_IDS_2025'),
     "본선": load_ids_from_env('FINALIST_IDS_2025')
 }
+CONTEST_SHOWCASE_IDS_2025 = load_ordered_ids_from_env('CONTEST_SHOWCASE_IDS_2025')
+
+def get_default_contest_showcase_ids_2025():
+    ordered_ids = []
+    award_sources = (
+        ('GRAND_PRIZE_IDS_2025', None),
+        ('TOPTOON_AWARD_IDS_2025', None),
+        ('TOP_EXCELLENCE_AWARD_IDS_2025', None),
+    )
+    for env_name, limit in award_sources:
+        ids = load_ordered_ids_from_env(env_name)
+        if limit is not None:
+            ids = ids[:limit]
+        for novel_id in ids:
+            if novel_id not in ordered_ids:
+                ordered_ids.append(novel_id)
+    return ordered_ids[:4]
+
+def get_contest_showcase_ids_2025():
+    ordered_ids = []
+    for novel_id in [*CONTEST_SHOWCASE_IDS_2025, *get_default_contest_showcase_ids_2025()]:
+        if novel_id not in ordered_ids:
+            ordered_ids.append(novel_id)
+    return ordered_ids[:4]
 
 # DynamoDB의 Decimal 타입을 JSON으로 직렬화하기 위한 헬퍼 클래스
 class DecimalEncoder(json.JSONEncoder):
@@ -98,11 +139,25 @@ def _convert_decimals(obj):
         return int(obj) if obj % 1 == 0 else float(obj)
     return obj
 
+def _server_error(context_msg: str) -> HTTPException:
+    """내부 예외는 서버 로그(traceback 포함)에만 남기고 클라이언트에는 일반 메시지를 반환합니다."""
+    logger.exception(context_msg)
+    return HTTPException(status_code=500, detail="Internal server error.")
+
 def _compute_retention_rates(item: dict) -> dict:
-    """DB 원본 수치에서 초반/최신 연독률 계산 (단순 구간 비율).
-    - EarlyRetentionRate: 1화 대비 30화 조회수 비율 (1화 독자 중 30화까지 읽은 비율)
-    - RecentRetentionRate: 최신화 역순 30번째 대비 최신화 조회수 비율
-    - 유효 에피소드 < 30개면 Early는 1화 대비 최신화 비율로 fallback
+    """DB 원본 수치에서 초반/최신 잔류율 계산 (단순 구간 비율).
+
+    - EarlyRetentionRate: 1번째 유효 회차 대비 30번째 유효 회차의 조회수 비율
+    - RecentRetentionRate: 최신화 역순 30번째 대비 최신화의 조회수 비율
+
+    30화 기준은 노벨피아 무료분(첫 15화)의 두 배다. 커뮤니티에서 흔히 쓰는
+    4화 기준은 문피아의 편당 결제 구조에서 나온 것이라 그대로 옮기면 맞지 않는다.
+
+    유효 회차가 30개에 못 미치면 Early는 **계산하지 않는다**(None). 예전에는
+    '최신화 / 1화'로 대체 계산했는데, 그러면 (a) 화면에 아무 표시 없이 다른
+    정의의 값이 섞이고 (b) Early와 Recent가 최신화 조회수를 분자로 공유해
+    아직 덜 찬 최신화의 왜곡이 두 숫자에 동시에 실린다. 정렬해서 나란히 볼 때
+    서로 다른 것을 비교하게 되는 문제가 여기서 나왔다.
     """
     result = {"EarlyRetentionRate": None, "RecentRetentionRate": None}
 
@@ -111,19 +166,331 @@ def _compute_retention_rates(item: dict) -> dict:
     latest_view = item.get("TargetLatestEpView")
     base_view = item.get("RecentBaseView")
 
-    # Early: 1번째 유효 ep 대비 30번째 유효 ep 비율
-    if first_view and first_view > 0:
-        if ep30_view:
-            result["EarlyRetentionRate"] = round(ep30_view / first_view, 4)
-        elif latest_view:
-            # fallback: 유효 에피소드 < 30개
-            result["EarlyRetentionRate"] = round(latest_view / first_view, 4)
+    # Early: 1번째 유효 회차 대비 30번째 유효 회차 비율. 30번째가 없으면 미산출.
+    if first_view and first_view > 0 and ep30_view and ep30_view > 0:
+        result["EarlyRetentionRate"] = round(ep30_view / first_view, 4)
 
     # Recent: 최신화 역순 30번째 대비 최신화 비율
     if base_view and base_view > 0 and latest_view:
         result["RecentRetentionRate"] = round(latest_view / base_view, 4)
 
     return result
+
+# --- 표지 응답 필드 ------------------------------------------------------------
+# 표지를 내려보내는 모든 엔드포인트는 반드시 아래 두 함수를 지난다. 표지 URL
+# 정리와 성인작 판정을 한 곳에 모아 둔 이유는, 둘을 따로 호출하던 동안 실제로
+# 누락이 생겼기 때문이다 — 쇼케이스에만 성인 플래그를 붙이고 목록·상세·작가
+# 페이지에는 붙이지 않아, 프론트에서 조용히 `false`로 떨어져 성인작 표지가
+# 노출될 수 있었다. 엔드포인트가 늘어도 같은 실수가 반복되지 않도록 합친다.
+#
+# 성인 여부는 요청 경로에서 판정하지 않고 `IsAdult` 속성을 읽기만 한다. 크롤러가
+# 상세 페이지의 등급 배지로 매 수집마다 판정해 raw data에 기록한다(근거는
+# docs/DECISIONS.md). 값이 없는 과거 스냅샷은 False가 되지만, 표지는 이미 기본
+# 블러 상태이므로 판정 공백이 화면을 깨뜨리지 않는다.
+def _is_valid_cover_url(url: str | None) -> bool:
+    if not url:
+        return False
+    return NOVELPIA_COVER_URL_MARKER in url.strip()
+
+def _prepare_cover_fields(item: dict) -> dict:
+    if item.get("ThumbnailURL") and not _is_valid_cover_url(item.get("ThumbnailURL")):
+        item["ThumbnailURL"] = None
+    item['is_adult'] = bool(item.get('IsAdult'))
+    return item
+
+# --- 성인작 제외 (기본 꺼짐) ---------------------------------------------------
+# 포트폴리오 공개 기간에 성인작을 목록·상세에서 아예 제외했던 장치다. 2026-09-27에
+# 제외를 풀어 기본값을 꺼짐으로 바꿨다(DECISIONS.md). 다시 필요하면 Lambda 환경변수
+# `HIDE_ADULT_CONTENT=true` 하나로 켠다 — 아래 판정·차감 경로는 전부 이 값을 따른다.
+#
+# 판정 근거는 `scripts/build_adult_blocklist.py`가 만든 차단 목록이다. 크롤러가
+# 기록하는 `IsAdult`(스냅샷별 관측값)와 별개인 이유는, 과거 605일 스냅샷에는
+# `IsAdult`가 없고 소급 기록은 하지 않은 관측을 주장하는 셈이기 때문이다.
+# 차단 목록은 "특정 시점에 19금으로 관측된 소설 집합"이라 그 문제가 없다.
+#
+# 태그가 아니라 배지로 판정한 이유: 태그 규칙은 실측 재현율이 78%였다. 성인
+# 비율 100%인 태그를 다 써도 132건 중 29건을 놓쳤고, 놓친 것들의 태그는
+# `['판타지','현대','하렘']`처럼 일반작과 구별이 불가능했다.
+HIDE_ADULT_CONTENT = os.environ.get('HIDE_ADULT_CONTENT', 'false').strip().lower() not in (
+    '0', 'false', 'no', 'off', ''
+)
+_BLOCKLIST_KEY = {'ID': 'ADULT_BLOCKLIST', 'Date': 'ALL_DATES'}
+_BLOCKLIST_TTL_SECONDS = 600
+_blocklist_cache: tuple[float, frozenset] | None = None
+
+def _normalize_novel_id(novel_id) -> str:
+    return str(novel_id or '').replace('NOVEL#', '').strip()
+
+
+def _adult_blocklist() -> frozenset:
+    """차단 목록을 읽는다. 컨테이너 단위로 캐시하며 TTL이 지나면 다시 읽는다."""
+    global _blocklist_cache
+    if not HIDE_ADULT_CONTENT:
+        return frozenset()
+    now = time.monotonic()
+    if _blocklist_cache and now - _blocklist_cache[0] < _BLOCKLIST_TTL_SECONDS:
+        return _blocklist_cache[1]
+    try:
+        item = table.get_item(Key=_BLOCKLIST_KEY).get('Item') or {}
+        ids = frozenset(_normalize_novel_id(i) for i in (item.get('novel_ids') or []))
+        _blocklist_cache = (now, ids)
+        return ids
+    except ClientError:
+        # 목록을 못 읽으면 필터가 걸리지 않는다(fail-open). 목록이 아직 없는
+        # 상태가 정상 케이스라(차단 목록 생성 전) 여기서 막으면 화면이 빈다.
+        logger.warning("성인작 차단 목록을 읽지 못했다 — 이번 응답은 필터되지 않는다")
+        return _blocklist_cache[1] if _blocklist_cache else frozenset()
+
+
+def _is_blocked_novel(novel_id) -> bool:
+    return _normalize_novel_id(novel_id) in _adult_blocklist()
+
+
+def _reject_if_blocked(novel_id) -> None:
+    """차단된 소설의 단건·트렌드 조회를 막는다.
+
+    403이 아니라 404를 쓴다. 403은 "여기 뭔가 있는데 가렸다"는 신호가 되므로,
+    존재하지 않는 소설과 구별되지 않게 한다. 목록에서 지워도 상세 URL이 열리면
+    필터의 의미가 없다.
+    """
+    if _is_blocked_novel(novel_id):
+        raise HTTPException(status_code=404, detail="Novel not found")
+
+
+
+
+def _fetch_rank_tag_rows_by_date(date: str) -> list[dict]:
+    """태그 뺄셈에만 쓰는 경량 조회. Synopsis 등을 빼서 응답 크기를 줄인다."""
+    items = []
+    query_args = {
+        'IndexName': 'DateRankIndex',
+        'KeyConditionExpression': Key('Date').eq(date),
+        'ProjectionExpression': 'ID, Ranking, Tags',
+    }
+    while True:
+        db_response = table.query(**query_args)
+        items.extend(db_response.get('Items', []))
+        if 'LastEvaluatedKey' not in db_response:
+            break
+        query_args['ExclusiveStartKey'] = db_response['LastEvaluatedKey']
+    return json.loads(json.dumps(items, cls=DecimalEncoder))
+
+
+def _tag_stats_without_blocked(date: str, scores_log: dict, counts_total: dict,
+                               counts_top100: dict) -> tuple[dict, dict, dict]:
+    """저장된 태그 집계에서 차단 소설의 기여분을 뺀다.
+
+    STATS 항목은 이미 전체 소설로 집계된 값이지만, 세 지표가 **모두 소설 단위
+    단순 합**이라 뺄셈이 성립한다(재계산이 필요 없다):
+
+        TagCounts[t]                    = Σ 1
+        TagCountsTop100[t]              = Σ 1  (rank <= 100)
+        TagWeightedScoresLogarithmic[t] = Σ 1/ln(rank+1)
+
+    적재 코드(`data_ingestion.calculate_and_store_tag_trends`)의 가중치 식이
+    바뀌면 여기도 함께 바꿔야 한다. 지금은 `1/ln(rank+1)`로 일치한다.
+
+    등장 2회 미만 태그는 적재 때 pruning되므로 집계에 없을 수 있다. 없는 키는
+    건너뛰고, 빼서 0 이하가 된 태그는 제거한다.
+
+    한계: `local_lift`는 분모를 100/400 상수로 쓰기 때문에(적재 시점의 top500
+    구조 전제), 뺄셈 후에는 실제 표시 건수와 어긋난다. 값이 다소 작게 나오지만
+    지표 자체가 휴리스틱이고, 식을 바꾸면 적재 코드의 정의와 갈라지므로 그대로
+    둔다.
+    """
+    blocked = _adult_blocklist()
+    if not blocked:
+        return scores_log, counts_total, counts_top100
+
+    scores_log = dict(scores_log)
+    counts_total = dict(counts_total)
+    counts_top100 = dict(counts_top100)
+
+    for item in _fetch_rank_tag_rows_by_date(date):
+        if _normalize_novel_id(item.get('ID')) not in blocked:
+            continue
+        rank = item.get('Ranking')
+        if not isinstance(rank, int) or rank <= 0:
+            continue
+        weight = 1 / math.log(rank + 1)
+        for tag in (item.get('Tags') or []):
+            if tag in counts_total:
+                counts_total[tag] = int(counts_total[tag]) - 1
+            if tag in scores_log:
+                scores_log[tag] = float(scores_log[tag]) - weight
+            if rank <= 100 and tag in counts_top100:
+                counts_top100[tag] = int(counts_top100[tag]) - 1
+
+    for tag, count in list(counts_total.items()):
+        if count <= 0:
+            counts_total.pop(tag, None)
+            scores_log.pop(tag, None)
+            counts_top100.pop(tag, None)
+    return scores_log, counts_total, counts_top100
+
+
+def _is_adult_item(item: dict, blocked: frozenset) -> bool:
+    """차단 목록(과거 전 기간) 또는 그날 관측값(`IsAdult`) 중 하나라도 참이면 성인작.
+
+    두 신호를 합치는 이유는 서로의 빈틈을 메우기 때문이다.
+      - 차단 목록: 특정 시점의 스냅샷. 과거 605일을 커버하지만, 그 뒤에 등급이
+        바뀌거나 새로 랭킹에 진입한 소설은 모른다.
+      - `IsAdult`: 크롤러가 매일 기록하므로 항상 최신이지만, 기록을 시작한
+        날 이전 스냅샷에는 값이 없다.
+    합치면 목록을 다시 만들지 않아도 새 성인작이 자동으로 걸린다.
+    """
+    if not HIDE_ADULT_CONTENT:
+        return False
+    return bool(item.get('IsAdult')) or _normalize_novel_id(item.get('ID')) in blocked
+
+
+def _apply_content_policy_all(items: list[dict]) -> list[dict]:
+    """목록용 단일 초크 포인트. 성인작을 빼고 표지 필드를 정리한다.
+
+    태그 목록은 따로 필터하지 않는다. 프론트가 소설 목록에서 태그를 만들기
+    때문에(`rankings.flatMap(novel => novel.Tags)`), 소설이 빠지면 그 소설만
+    갖고 있던 태그도 자동으로 사라진다. STATS 기반 태그 랭킹은 별도로
+    `_tag_stats_without_blocked()`가 기여분을 차감한다.
+    """
+    blocked = _adult_blocklist()
+    return [
+        _prepare_cover_fields(item)
+        for item in items
+        if not _is_adult_item(item, blocked)
+    ]
+
+
+def _apply_content_policy(item: dict) -> dict:
+    """단건용. 성인작이면 404. 목록에서 지워도 상세가 열리면 의미가 없다."""
+    if _is_adult_item(item, _adult_blocklist()):
+        raise HTTPException(status_code=404, detail="Novel not found")
+    return _prepare_cover_fields(item)
+
+
+def _novel_id_lookup_candidates(novel_id: str | None) -> list[str]:
+    if not novel_id:
+        return []
+    raw_id = str(novel_id).replace('NOVEL#', '')
+    candidates = [str(novel_id), raw_id, f'NOVEL#{raw_id}']
+    deduped = []
+    for candidate in candidates:
+        if candidate and candidate not in deduped:
+            deduped.append(candidate)
+    return deduped
+
+def _fetch_latest_novel_thumbnail_url(novel_id: str | None) -> str | None:
+    """공모전 adult placeholder 보강용으로 daily ranking 최신 썸네일 URL만 조회합니다."""
+    for candidate_id in _novel_id_lookup_candidates(novel_id):
+        try:
+            db_response = table.query(
+                KeyConditionExpression=Key('ID').eq(candidate_id),
+                ScanIndexForward=False,
+                Limit=1,
+                ProjectionExpression='ThumbnailURL'
+            )
+        except ClientError as e:
+            logger.warning("Daily thumbnail fallback query failed for contest item %s: %s", candidate_id, e)
+            return None
+
+        items = db_response.get('Items', [])
+        if not items:
+            continue
+        thumbnail_url = items[0].get('ThumbnailURL')
+        if _is_valid_cover_url(thumbnail_url):
+            return thumbnail_url
+
+    return None
+
+def _apply_daily_thumbnail_fallback_to_contest_item(item: dict) -> dict:
+    if _is_valid_cover_url(item.get('ThumbnailURL')):
+        return item
+    fallback_url = _fetch_latest_novel_thumbnail_url(item.get('ID'))
+    if fallback_url:
+        item['ThumbnailURL'] = fallback_url
+    return item
+
+def _apply_daily_thumbnail_fallback_to_contest_items(items: list[dict]) -> list[dict]:
+    return [_apply_daily_thumbnail_fallback_to_contest_item(item) for item in items]
+
+def _fetch_all_novel_rank_items_by_date(date: str) -> list[dict]:
+    items = []
+    query_args = {
+        'IndexName': 'DateRankIndex',
+        'KeyConditionExpression': Key('Date').eq(date)
+    }
+    while True:
+        db_response = table.query(**query_args)
+        items.extend(db_response.get('Items', []))
+        if 'LastEvaluatedKey' not in db_response:
+            break
+        query_args['ExclusiveStartKey'] = db_response['LastEvaluatedKey']
+    return json.loads(json.dumps(items, cls=DecimalEncoder))
+
+def _get_latest_novel_rank_date() -> str | None:
+    db_response = table.get_item(
+        Key={
+            'ID': 'AVAILABLE_DATES',
+            'Date': 'ALL_DATES'
+        }
+    )
+    item = db_response.get('Item')
+    if item and 'dates' in item and item['dates']:
+        return sorted(list(item['dates']), reverse=True)[0]
+    return None
+
+def _enrich_novel_rank_items(items: list[dict], previous_items: list[dict]) -> list[dict]:
+    previous_ranks_map = {item['ID']: item['Ranking'] for item in previous_items}
+    for item in items:
+        previous_rank = previous_ranks_map.get(item['ID'])
+        item['rank_change'] = previous_rank - item['Ranking'] if previous_rank is not None else 'New'
+        item.update(_compute_retention_rates(item))
+        item['like_to_view_ratio'] = (item.get('Like', 0) or 0) / item['View'] if item.get('View') else 0
+    return items
+
+def _get_contest_award(novel_id: str) -> str | None:
+    for award_name, ids_set in AWARD_WINNERS_2025.items():
+        if novel_id in ids_set:
+            return award_name
+    return None
+
+def _get_latest_contest_date() -> str | None:
+    db_response = contest_table.get_item(
+        Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
+    )
+    item = db_response.get('Item')
+    if item and 'dates' in item and item['dates']:
+        return sorted(list(item['dates']), reverse=True)[0]
+    return None
+
+def _get_contest_available_dates_desc() -> list[str]:
+    db_response = contest_table.get_item(
+        Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
+    )
+    item = db_response.get('Item')
+    if item and 'dates' in item:
+        return sorted(list(item['dates']), reverse=True)
+    return []
+
+def _get_previous_contest_date(target_date: str) -> str | None:
+    available_dates = _get_contest_available_dates_desc()
+    try:
+        idx = available_dates.index(target_date)
+        if idx + 1 < len(available_dates):
+            return available_dates[idx + 1]
+    except (ValueError, IndexError):
+        return None
+    return None
+
+def _contest_item_view_change(item: dict, previous_item: dict | None) -> int:
+    current_view = item.get('View', 0) or 0
+    if current_view == -1:
+        return -1
+    if not previous_item:
+        return current_view
+    previous_view = previous_item.get('View', 0) or 0
+    if previous_view == -1:
+        previous_view = 0
+    return current_view - previous_view
 
 # --- Pydantic Response Models ---
 class AvailableDatesResponse(BaseModel):
@@ -150,7 +517,10 @@ class NovelRankData(BaseModel):
     Eps: Optional[int] = None
     Tags: List[str] = Field(default_factory=list)
     Synopsis: Optional[str] = None
+    ThumbnailURL: Optional[str] = None
+    like_to_view_ratio: Optional[float] = None
     rank_change: Optional[Any] = Field(None, description="랭킹 변동. 숫자 또는 'New'", example=5)
+    is_adult: bool = Field(False, description="성인 등급 여부. 크롤러가 상세 페이지 등급 배지로 판정한 값이며, 표지 표시 정책에 쓰인다")
     EarlyRetentionRate: Optional[float] = None
     RecentRetentionRate: Optional[float] = None
     FirstEpView: Optional[int] = None
@@ -180,6 +550,7 @@ class NovelDetails(BaseModel):
     Eps: Optional[int] = None
     Tags: List[str] = Field(default_factory=list)
     Synopsis: Optional[str] = None
+    ThumbnailURL: Optional[str] = None
     EarlyRetentionRate: Optional[float] = None
     RecentRetentionRate: Optional[float] = None
     FirstEpView: Optional[int] = None
@@ -190,6 +561,7 @@ class NovelDetails(BaseModel):
     RecentBaseNum: Optional[int] = None
     TargetLatestEpView: Optional[int] = None
     TargetLatestEpNum: Optional[int] = None
+    is_adult: bool = Field(False, description="성인 등급 여부. 크롤러가 상세 페이지 등급 배지로 판정한 값이며, 표지 표시 정책에 쓰인다")
 
 class TagRankData(BaseModel):
     tag: str
@@ -223,6 +595,7 @@ class ContestNovelData(BaseModel):
     FirstUpdate: Optional[str] = None
     LastUpdate: Optional[str] = None
     Synopsis: Optional[str] = None
+    ThumbnailURL: Optional[str] = None
     Tags: List[str] = Field(default_factory=list)
     EarlyRetentionRate: Optional[float] = None
     RecentRetentionRate: Optional[float] = None
@@ -236,9 +609,20 @@ class ContestNovelData(BaseModel):
     TargetLatestEpNum: Optional[int] = None
     Rank: Optional[int] = None  # Calculated rank based on view_change
     view_change: int = Field(0, description="일일 조회수 변동")
+    like_to_view_ratio: Optional[float] = None
     rank_change: Optional[Any] = Field(None, description="랭킹 변동. 숫자 또는 'New'")
     award: Optional[str] = Field(None, description="수상 내역 (예: 대상, 최우수상, 본선 진출)")
     is_new: bool = Field(False, description="신규 진입 여부")
+    is_adult: bool = Field(False, description="성인 등급 여부. 크롤러가 상세 페이지 등급 배지로 판정한 값이며, 표지 표시 정책에 쓰인다")
+
+class NovelRankingShowcaseResponse(BaseModel):
+    latest_date: str
+    topThree: List[NovelRankData] = Field(default_factory=list)
+    movers: List[NovelRankData] = Field(default_factory=list)
+
+class ContestShowcaseResponse(BaseModel):
+    latest_date: str
+    items: List[ContestNovelData] = Field(default_factory=list)
 
 @app.get("/")
 def read_root(response: Response):
@@ -246,27 +630,7 @@ def read_root(response: Response):
     루트 엔드포인트. API 서버가 동작하는지 확인하는 용도.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return {"message": "Welcome to NP-Trend API"}
-
-@app.get("/api/ranks/latest-date", response_model=LatestDateResponse)
-def get_latest_date(response: Response):
-    """
-    데이터가 존재하는 가장 최근 날짜를 조회합니다.
-    STATS#<date> 항목을 조회하여 가장 최근 날짜를 가져옵니다.
-    """
-    try:
-        db_response = table.query(
-            KeyConditionExpression=Key('ID').begins_with('STATS#'),
-            ScanIndexForward=False, # Descending order by Date (Sort Key)
-            Limit=1
-        )
-        items = db_response.get('Items', [])
-        if items:
-            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
-            return LatestDateResponse(latest_date=items[0]['Date'])
-        raise HTTPException(status_code=404, detail="No data found.")
-    except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+    return {"message": "Welcome to NovelFlow API"}
 
 @app.get("/api/dates", response_model=AvailableDatesResponse)
 def get_available_dates(response: Response):
@@ -287,7 +651,44 @@ def get_available_dates(response: Response):
             return AvailableDatesResponse(available_dates=sorted(list(item['dates']), reverse=True))
         raise HTTPException(status_code=404, detail="No available dates found.")
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+        raise _server_error("DynamoDB query failed")
+
+@app.get("/api/ranks/novels/showcase", response_model=NovelRankingShowcaseResponse)
+def get_novel_ranking_showcase(response: Response):
+    """
+    최신 랭킹 snapshot 기준의 상단 showcase 데이터를 반환합니다.
+    날짜별 테이블 탐색과 분리된 영역이므로 항상 최신 데이터만 사용합니다.
+    """
+    try:
+        latest_date = _get_latest_novel_rank_date()
+        if not latest_date:
+            raise HTTPException(status_code=404, detail="No latest ranking date found.")
+
+        current_items = _fetch_all_novel_rank_items_by_date(latest_date)
+        if not current_items:
+            raise HTTPException(status_code=404, detail="No data found for the latest date.")
+
+        previous_date = (datetime.strptime(latest_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+        previous_items = _fetch_all_novel_rank_items_by_date(previous_date)
+        showcase_source = _apply_content_policy_all(_enrich_novel_rank_items(current_items, previous_items))
+
+        by_rank = sorted(showcase_source, key=lambda item: item.get('Ranking', 999999))
+        top_three = by_rank[:5]
+        movers = sorted(
+            [item for item in showcase_source if isinstance(item.get('rank_change'), int) and item['rank_change'] > 0],
+            key=lambda item: item['rank_change'],
+            reverse=True
+        )[:5]
+
+        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
+        return {
+            "latest_date": latest_date,
+            "topThree": top_three,
+            "movers": movers,
+        }
+
+    except ClientError as e:
+        raise _server_error("DynamoDB query failed")
 
 @app.get("/api/ranks/novels/{date}", response_model=List[NovelRankData])
 def get_novels_by_date(date: str, response: Response):
@@ -296,46 +697,48 @@ def get_novels_by_date(date: str, response: Response):
     DateRankIndex GSI를 사용하여 해당 날짜의 데이터를 가져옵니다.
     """
     try:
-        # 1. 현재 날짜의 소설 랭킹 데이터 조회 (페이지네이션 처리)
-        all_current_items = []
-        query_args = {
-            'IndexName': 'DateRankIndex',
-            'KeyConditionExpression': Key('Date').eq(date)
-        }
-        while True:
-            current_day_db_response = table.query(**query_args)
-            all_current_items.extend(current_day_db_response.get('Items', []))
-            if 'LastEvaluatedKey' in current_day_db_response:
-                query_args['ExclusiveStartKey'] = current_day_db_response['LastEvaluatedKey']
-            else:
-                break
+        # 1~3. 당일·직전일을 동시에 조회한다.
+        #
+        # 직전일은 rank_change 계산에 ID와 Ranking만 쓰는데도 전체 속성(Synopsis·Tags 등)을
+        # 가져오고 있었다. 500건 × 전 속성이면 응답이 300KB를 넘고 그만큼 읽기도 늘어난다.
+        # ProjectionExpression으로 두 필드만 받고, 두 조회를 병렬로 돌린다
+        # (공모전 쪽에서 이미 쓰던 패턴을 데일리로 이식 — 백로그 #35).
+        current_date_dt = datetime.strptime(date, '%Y-%m-%d')
+        previous_date = (current_date_dt - timedelta(days=1)).strftime('%Y-%m-%d')
+
+        def _query_all(target_date: str, projection: str | None = None) -> list[dict]:
+            items = []
+            args = {
+                'IndexName': 'DateRankIndex',
+                'KeyConditionExpression': Key('Date').eq(target_date),
+            }
+            if projection:
+                args['ProjectionExpression'] = projection
+            while True:
+                page = table.query(**args)
+                items.extend(page.get('Items', []))
+                if 'LastEvaluatedKey' not in page:
+                    break
+                args['ExclusiveStartKey'] = page['LastEvaluatedKey']
+            return items
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            current_future = executor.submit(_query_all, date)
+            previous_future = executor.submit(_query_all, previous_date, 'ID, Ranking')
+            all_current_items = current_future.result()
+            all_previous_items = previous_future.result()
+
         current_day_items = json.loads(json.dumps(all_current_items, cls=DecimalEncoder))
 
         if not current_day_items:
             raise HTTPException(status_code=404, detail="No data found for the given date.")
 
-        # 2. 직전 날짜 계산
-        current_date_dt = datetime.strptime(date, '%Y-%m-%d')
-        previous_date_dt = current_date_dt - timedelta(days=1)
-        previous_date = previous_date_dt.strftime('%Y-%m-%d')
-
-        # 3. 직전 날짜의 소설 랭킹 데이터 조회 (페이지네이션 처리)
-        all_previous_items = []
-        prev_query_args = {
-            'IndexName': 'DateRankIndex',
-            'KeyConditionExpression': Key('Date').eq(previous_date)
-        }
-        while True:
-            previous_day_db_response = table.query(**prev_query_args)
-            all_previous_items.extend(previous_day_db_response.get('Items', []))
-            if 'LastEvaluatedKey' in previous_day_db_response:
-                prev_query_args['ExclusiveStartKey'] = previous_day_db_response['LastEvaluatedKey']
-            else:
-                break
-        previous_day_items = json.loads(json.dumps(all_previous_items, cls=DecimalEncoder))
-
         # 4. 직전 날짜 랭킹 맵 생성 (novel_id -> rank)
-        previous_ranks_map = {item['ID']: item['Ranking'] for item in previous_day_items}
+        previous_ranks_map = {
+            item['ID']: int(item['Ranking'])
+            for item in all_previous_items
+            if 'Ranking' in item
+        }
 
         # 5. 현재 날짜 데이터에 랭킹 변동 정보 + 연독률 추가
         for item in current_day_items:
@@ -353,16 +756,17 @@ def get_novels_by_date(date: str, response: Response):
 
         # 데이터는 하루에 한 번 바뀌므로 길게 캐싱 가능
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
-        return current_day_items
+        return _apply_content_policy_all(current_day_items)
 
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+        raise _server_error("DynamoDB query failed")
 
 @app.get("/api/novels/{novel_id}/latest", response_model=NovelDetails)
 def get_latest_novel_details(novel_id: str, response: Response):
     """
     특정 소설의 가장 최근 전체 데이터를 조회합니다.
     """
+    _reject_if_blocked(novel_id)
     try:
         db_response = table.query(
             KeyConditionExpression=Key('ID').eq(novel_id),
@@ -374,11 +778,11 @@ def get_latest_novel_details(novel_id: str, response: Response):
             latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
             latest_item.update(_compute_retention_rates(latest_item))
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
-            return latest_item
+            return _apply_content_policy(latest_item)
         else:
             raise HTTPException(status_code=404, detail="Novel not found")
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+        raise _server_error("DynamoDB query failed")
 
 @app.get("/api/trends/novels/{novel_id}/{start_date}/{end_date}", response_model=List[Dict[str, Any]])
 def get_novel_trend(novel_id: str, start_date: str, end_date: str, response: Response, _: Optional[str] = Query(None)):
@@ -387,6 +791,7 @@ def get_novel_trend(novel_id: str, start_date: str, end_date: str, response: Res
     데이터가 없는 날짜는 `Ranking: null`로 채워서 반환합니다.
     프론트엔드에서 반드시 start_date와 end_date를 제공해야 합니다.
     """
+    _reject_if_blocked(novel_id)
     try:
         start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
         end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
@@ -427,8 +832,10 @@ def get_novel_trend(novel_id: str, start_date: str, end_date: str, response: Res
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return padded_data
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise _server_error("Unhandled error while handling request")
 
 @app.get("/api/trends/novels/{novel_id}/available-dates", response_model=AvailableDatesResponse)
 def get_novel_available_dates(novel_id: str, response: Response):
@@ -436,6 +843,7 @@ def get_novel_available_dates(novel_id: str, response: Response):
     특정 소설의 데이터가 존재하는 모든 날짜 목록을 조회합니다.
     비용 최소화를 위해 Date 속성만 프로젝션합니다.
     """
+    _reject_if_blocked(novel_id)
     try:
         db_response = table.query(
             KeyConditionExpression=Key('ID').eq(novel_id),
@@ -447,8 +855,10 @@ def get_novel_available_dates(novel_id: str, response: Response):
         dates = [item['Date'] for item in items]
         response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
         return AvailableDatesResponse(available_dates=dates)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise _server_error("Unhandled error while handling request")
 
 def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5) -> Optional[float]:
     """
@@ -482,6 +892,11 @@ def get_tags_by_date(date: str, response: Response):
         counts_top100 = item.get('TagCountsTop100', {})  # 구 데이터에는 없을 수 있음
         has_top100_data = bool(counts_top100)
 
+        # 차단 소설의 기여분을 뺀다. 세 지표가 소설 단위 단순 합이라 성립한다.
+        scores_log, counts_total, counts_top100 = _tag_stats_without_blocked(
+            date, scores_log, counts_total, counts_top100
+        )
+
         tag_data = []
         for tag in scores_log.keys():
             count_total = int(counts_total.get(tag, 0))
@@ -506,11 +921,18 @@ def get_tags_by_date(date: str, response: Response):
             prev_date = (datetime.strptime(date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
             prev_db_response = table.get_item(
                 Key={'ID': f'STATS#{prev_date}', 'Date': prev_date},
-                ProjectionExpression='TagWeightedScoresLogarithmic'
+                ProjectionExpression='TagWeightedScoresLogarithmic, TagCounts'
             )
             prev_item = prev_db_response.get('Item')
             if prev_item:
-                prev_scores = json.loads(json.dumps(dict(prev_item.get('TagWeightedScoresLogarithmic', {})), cls=DecimalEncoder))
+                # 전날도 같은 기준으로 빼지 않으면 rank_change가 틀린다.
+                prev_scores_raw, _, _ = _tag_stats_without_blocked(
+                    prev_date,
+                    prev_item.get('TagWeightedScoresLogarithmic', {}),
+                    prev_item.get('TagCounts', {}),
+                    {},
+                )
+                prev_scores = json.loads(json.dumps(dict(prev_scores_raw), cls=DecimalEncoder))
                 sorted_prev = sorted(prev_scores.items(), key=lambda x: x[1], reverse=True)
                 prev_rank_map = {tag: i + 1 for i, (tag, _) in enumerate(sorted_prev)}
         except Exception as e:
@@ -529,7 +951,7 @@ def get_tags_by_date(date: str, response: Response):
         return sorted_data
 
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+        raise _server_error("DynamoDB query failed")
 
 @app.get("/api/authors/{author_id}", response_model=List[NovelDetails])
 async def get_author_novels(author_id: str, response: Response):
@@ -541,7 +963,7 @@ async def get_author_novels(author_id: str, response: Response):
             KeyConditionExpression=Key('AuthorID').eq(author_id)
         )
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB GSI query failed: {e}")
+        raise _server_error("Author GSI query failed")
     novel_ids = {item['ID'] for item in gsi_response.get('Items', [])}
     if not novel_ids:
         raise HTTPException(status_code=404, detail="Author not found")
@@ -557,9 +979,9 @@ async def get_author_novels(author_id: str, response: Response):
                 item = json.loads(json.dumps(db_response['Items'][0], cls=DecimalEncoder))
                 latest_novels.append(item)
         except ClientError as e:
-            raise HTTPException(status_code=500, detail=f"DynamoDB query failed for novel {novel_id}: {e}")
+            raise _server_error("Author novel query failed")
     response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
-    return latest_novels
+    return _apply_content_policy_all(latest_novels)
 
 @app.get("/api/contests/{year}/latest-date", response_model=LatestDateResponse)
 def get_contest_latest_date(year: int, response: Response):
@@ -579,7 +1001,7 @@ def get_contest_latest_date(year: int, response: Response):
             return LatestDateResponse(latest_date=latest_date)
         raise HTTPException(status_code=404, detail="No latest date found for contest.")
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+        raise _server_error("DynamoDB query failed")
 
 @app.get("/api/contests/{year}/available-dates", response_model=AvailableDatesResponse)
 def get_contest_available_dates(year: int, response: Response):
@@ -598,11 +1020,11 @@ def get_contest_available_dates(year: int, response: Response):
             return AvailableDatesResponse(available_dates=sorted(list(item['dates']), reverse=True))
         raise HTTPException(status_code=404, detail="No available dates found for contest.")
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+        raise _server_error("DynamoDB query failed")
 
 # 공모전 랭킹 리스트 뷰에서 실제 사용하는 필드만 조회 (Synopsis, 에피소드 조회수 등 제외)
 # 'Date', 'View', 'Like', 'Rank'는 DynamoDB 예약어이므로 ExpressionAttributeNames 사용
-_CONTEST_LIST_PROJ = 'ID, #dt, Title, AuthorName, AuthorID, #vw, #lk, Fav, Alr, Eps, Tags, #rk'
+_CONTEST_LIST_PROJ = 'ID, #dt, Title, AuthorName, AuthorID, #vw, #lk, Fav, Alr, Eps, Tags, ThumbnailURL, #rk'
 _CONTEST_LIST_NAMES = {'#dt': 'Date', '#vw': 'View', '#lk': 'Like', '#rk': 'Rank'}
 
 def _fetch_all_contest_items(target_date: str, projection: str | None = None, expr_names: dict | None = None) -> list:
@@ -623,6 +1045,74 @@ def _fetch_all_contest_items(target_date: str, projection: str | None = None, ex
             break
         query_args['ExclusiveStartKey'] = resp['LastEvaluatedKey']
     return _convert_decimals(items)
+
+@app.get("/api/contests/{year}/showcase", response_model=ContestShowcaseResponse)
+def get_contest_showcase(year: int, response: Response):
+    """
+    최신 공모전 snapshot에서 운영자가 지정한 showcase 작품만 반환합니다.
+    날짜별 테이블 탐색과 분리된 영역이므로 항상 최신 데이터만 사용합니다.
+    """
+    if year != 2025:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+
+    try:
+        latest_date = _get_latest_contest_date()
+        if not latest_date:
+            raise HTTPException(status_code=404, detail="No latest date found for contest.")
+
+        configured_showcase_ids = get_contest_showcase_ids_2025()
+
+        if not configured_showcase_ids:
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
+            return {"latest_date": latest_date, "items": []}
+
+        previous_date = _get_previous_contest_date(latest_date)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_latest = executor.submit(_fetch_all_contest_items, latest_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES)
+            future_previous = executor.submit(_fetch_all_contest_items, previous_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES) if previous_date else None
+            latest_items = future_latest.result()
+            previous_items = future_previous.result() if future_previous else []
+
+        previous_item_by_id = {item['ID']: item for item in previous_items}
+        item_by_id = {item['ID']: item for item in latest_items}
+        item_by_raw_id = {item['ID'].replace('NOVEL#', ''): item for item in latest_items}
+
+        showcase_items = []
+        seen_ids = set()
+        def append_showcase_item(item: dict) -> None:
+            previous_item = previous_item_by_id.get(item['ID'])
+            item['award'] = _get_contest_award(item['ID'])
+            item['view_change'] = (item.get('View', 0) or 0) - (previous_item.get('View', 0) or 0) if previous_item else (item.get('View', 0) or 0)
+            item['rank_change'] = None
+            item['is_new'] = False
+            item['like_to_view_ratio'] = (item.get('Like', 0) or 0) / item['View'] if item.get('View') else 0
+            showcase_items.append(item)
+            seen_ids.add(item['ID'])
+
+        for configured_id in configured_showcase_ids:
+            item = item_by_id.get(configured_id) or item_by_raw_id.get(configured_id.replace('NOVEL#', ''))
+            if not item or item['ID'] in seen_ids:
+                continue
+            append_showcase_item(item)
+
+        winner_candidates = [
+            item for item in latest_items
+            if item['ID'] not in seen_ids and _get_contest_award(item['ID']) == '우수상'
+        ]
+        winner_candidates.sort(key=lambda item: item.get('View', 0) or 0, reverse=True)
+        for item in winner_candidates:
+            if len(showcase_items) >= 11:
+                break
+            append_showcase_item(item)
+
+        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
+        return {
+            "latest_date": latest_date,
+            "items": _apply_content_policy_all(_apply_daily_thumbnail_fallback_to_contest_items(showcase_items)),
+        }
+
+    except ClientError as e:
+        raise _server_error("DynamoDB query failed")
 
 
 @app.get("/api/contests/{year}/{date}", response_model=List[ContestNovelData])
@@ -671,29 +1161,32 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
                 if item['ID'] in ids_set:
                     item['award'] = award_name
                     break
-            item['view_change'] = (item.get('View', 0) or 0) - (previous_item.get('View', 0) or 0) if previous_item else (item.get('View', 0) or 0)
+            item['view_change'] = _contest_item_view_change(item, previous_item)
             item['is_new'] = False
             if previous_item and previous_item.get('Rank') is not None:
                 previous_rank = previous_item['Rank']
                 current_rank = item.get('Rank')
                 item['rank_change'] = previous_rank - current_rank if current_rank is not None else 'New'
-                if item['rank_change'] == 'New': item['is_new'] = True
+                if item['rank_change'] == 'New':
+                    item['is_new'] = True
             else:
                 item['rank_change'] = 'New'
+                item['is_new'] = True
 
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
-        return current_day_items
+        return _apply_content_policy_all(current_day_items)
 
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFoundException':
-            raise HTTPException(status_code=500, detail="Required index 'DateViewIndex' not found on contest table.")
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+            raise _server_error("Contest DateViewIndex missing")
+        raise _server_error("DynamoDB query failed")
 
 @app.get("/api/contests/{year}/novels/{novel_id}/latest", response_model=ContestNovelData)
 def get_latest_contest_novel_details(year: int, novel_id: str, response: Response):
     """
     특정 공모전 소설의 가장 최근 전체 데이터를 조회합니다.
     """
+    _reject_if_blocked(novel_id)
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
 
@@ -717,17 +1210,18 @@ def get_latest_contest_novel_details(year: int, novel_id: str, response: Respons
             latest_item['view_change'] = 0
             latest_item['is_new'] = False
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
-            return latest_item
+            return _apply_content_policy(_apply_daily_thumbnail_fallback_to_contest_item(latest_item))
         else:
             raise HTTPException(status_code=404, detail="Contest novel not found")
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+        raise _server_error("DynamoDB query failed")
 
 @app.get("/api/trends/contests/{year}/novels/{novel_id}/available-dates", response_model=AvailableDatesResponse)
 def get_contest_novel_available_dates(year: int, novel_id: str, response: Response):
     """
     특정 공모전 소설의 데이터가 존재하는 모든 날짜 목록을 조회합니다.
     """
+    _reject_if_blocked(novel_id)
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
     try:
@@ -740,8 +1234,10 @@ def get_contest_novel_available_dates(year: int, novel_id: str, response: Respon
         dates = [item['Date'] for item in items]
         response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
         return AvailableDatesResponse(available_dates=dates)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise _server_error("Unhandled error while handling request")
 
 @app.get("/api/trends/contests/{year}/novels/{novel_id}/{start_date}/{end_date}", response_model=List[Dict[str, Any]])
 def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date: str, response: Response, _: Optional[str] = Query(None)):
@@ -749,6 +1245,7 @@ def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date:
     특정 공모전 소설의 기간별 데이터 트렌드를 조회합니다.
     데이터가 없는 날짜는 null 값으로 채워서 반환합니다.
     """
+    _reject_if_blocked(novel_id)
     if year != 2025:
         raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
 
@@ -792,8 +1289,10 @@ def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date:
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return padded_data
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise _server_error("Unhandled error while handling request")
 
 @app.get("/api/contests/{year}/ranks/tags/{date}", response_model=List[ContestTagRankData])
 def get_contest_tags_by_date(year: int, date: str, response: Response):
@@ -832,7 +1331,449 @@ def get_contest_tags_by_date(year: int, date: str, response: Response):
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return sorted_data
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"DynamoDB query failed: {e.response['Error']['Message']}")
+        raise _server_error("DynamoDB query failed")
+
+@app.get("/api/trends/tags/series/{start_date}/{end_date}")
+def get_tag_series(start_date: str, end_date: str, response: Response):
+    """기간 안의 모든 수집일에 대해 태그별 시계열을 한 번에 반환한다.
+
+    프론트가 날짜를 하나씩 호출하면(`/api/ranks/tags/{date}`) 날짜당 약 0.4초가
+    들어 30일이면 12초가 넘는다. STATS 항목은 `batch_get_item`으로 한 번에 최대
+    100일을 읽을 수 있으므로 여기서 묶어 준다.
+
+    반환 형태는 날짜 배열 + 태그별 병렬 배열이다. 태그마다 날짜를 반복해 담으면
+    응답이 몇 배로 커진다. 특정 날짜에 그 태그가 없으면 해당 자리는 null이다.
+
+    순위는 `/api/ranks/tags/{date}`와 같게 power_score 내림차순으로 매기고,
+    차단 소설 기여분도 같은 방식으로 뺀다 — 두 화면의 숫자가 어긋나면 안 된다.
+    """
+    try:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        if end_dt < start_dt:
+            raise HTTPException(status_code=400, detail="end_date must not precede start_date.")
+        if (end_dt - start_dt).days > 180:
+            raise HTTPException(status_code=400, detail="Range must be 180 days or fewer.")
+
+        dates = [(start_dt + timedelta(days=i)).strftime('%Y-%m-%d')
+                 for i in range((end_dt - start_dt).days + 1)]
+
+        items_by_date: dict = {}
+        keys = [{'ID': f"STATS#{d}", 'Date': d} for d in dates]
+        for i in range(0, len(keys), 100):
+            unprocessed = {
+                table.name: {
+                    'Keys': keys[i:i + 100],
+                    'ProjectionExpression': 'ID, #d, TagWeightedScoresLogarithmic, TagCounts, TagCountsTop100',
+                    'ExpressionAttributeNames': {'#d': 'Date'},
+                }
+            }
+            backoff = 0.05
+            while unprocessed:
+                res = dynamodb.batch_get_item(RequestItems=unprocessed)
+                for it in res.get('Responses', {}).get(table.name, []):
+                    items_by_date[it['Date']] = it
+                unprocessed = res.get('UnprocessedKeys') or {}
+                if unprocessed:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 1.0)
+
+        present = [d for d in dates if d in items_by_date]
+        if not present:
+            raise HTTPException(status_code=404, detail="No tag statistics found in the given range.")
+
+        series: dict = {}
+        for idx, d in enumerate(present):
+            item = items_by_date[d]
+            scores, counts, counts_top = _tag_stats_without_blocked(
+                d,
+                item.get('TagWeightedScoresLogarithmic', {}) or {},
+                item.get('TagCounts', {}) or {},
+                item.get('TagCountsTop100', {}) or {},
+            )
+            has_top100 = bool(counts_top)
+            ordered = sorted(scores.items(), key=lambda kv: float(kv[1]), reverse=True)
+            for rank0, (tag, score) in enumerate(ordered):
+                slot = series.get(tag)
+                if slot is None:
+                    n = len(present)
+                    slot = {'rank': [None] * n, 'count': [None] * n,
+                            'score': [None] * n, 'lift': [None] * n}
+                    series[tag] = slot
+                total = int(counts.get(tag, 0))
+                slot['rank'][idx] = rank0 + 1
+                slot['count'][idx] = total
+                slot['score'][idx] = float(score)
+                slot['lift'][idx] = (_compute_local_lift(int(counts_top.get(tag, 0)), total)
+                                     if has_top100 else None)
+
+        response.headers["Cache-Control"] = "public, max-age=300"
+        return json.loads(json.dumps({'dates': present, 'tags': series}, cls=DecimalEncoder))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _internal_error(f"Error building tag series for {start_date}~{end_date}: {e}")
+
+
+def _returning_ids(candidates: set, before: str) -> set:
+    """`before` **이전에 한 번이라도 랭킹에 든 적이 있는** ID 를 골라낸다.
+
+    '들어온 작품'이 정말 처음 진입한 것인지 확인하는 경로다. 기간 첫날 목록과만
+    비교하면 전부터 있다가 첫날 하루만 빠졌던 작품이 '신규'로 잡힌다.
+
+    **왜 앞쪽 스냅샷을 되짚지 않고 작품별로 묻는가.** 스냅샷을 전부 읽는 방법도 되지만
+    전 기간 530일이 **853 RCU**(실측)다. 정작 판정이 필요한 것은 *후보 작품* 몇십~몇백
+    편뿐인데, 작품마다 자기 파티션에서 `Date < before` 를 `Limit 1` 로 물으면 건당
+    0.5 RCU 라 후보 185편에 **93 RCU** 다 — 9배 싸고, 무엇보다 **판정 범위가 스냅샷
+    보유 기간에 묶이지 않는다**(전 이력을 본다).
+
+    행이 하나라도 있으면 그날 랭킹에 있었다는 뜻이다 — 적재는 랭킹에 든 작품만 쓴다.
+    """
+    if not candidates:
+        return set()
+
+    def charted(nid: str) -> Optional[str]:
+        try:
+            # **저수준 client 를 쓴다.** `boto3.resource`(와 그 `Table`)는 AWS 문서상
+            # 스레드 안전하지 않고, botocore client 는 안전하다. 리소스를 공유한 채
+            # 스레드를 늘리면 조용히 직렬화되거나 더 나쁜 일이 난다.
+            res = ddb_client.query(
+                TableName=table.name,
+                KeyConditionExpression='ID = :i AND #dt < :d',
+                ExpressionAttributeNames={'#dt': 'Date'},
+                ExpressionAttributeValues={':i': {'S': str(nid)}, ':d': {'S': before}},
+                ProjectionExpression='#dt',
+                Limit=1,
+            )
+            return nid if res.get('Items') else None
+        except Exception:                    # noqa: BLE001
+            # 판정 실패는 '처음 진입'이 아니라 **'모른다'** 로 처리한다. 조회 오류를
+            # 신규 진입으로 읽으면 예전부터 있던 작품이 목록에 조용히 섞인다.
+            return nid
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        return {r for r in pool.map(charted, candidates) if r}
+
+# 기간 AI 요약을 담아 두는 아이템. 요청마다 모델을 부르지 않는다 — 창이 7/30/90
+# 세 개뿐이라 하루 세 번 만들어 두면 되고, 그래야 응답 시간과 비용이 예측 가능하다.
+# 아직 생성 경로가 없어 아이템이 없으면 `None` 을 돌려주고 화면이 빈 영역을 그린다.
+AI_SUMMARY_ID = 'AISUMMARY'
+
+
+def _ai_period_summary(days: int, end_date: str) -> Optional[dict]:
+    """저장된 기간 요약. 없거나 다른 날짜 것이면 `None`.
+
+    **끝 날짜를 대조한다.** 요약은 특정 기간에 대한 문장이므로, 파이프라인이
+    아직 오늘 것을 만들지 않았다면 어제 요약을 오늘 것처럼 보여 주면 안 된다.
+    """
+    try:
+        item = table.get_item(Key={'ID': f'{AI_SUMMARY_ID}#{days}', 'Date': end_date}).get('Item')
+    except Exception:
+        return None                     # 요약이 없다고 리포트 전체를 실패시키지 않는다
+    if not item or not item.get('text'):
+        return None
+    return {
+        'text': item['text'],
+        'model': item.get('model'),
+        'generated_at': item.get('generated_at'),
+    }
+
+
+@app.get("/api/analysis/report/{days}")
+def get_analysis_report(days: int, response: Response):
+    """데이터 분석 리포트. 기간 전체(모든 수집일)를 실제로 다 쓴다.
+
+    **왜 사전 계산인가.** 날짜당 랭킹은 364행 340KB이고 `DateRankIndex` 조회가
+    웜 0.37초·콜드 30초다. 90일을 요청 시점에 모으면 API Gateway 29초를 넘고
+    브라우저 페이로드도 30MB가 된다. 그래서 적재 파이프라인이 날짜마다 16KB짜리
+    압축 스냅샷(`RSNAP#<date>`)을 남기고, 여기서 `batch_get_item` 으로 한 번에 읽는다.
+    표본을 뽑지 않으므로 최고 순위·평균 순위·기간 추천비가 실제 값이 된다.
+
+    **성인작 판정은 여기서만 한다.** 스냅샷에는 `adult` 플래그가 그대로 담겨 있고,
+    차단 목록(과거 전 기간, 매일 갱신)과의 합집합을 이 함수가 적용한다.
+    `analysis_report` 모듈은 판정을 모르며 이미 걸러진 데이터만 받는다 —
+    판정 로직이 두 군데로 갈라지면 나중에 추가된 차단 작품이 리포트에 남는다.
+
+    스냅샷이 없는 날짜는 건너뛰고 `dates_missing` 으로 알린다(파이프라인 배포 이전
+    날짜는 `scripts/backfill_ranking_snapshots.py` 로 소급 생성한다).
+    """
+    if days not in (7, 30, 90):
+        raise HTTPException(status_code=400, detail="days must be one of 7, 30, 90.")
+    try:
+        meta = table.get_item(Key={'ID': 'AVAILABLE_DATES', 'Date': 'ALL_DATES'}).get('Item') or {}
+        all_dates = sorted(meta.get('dates') or [], reverse=True)
+        if not all_dates:
+            raise HTTPException(status_code=404, detail="No collection dates found.")
+        window = sorted(all_dates[:days])          # 오름차순: [0] 시작, [-1] 끝
+
+        # 1. 압축 스냅샷을 배치로. 날짜별 get_item 이면 90번이라 못 쓴다.
+        got: dict[str, dict] = {}
+        keys = [{'ID': f'RSNAP#{d}', 'Date': d} for d in window]
+        for i in range(0, len(keys), 100):
+            unprocessed = {table.name: {'Keys': keys[i:i + 100]}}
+            backoff = 0.05
+            while unprocessed:
+                res = dynamodb.batch_get_item(RequestItems=unprocessed)
+                for it in res.get('Responses', {}).get(table.name, []):
+                    got[it['Date']] = it
+                unprocessed = res.get('UnprocessedKeys') or {}
+                if unprocessed:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 1.0)
+
+        present = [d for d in window if d in got]
+        if len(present) < 2:
+            raise HTTPException(
+                status_code=404,
+                detail="Not enough ranking snapshots in range. Run scripts/backfill_ranking_snapshots.py.",
+            )
+
+        # 2. 성인작 제거. 스냅샷은 병렬 배열이므로 살릴 인덱스를 골라 다시 만든다.
+        blocked = _adult_blocklist()
+        snaps = []
+        for d in present:
+            it = got[d]
+            ids = [str(x) for x in (it.get('ids') or [])]
+            adult = list(it.get('adult') or [])
+            keep = [
+                i for i, nid in enumerate(ids)
+                if not _is_adult_item({'ID': nid, 'IsAdult': adult[i] if i < len(adult) else False}, blocked)
+            ]
+            pick = lambda name: [int(it.get(name, [])[i]) for i in keep]  # noqa: E731
+            snaps.append({
+                'date': d, 'ids': [ids[i] for i in keep],
+                'rank': pick('rank'), 'eps': pick('eps'),
+                'view': pick('view'), 'like': pick('like'),
+            })
+
+        # 3. 양 끝 날짜의 전체 행. 제목·작가·태그·잔류율은 압축 스냅샷에 없다.
+        #
+        # **시작일도 읽어야 한다.** 빠진 작품은 마지막 날 목록에 없으므로 끝 날짜만
+        # 읽으면 제목을 붙일 수 없어 화면에 `작품 436900` 처럼 ID 만 남는다 —
+        # 실제로 그 상태였고, 태그 통계도 들어온 쪽만 낼 수 있었다.
+        end_date, start_date_actual = present[-1], present[0]
+
+        def _rows_for(date: str) -> list[dict]:
+            items, args = [], {
+                'IndexName': 'DateRankIndex',
+                'KeyConditionExpression': Key('Date').eq(date),
+                'ProjectionExpression': 'ID, Ranking, Title, AuthorName, AuthorID, Eps, #s, Tags, '
+                                        'FirstEpView, Ep30View, RecentBaseView, TargetLatestEpView, IsAdult',
+                'ExpressionAttributeNames': {'#s': 'Score'},
+            }
+            while True:
+                page = table.query(**args)
+                items.extend(page.get('Items', []))
+                if 'LastEvaluatedKey' not in page:
+                    break
+                args['ExclusiveStartKey'] = page['LastEvaluatedKey']
+            rows = _apply_content_policy_all(json.loads(json.dumps(items, cls=DecimalEncoder)))
+            for r in rows:
+                _attach_retention(r)
+            return rows
+
+        # 두 날짜를 병렬로. 순차로 하면 콜드에서 30초씩 두 번이다.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fe = pool.submit(_rows_for, end_date)
+            fs = pool.submit(_rows_for, start_date_actual)
+            end_rows, start_rows = fe.result(), fs.result()
+        end_by_id = {str(r['ID']): r for r in end_rows}
+        start_by_id = {str(r['ID']): r for r in start_rows}
+
+        # 4. 계산
+        works = AR.per_work(snaps)
+        end_ids = set(end_by_id)
+
+        # '들어온 작품' 후보 = 지금 목록에 있고 기간 첫날에는 없던 작품. 이 가운데
+        # 기간 **전에** 랭킹에 든 적이 있는 것을 걸러내면 남는 것이 진짜 첫 진입이다.
+        # 전수를 묻지 않고 후보만 묻는다 — 계속 목록에 있던 작품은 물어볼 필요가 없다.
+        candidates = end_ids - set(snaps[0]['ids'])
+        seen_before = _returning_ids(candidates, present[0])
+        entrants_basis = {
+            'checked': len(candidates),
+            'returning': len(seen_before),
+            'first_collected': all_dates[-1],       # all_dates 는 내림차순
+        }
+        bands_def = [('상위 50위', 1, 50), ('51~150위', 51, 150),
+                     ('151~300위', 151, 300), ('301위 밖', 301, math.inf)]
+        report = {
+            'days_requested': days,
+            'dates': present,
+            'dates_missing': len(window) - len(present),
+            'start': present[0], 'end': end_date,
+            'ai_summary': _ai_period_summary(days, end_date),
+            'entrants_basis': entrants_basis,
+            'churn': AR.churn(snaps, AR.band_retention(snaps, bands_def)),
+            'pace': AR.pace_distribution(works, end_ids),
+        }
+        report.update(_report_lists(snaps, works, end_by_id, end_rows,
+                                    start_by_id, start_rows, seen_before))
+        # 연재 분포와 그 상위 목록은 화면에서 한 섹션이므로 응답에서도 한 덩어리로.
+        report['pace']['top'] = report.pop('pace_top')
+
+        response.headers["Cache-Control"] = "public, max-age=1800"
+        return json.loads(json.dumps(report, cls=DecimalEncoder))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _internal_error(f"Error building analysis report for {days} days: {e}")
+
+
+def _attach_retention(r: dict) -> None:
+    """잔류율. 랭킹 응답과 같은 규칙을 쓴다 — 30번째 유효 회차가 없으면 미산출."""
+    fv, e30 = r.get('FirstEpView'), r.get('Ep30View')
+    r['EarlyRetentionRate'] = round(e30 / fv, 4) if fv and e30 and fv > 0 else None
+    bv, lv = r.get('RecentBaseView'), r.get('TargetLatestEpView')
+    r['RecentRetentionRate'] = round(lv / bv, 4) if bv and lv and bv > 0 else None
+
+
+def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
+                  start_by_id: dict, start_rows: list, seen_before: set) -> dict:
+    """화면에 글자로 나가는 목록들. 여기서만 제목·작가·태그를 붙인다."""
+    start_ids = set(snaps[0]['ids'])
+    end_ids = set(end_by_id)
+
+    def row(nid: str, w: dict, extra: dict) -> dict:
+        base = end_by_id.get(nid) or {}
+        out = {
+            'id': nid,
+            'title': base.get('Title'), 'author': base.get('AuthorName'),
+            'author_id': base.get('AuthorID'),
+            'tags': (base.get('Tags') or [])[:3],
+            'eps': w.get('last_eps'), 'added_eps': w.get('added_eps'),
+            'rank': w.get('ranks', [None])[-1], 'best_rank': w.get('best_rank'),
+            'avg_rank': w.get('avg_rank'),
+            'early': base.get('EarlyRetentionRate'),
+            'recent': base.get('RecentRetentionRate'),
+            'period_ratio': w.get('period_ratio'),
+            'per_week': round(w['per_week'], 1) if w.get('per_week') is not None else None,
+            'observations': w.get('observations'),
+        }
+        out.update(extra)
+        return out
+
+    # 들어온 작품 = 지금 목록에 있고, **기간 첫날에도 없었고 기간 앞쪽에서도 본 적이
+    # 없는** 작품. 첫날 목록과만 비교하면 전부터 있다가 하루만 빠졌던 작품이 섞인다.
+    entrant_ids = [n for n in end_ids if n not in start_ids and n not in seen_before]
+    entrant_ids.sort(key=lambda n: works[n]['best_rank'] if n in works else 9999)
+    entrants = [row(n, works.get(n, {}), {}) for n in entrant_ids[:30] if n in works]
+
+    # 빠진 작품의 제목·태그는 **시작일 행**에서 가져온다(마지막 날 목록에 없으므로).
+    leaver_ids = [n for n in start_ids if n not in end_ids]
+    leavers = []
+    for n in sorted(leaver_ids, key=lambda n: works[n]['ranks'][0] if n in works else 9999)[:30]:
+        w = works.get(n)
+        if not w:
+            continue
+        base = start_by_id.get(n) or {}
+        leavers.append({
+            'id': n,
+            'title': base.get('Title'), 'author': base.get('AuthorName'),
+            'author_id': base.get('AuthorID'),
+            'tags': (base.get('Tags') or [])[:3],
+            'rank_at_start': w['ranks'][0], 'best_rank': w['best_rank'],
+            'last_seen': w['last_date'], 'observations': w['observations'],
+            'eps': w['last_eps'], 'added_eps': w['added_eps'],
+            'early': base.get('EarlyRetentionRate'), 'recent': base.get('RecentRetentionRate'),
+        })
+
+    entrant_rows = [end_by_id[n] for n in entrant_ids if n in end_by_id]
+    ratios = sorted(
+        (w for n, w in works.items() if n in end_ids and w.get('period_ratio') is not None),
+        key=lambda w: -w['period_ratio'],
+    )
+    rid = {id(w): n for n, w in works.items()}
+    ratio_row = lambda w: row(rid[id(w)], w, {})  # noqa: E731
+
+    # 이 기간에 회차가 가장 많이 늘어난 작품. 분포 그래프만으로는 "그래서 어떤
+    # 작품이"에 답하지 못해 표를 함께 둔다.
+    #
+    # **주당 페이스가 아니라 늘어난 회차 절대량으로 줄 세운다.** 주당 값으로 줄
+    # 세우면 사흘만 관측된 작품이 맨 위로 오고(짧은 분모), 화면이 그 값을 순위처럼
+    # 보여 준다. 절대량은 그 기간에 실제로 올라온 분량이라 그런 왜곡이 없다.
+    paced = sorted(
+        (w for n, w in works.items() if n in end_ids and w['added_eps'] > 0),
+        key=lambda w: (-w['added_eps'], w['avg_rank']),
+    )
+    pace_top = [ratio_row(w) for w in paced[:15]]
+
+    # 잔류율은 **회차가 늘어난 작품만** 본다. 최신 잔류는 연재가 멈추면 최신화
+    # 조회수가 계속 차서 올라가므로, 완결·휴재작이 섞이면 목록이 그것들로만 찬다.
+    active = [
+        w for n, w in works.items()
+        if n in end_ids and w['added_eps'] > 0
+        and end_by_id[n].get('EarlyRetentionRate') is not None
+        and end_by_id[n].get('RecentRetentionRate') is not None
+    ]
+    # **두 비율을 그냥 더하지 않는다.** 초반 잔류(30화/1화)와 최신 잔류(최신화/그
+    # 30화 전)는 분모가 달라 분포 폭도 다르다 — 합으로 줄 세우면 폭이 넓은 쪽이
+    # 순서를 혼자 결정하고, 화면에는 "둘 다 높은 작품"이라고 적히면서 실제로는
+    # 한 지표만 반영된 목록이 나온다. 그래서 각 지표를 **후보군 안에서의 백분위**로
+    # 바꾼 뒤 평균한다. 척도가 사라지므로 두 지표가 같은 무게를 갖는다.
+    _early = sorted(end_by_id[rid[id(w)]]['EarlyRetentionRate'] for w in active)
+    _recent = sorted(end_by_id[rid[id(w)]]['RecentRetentionRate'] for w in active)
+
+    def _retention_key(w: dict) -> float:
+        from bisect import bisect_left
+        base = end_by_id[rid[id(w)]]
+        n = max(len(active), 1)
+        pe = bisect_left(_early, base['EarlyRetentionRate']) / n
+        pr = bisect_left(_recent, base['RecentRetentionRate']) / n
+        return -(pe + pr) / 2
+
+    active.sort(key=_retention_key)
+
+    avg_ranks = [w['avg_rank'] for n, w in works.items() if n in end_ids]
+    quartiles = AR.rank_quartiles(avg_ranks)
+    diagnose_works = []
+    for n, w in works.items():
+        if n not in end_ids:
+            continue
+        base = end_by_id[n]
+        diagnose_works.append({
+            'id': n, 'title': base.get('Title'), 'author': base.get('AuthorName'),
+            'avg_rank': round(w['avg_rank'], 1), 'best_rank': w['best_rank'],
+            'band': AR.band_of(w['avg_rank'], quartiles),
+            'score': base.get('Score'), 'eps': w['last_eps'],
+            'delta_view': w['delta_view'], 'period_ratio': w['period_ratio'],
+            'per_week': round(w['per_week'], 2),
+            'early': base.get('EarlyRetentionRate'),
+            'recent': base.get('RecentRetentionRate'),
+        })
+
+    return {
+        'totals': {
+            'end_works': len(end_rows),
+            'entrants': len(entrant_ids),
+            'leavers': len(leaver_ids),
+        },
+        'entrants': entrants,
+        'leavers': leavers,
+        'entrant_tags': AR.tag_lift(entrant_rows, end_rows),
+        # 들어온 쪽만 태그를 내면 좌우 비교가 한쪽으로 기운다.
+        'leaver_tags': AR.tag_lift(
+            [start_by_id[n] for n in leaver_ids if n in start_by_id], start_rows),
+        # 두 목록을 **순위로 가른다.** 전체 상위와 '100위 밖'을 나란히 두면 추천비
+        # 상위가 전부 100위 밖일 때 같은 카드가 두 번 나온다(실측 12건 전부 겹쳤다).
+        'period_ratio': {
+            'floor_delta_view': AR.DELTA_VIEW_FLOOR,
+            'counted': len(ratios),
+            'top': [ratio_row(w) for w in ratios if w['ranks'][-1] <= 100][:12],
+            'hidden': [ratio_row(w) for w in ratios if w['ranks'][-1] > 100][:12],
+        },
+        'pace_top': pace_top,
+        'retention': {'rows': [ratio_row(w) for w in active[:12]]},
+        'diagnose': {'quartiles': quartiles, 'works': diagnose_works},
+        'tags': {
+            'pairs': AR.tag_combinations(end_rows, 2, 4, 16),
+            'triples': AR.tag_combinations(end_rows, 3, 4, 10),
+            'entrant_pairs': AR.tag_combinations(entrant_rows, 2, 3, 10),
+            'companions': AR.tag_companions(end_rows),
+        },
+    }
+
 
 @app.get("/api/trends/tags/analysis/{start_date}/{end_date}")
 def analyze_tag_trends(start_date: str, end_date: str, response: Response, _: Optional[str] = Query(None)):
@@ -855,18 +1796,25 @@ def analyze_tag_trends(start_date: str, end_date: str, response: Response, _: Op
         # DynamoDB batch_get_item은 한 번에 최대 100개의 아이템만 요청할 수 있으므로, 100개씩 나누어 처리합니다.
         for i in range(0, len(keys_to_get), 100):
             chunk = keys_to_get[i:i + 100]
-            db_response = dynamodb.batch_get_item(
-                RequestItems={
-                    table.name: {
-                        'Keys': chunk,
-                        'ProjectionExpression': 'ID, #d, TagWeightedScoresLogarithmic, TagCountsTop100, TagCounts',
-                        'ExpressionAttributeNames': {'#d': 'Date'}
-                    }
+            # BatchGetItem은 16MB 응답 상한이나 스로틀링 시 처리 못한 키를 UnprocessedKeys로
+            # 돌려주므로, 비어질 때까지 백오프를 두고 재시도한다 (미처리 시 일부 날짜가 조용히 누락됨).
+            unprocessed = {
+                table.name: {
+                    'Keys': chunk,
+                    'ProjectionExpression': 'ID, #d, TagWeightedScoresLogarithmic, TagCountsTop100, TagCounts',
+                    'ExpressionAttributeNames': {'#d': 'Date'}
                 }
-            )
-            all_items_raw.extend(db_response.get('Responses', {}).get(table.name, []))
+            }
+            backoff = 0.05
+            while unprocessed:
+                db_response = dynamodb.batch_get_item(RequestItems=unprocessed)
+                all_items_raw.extend(db_response.get('Responses', {}).get(table.name, []))
+                unprocessed = db_response.get('UnprocessedKeys') or {}
+                if unprocessed:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 1.0)
 
-        items = json.loads(json.dumps(all_items_raw, cls=DecimalEncoder))
+        items = _convert_decimals(all_items_raw)
         
         if not items:
             raise HTTPException(status_code=404, detail="No statistics data found for the given date range.")
@@ -1007,8 +1955,10 @@ def analyze_tag_trends(start_date: str, end_date: str, response: Response, _: Op
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return final_response
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise _server_error("Unhandled error while handling request")
     
 if __name__ == "__main__":
     import uvicorn

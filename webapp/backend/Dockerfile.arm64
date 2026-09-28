@@ -13,8 +13,9 @@ COPY requirements.lambda.txt /tmp/requirements.txt
 # /asset 폴더에 arm64용으로 컴파일된 라이브러리 설치
 RUN pip install -r /tmp/requirements.txt -t /asset/package
 
-# 애플리케이션 코드(main.py)를 /asset/api/ 폴더로 복사하여 디렉토리 구조를 유지합니다.
-COPY api/main.py /asset/api/
+# 애플리케이션 코드(api/*.py)를 /asset/api/ 폴더로 복사하여 디렉토리 구조를 유지합니다.
+# main.py 가 같은 폴더의 모듈(analysis_report 등)을 import 하므로 전부 넣어야 합니다.
+COPY api/*.py /asset/api/
 
 # 최종 배포용 zip 파일 생성
 WORKDIR /asset

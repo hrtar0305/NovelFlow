@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useTransition } from 'react';
-import { Form, InputGroup, Button } from 'react-bootstrap';
+import { Form, InputGroup } from 'react-bootstrap';
 import { Search } from 'react-bootstrap-icons';
 
 interface NovelFilterControlsProps {
@@ -49,10 +49,9 @@ const NovelFilterControls = React.memo(({ onFilterChange }: NovelFilterControlsP
   };
 
   return (
-    <div className="d-flex flex-wrap align-items-end gap-2 mb-2">
-      <div className="flex-fill" style={{ minWidth: '150px' }}>
-        <Form.Label htmlFor="search-input" className="fw-bold">제목/작가 검색</Form.Label>
-        <InputGroup>
+    <div className="filter-controls mb-2">
+      <div className="filter-control-group filter-control-group--search" style={{ minWidth: '150px' }}>
+        <InputGroup className="filter-control-input-group">
           <InputGroup.Text><Search /></InputGroup.Text>
           <Form.Control 
             id="search-input"
@@ -62,10 +61,10 @@ const NovelFilterControls = React.memo(({ onFilterChange }: NovelFilterControlsP
           />
         </InputGroup>
       </div>
-      <div className="flex-fill" style={{ minWidth: '200px' }}>
-        <Form.Label className="fw-bold">회차 범위 필터</Form.Label>
-        <InputGroup size="sm">
-          <Form.Control 
+      <div className="filter-control-group filter-control-group--range" style={{ minWidth: '180px' }}>
+        <div className="episode-filter-grid">
+          <input
+            className="episode-filter-input"
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
@@ -74,8 +73,8 @@ const NovelFilterControls = React.memo(({ onFilterChange }: NovelFilterControlsP
             onChange={(e) => setTempMinEps(e.target.value)} 
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEpsFilter(); } }}
           />
-          <InputGroup.Text>-</InputGroup.Text>
-          <Form.Control 
+          <input
+            className="episode-filter-input"
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
@@ -84,8 +83,8 @@ const NovelFilterControls = React.memo(({ onFilterChange }: NovelFilterControlsP
             onChange={(e) => setTempMaxEps(e.target.value)}  
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEpsFilter(); } }}
           />
-          <Button onClick={handleApplyEpsFilter}>적용</Button>
-        </InputGroup>
+          <button type="button" className="episode-filter-apply" onClick={handleApplyEpsFilter}>적용</button>
+        </div>
       </div>
     </div>
   );

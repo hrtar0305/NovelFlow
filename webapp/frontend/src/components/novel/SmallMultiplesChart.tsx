@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Brush } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { Button } from 'react-bootstrap';
 
@@ -44,6 +44,12 @@ const formatNumberForMobile = (value: number): string => {
     return `${(value / 10000).toFixed(1).replace(/\.0$/, '')}만`;
   }
   return value.toLocaleString();
+};
+
+const getXAxisInterval = (pointCount: number, isModal: boolean, isMobile: boolean) => {
+  const targetTicks = isModal ? (isMobile ? 8 : 14) : (isMobile ? 5 : 8);
+  if (pointCount <= targetTicks) return 0;
+  return Math.max(0, Math.ceil(pointCount / targetTicks) - 1);
 };
 
 // --- Chart Components ---
@@ -103,7 +109,7 @@ const CustomCandleTooltip = ({ active, payload, label, name, metricKey }: { acti
     }
 
     let changeString = '-';
-    let changeColor = '#6c757d';
+    let changeColor = 'var(--np-text-secondary)';
 
     if (itemPayload[`${metricKey}_prevValue`] !== undefined && itemPayload[`${metricKey}_prevValue`] !== null) {
       const prevValue = itemPayload[`${metricKey}_prevValue`];
@@ -111,8 +117,8 @@ const CustomCandleTooltip = ({ active, payload, label, name, metricKey }: { acti
 
       if (actualCurrValue !== null && prevValue !== null) {
         const change = actualCurrValue - prevValue;
-        const positiveChangeColor = metricKey.toLowerCase().includes('rank') ? '#0d6efd' : '#d9534f';
-        const negativeChangeColor = metricKey.toLowerCase().includes('rank') ? '#d9534f' : '#0d6efd';
+        const positiveChangeColor = metricKey.toLowerCase().includes('rank') ? 'var(--np-rank-down)' : 'var(--np-rank-up)';
+        const negativeChangeColor = metricKey.toLowerCase().includes('rank') ? 'var(--np-rank-up)' : 'var(--np-rank-down)';
         if (change !== 0) {
           changeColor = change > 0 ? positiveChangeColor : negativeChangeColor;
           const displayChange = metricKey.toLowerCase().includes('rank') ? -change : change;
@@ -122,7 +128,7 @@ const CustomCandleTooltip = ({ active, payload, label, name, metricKey }: { acti
     }
 
     return (
-      <div className="custom-tooltip p-2 border rounded shadow-sm">
+      <div className="custom-tooltip p-2 border rounded">
         <p className="label fw-bold mb-1">{`날짜: ${label}`}</p>
         <p className="mb-0">
           {`${name}: ${typeof currValue === 'number' ? currValue.toLocaleString() : currValue}`}
@@ -263,26 +269,52 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
             processedData.map(d => ({...d, tooltipTrigger: [yDomain[0], yDomain[1]]}))
         , [processedData, yDomain]);
 
-        const upColor = metric.toLowerCase().includes('rank') ? '#0d6efd' : '#d9534f';
-        const downColor = metric.toLowerCase().includes('rank') ? '#d9534f' : '#0d6efd';
+        const upColor = metric.toLowerCase().includes('rank') ? 'var(--np-rank-down)' : 'var(--np-rank-up)';
+        const downColor = metric.toLowerCase().includes('rank') ? 'var(--np-rank-up)' : 'var(--np-rank-down)';
+        const pointCount = dataWithTooltipTarget.length;
+        const chartData = dataWithTooltipTarget as any[];
+        const firstDate = chartData[0]?.Date ? parseISO(chartData[0].Date) : null;
+        const lastDate = chartData[pointCount - 1]?.Date ? parseISO(chartData[pointCount - 1].Date) : null;
+        const spansYears = Boolean(firstDate && lastDate && firstDate.getFullYear() !== lastDate.getFullYear());
+        const useMonthTicks = pointCount > (isModal ? 120 : 70);
+        const xTickFormatter = (dateStr: string) => {
+          const parsedDate = parseISO(dateStr);
+          if (useMonthTicks) {
+            return format(parsedDate, spansYears ? 'yy.MM' : 'M월');
+          }
+          return format(parsedDate, isModal ? 'MM.dd' : 'd');
+        };
+        const xAxisInterval = getXAxisInterval(pointCount, isModal, isMobile);
+        const shouldShowDots = pointCount <= (isModal ? 140 : 60);
+        const shouldRenderRangeBars = pointCount <= (isModal ? 260 : 140);
+        const brushGap = Math.max(1, Math.floor(pointCount / 90));
+        const chartMargin = isModal
+          ? { top: 18, right: 34, left: isMobile ? 6 : 52, bottom: 28 }
+          : { top: 8, right: 12, left: isMobile ? -8 : 30, bottom: isMobile ? -14 : 5 };
 
         return (
           <div key={metric} className={isModal ? "h-100" : "chart-item-wrapper"}>
-            <div className="chart-card border rounded h-100 d-flex flex-column">
+            <div className="chart-card h-100 d-flex flex-column">
               <div className="chart-card-header d-flex align-items-center justify-content-between">
                 <span className="chart-card-title">{config.name}</span>
                 {!isModal && (
-                  <Button variant="outline-secondary" size="sm" onClick={() => onZoomClick(metric)} className="chart-zoom-btn">확대</Button>
+                  <Button variant="outline-secondary" size="sm" onClick={() => onZoomClick(metric)} className="chart-zoom-btn">자세히 보기</Button>
                 )}
               </div>
-              <div className="flex-grow-1" style={{minHeight: isModal ? 'auto' : '180px', padding: '0 4px 4px'}}>
+              <div className="flex-grow-1" style={{minHeight: isModal ? 'auto' : '180px', padding: isModal ? '0.35rem 0.35rem 0.1rem' : '0 4px 4px'}}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dataWithTooltipTarget} margin={{ top: 8, right: 12, left: isMobile ? -8 : 30, bottom: isMobile ? -14 : 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--np-border)" />
+                  <ComposedChart data={dataWithTooltipTarget} margin={chartMargin}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="var(--np-border)"
+                      vertical={pointCount <= (isModal ? 90 : 45)}
+                    />
                     <XAxis
                         dataKey="Date"
-                        tickFormatter={(dateStr) => format(parseISO(dateStr), 'd')}
-                        tick={{ fontSize: isMobile ? 11 : 12, fill: 'var(--np-text-secondary)' }}
+                        tickFormatter={xTickFormatter}
+                        interval={xAxisInterval}
+                        minTickGap={isModal ? 28 : 16}
+                        tick={{ fontSize: isModal ? 12 : (isMobile ? 11 : 12), fill: 'var(--np-text-secondary)' }}
                         axisLine={{ stroke: 'var(--np-border)' }}
                         tickLine={{ stroke: 'var(--np-border)' }}
                     />
@@ -297,16 +329,39 @@ const SmallMultiplesChart = ({ data, hasBothPeriods, onZoomClick, isModal = fals
                         tick={{ fontSize: isMobile ? 11 : 12, fill: 'var(--np-text-secondary)' }}
                         axisLine={{ stroke: 'var(--np-border)' }}
                         tickLine={{ stroke: 'var(--np-border)' }}
+                        tickCount={isModal ? 6 : 5}
                     />
                     <Tooltip content={<CustomCandleTooltip name={config.name} metricKey={metric} />} isAnimationActive={false} />
                     {hasBothPeriods && <ReferenceLine x="2025-07-21" stroke="var(--np-rank-down)" strokeDasharray="3 3" strokeWidth={2} />}
                     <Bar dataKey="tooltipTrigger" fill="transparent" isAnimationActive={false} />
-                    <Bar dataKey={`${metric}_range`} isAnimationActive={false} barSize={4} shape={CenteredBar}>
-                      {dataWithTooltipTarget.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={entry[`${metric}_changeType`] === 'up' ? upColor : entry[`${metric}_changeType`] === 'down' ? downColor : 'var(--np-border)'} />
-                      ))}
-                    </Bar>
-                    <Line type="monotone" dataKey={metric} stroke="var(--np-accent)" strokeWidth={2} dot={<CustomizedDot dataKey={metric} />} connectNulls={metric.toLowerCase().includes('rank')} isAnimationActive={false} />
+                    {shouldRenderRangeBars && (
+                      <Bar dataKey={`${metric}_range`} isAnimationActive={false} barSize={4} shape={CenteredBar}>
+                        {dataWithTooltipTarget.map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={entry[`${metric}_changeType`] === 'up' ? upColor : entry[`${metric}_changeType`] === 'down' ? downColor : 'var(--np-border)'} />
+                        ))}
+                      </Bar>
+                    )}
+                    <Line
+                      type="monotone"
+                      dataKey={metric}
+                      stroke="var(--np-accent)"
+                      strokeWidth={2}
+                      dot={shouldShowDots ? <CustomizedDot dataKey={metric} /> : false}
+                      activeDot={{ r: 4 }}
+                      connectNulls={metric.toLowerCase().includes('rank')}
+                      isAnimationActive={false}
+                    />
+                    {isModal && (
+                      <Brush
+                        dataKey="Date"
+                        height={26}
+                        gap={brushGap}
+                        travellerWidth={10}
+                        tickFormatter={(dateStr) => format(parseISO(dateStr), 'MM.dd')}
+                        stroke="var(--np-accent)"
+                        fill="var(--np-surface-alt)"
+                      />
+                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

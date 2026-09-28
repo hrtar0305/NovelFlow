@@ -1,4 +1,4 @@
-import React, { useRef, forwardRef, useMemo } from 'react';
+import React, { useRef, forwardRef, useMemo, useState } from 'react';
 import { Form, InputGroup } from 'react-bootstrap';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -23,10 +23,9 @@ interface DateRangePickerProps {
 
 const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void; className?: string }>(({ value, onClick, className }, ref) => (
   <div
-    className={`form-control ${className || ''} rounded-0 w-100`}
+    className={`date-range-display form-control ${className || ''} rounded-0 w-100`}
     onClick={onClick}
     ref={ref}
-    style={{ cursor: 'pointer', backgroundColor: 'var(--np-surface-alt)' }}
   >
     {value || <span className="text-muted">날짜 선택</span>}
   </div>
@@ -46,6 +45,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   showNovelDataIndicator = true // Default to true for backward compatibility
 }) => {
   const endDatePickerRef = useRef<DatePicker | null>(null);
+  const [isEndCalendarOpen, setIsEndCalendarOpen] = useState(false);
 
   const availableDateSet = useMemo(() => new Set(availableDates.map(d => format(d, 'yyyy-MM-dd'))), [availableDates]);
   const filterDate = (date: Date) => availableDateSet.has(format(date, 'yyyy-MM-dd'));
@@ -54,7 +54,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     if (!date) return;
     const normalizedDate = startOfDay(date);
     onStartDateChange(normalizedDate);
-    endDatePickerRef.current?.setOpen(true);
+    onEndDateChange(null);
+    setIsEndCalendarOpen(true);
   };
 
   const handleEndDateChange = (date: Date | null) => {
@@ -64,10 +65,10 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     if (startDate && normalizedDate < startDate) {
         onStartDateChange(normalizedDate);
         onEndDateChange(null);
-        endDatePickerRef.current?.setOpen(true);
+        setIsEndCalendarOpen(true);
     } else {
         onEndDateChange(normalizedDate);
-        endDatePickerRef.current?.setOpen(false);
+        setIsEndCalendarOpen(false);
     }
   };
 
@@ -89,7 +90,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             height: '4px',
             width: '4px',
             borderRadius: '50%',
-            backgroundColor: hasData ? '#8884d8' : 'transparent',
+            backgroundColor: hasData ? 'var(--np-accent)' : 'transparent',
             margin: '-2px auto 0 auto'
           }}></div>
         )}
@@ -97,11 +98,28 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     );
   };
 
+  const getRangeDayClassName = (date: Date) => {
+    const dayTime = startOfDay(date).getTime();
+    const startTime = startDate ? startOfDay(startDate).getTime() : null;
+    const endTime = endDate ? startOfDay(endDate).getTime() : null;
+
+    if (startTime !== null && dayTime === startTime) {
+      return 'np-date-range-start';
+    }
+    if (endTime !== null && dayTime === endTime) {
+      return 'np-date-range-end';
+    }
+    if (startTime !== null && endTime !== null && dayTime > startTime && dayTime < endTime) {
+      return 'np-date-in-range';
+    }
+    return '';
+  };
+
   return (
-    <Form className={`d-flex flex-wrap align-items-end gap-0 ${noMargin ? '' : 'mb-2'}`}>
+    <Form className={`date-range-picker-container d-flex flex-wrap align-items-end gap-0 ${noMargin ? '' : 'mb-2'}`}>
       <Form.Group className="flex-grow-1" style={{ minWidth: '80px' }}>
         <InputGroup>
-          <InputGroup.Text>From</InputGroup.Text>
+          <InputGroup.Text>시작</InputGroup.Text>
           <DatePicker
             selected={startDate}
             onChange={handleStartDateChange}
@@ -110,11 +128,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             minDate={minDate || undefined}
             maxDate={maxDate || undefined}
             filterDate={filterDate}
+            dayClassName={getRangeDayClassName}
             renderDayContents={renderDayContents}
             customInput={<CustomDateDisplay />}
             dateFormat="yyyy-MM-dd"
-            placeholderText="Start Date"
-            highlightDates={startDate && !endDate ? [startDate] : []}
+            dateFormatCalendar="yyyy년 M월"
+            placeholderText="시작일"
+            highlightDates={[]}
             className="rounded-end-0"
             locale={ko}
             wrapperClassName="flex-grow-0"
@@ -122,9 +142,10 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             popperPlacement="bottom-start"
             portalId="datepicker-portal"
           />
-          <InputGroup.Text>To</InputGroup.Text>
+          <InputGroup.Text>종료</InputGroup.Text>
           <DatePicker
             ref={endDatePickerRef}
+            key={`end-${startDate ? startDate.getTime() : 'none'}-${endDate ? endDate.getTime() : 'none'}`}
             selected={endDate}
             onChange={handleEndDateChange}
             startDate={startDate || undefined}
@@ -132,14 +153,17 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             minDate={minDate || undefined}
             maxDate={maxDate || undefined}
             filterDate={filterDate}
+            dayClassName={getRangeDayClassName}
             renderDayContents={renderDayContents}
             openToDate={startDate || undefined}
             customInput={<CustomDateDisplay />}
             dateFormat="yyyy-MM-dd"
-            placeholderText="End Date"
-            onInputClick={() => endDatePickerRef.current?.setOpen(true)}
-            onClickOutside={() => endDatePickerRef.current?.setOpen(false)}
-            highlightDates={startDate && !endDate ? [startDate] : []}
+            dateFormatCalendar="yyyy년 M월"
+            placeholderText="종료일"
+            open={isEndCalendarOpen}
+            onInputClick={() => setIsEndCalendarOpen(true)}
+            onClickOutside={() => setIsEndCalendarOpen(false)}
+            highlightDates={[]}
             locale={ko}
             className="rounded-start-0"
             calendarClassName="mobile-calendar-small"

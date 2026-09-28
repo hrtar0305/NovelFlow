@@ -7,6 +7,7 @@ import { getContestTagRankingsByDate, getContestAvailableDates } from '../servic
 import CalendarPicker from '../components/CalendarPicker';
 import TagSearchControl from '../components/TagSearchControl';
 import { ResponsiveContainer, ScatterChart, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Scatter, Cell } from 'recharts';
+import PageHero from '../components/ui/PageHero';
 
 // --- TYPE DEFINITIONS ---
 interface Tag {
@@ -23,8 +24,8 @@ interface Tag {
 
 // --- HELPER FUNCTIONS & CONSTANTS ---
 const RANK_COLORS = [
-  '#fb8072', '#fdb462', '#ffed6f', '#b3de69', '#80b1d3', 
-  '#bebada', '#fccde5', '#8dd3c7', '#ccebc5', '#bc80bd'
+  '#BF6E5D', '#C98A58', '#C4A45A', '#8FA46A', '#6E948B',
+  '#7893AA', '#9E8CAD', '#A77E8E', '#7C9584', '#8A7C96'
 ];
 
 const getColorByRank = (rank: number) => {
@@ -36,7 +37,7 @@ const ColorLegend = () => (
   <div className="d-flex flex-wrap justify-content-center align-items-center">
     {RANK_COLORS.map((color, index) => (
       <div key={color} className="d-flex align-items-center me-3 mb-2">
-        <div style={{ width: '20px', height: '20px', backgroundColor: color, marginRight: '8px', border: '1px solid #ccc' }}></div>
+        <div style={{ width: '20px', height: '20px', backgroundColor: color, marginRight: '8px', border: '1px solid var(--np-border)' }}></div>
         <span className="text-muted" style={{ fontSize: '0.9rem' }}>{`${index * 10 + 1}-${(index + 1) * 10}위`}</span>
       </div>
     ))}
@@ -70,7 +71,7 @@ const CustomScatterShape = React.memo((props: any) => {
     return (
         <g className={className}>
             <circle cx={cx} cy={cy} r={12} fill="transparent" />
-            <circle cx={cx} cy={cy} r={6} fill={fill} stroke="rgba(255, 255, 255, 0.7)" strokeWidth={1} />
+            <circle cx={cx} cy={cy} r={6} fill={fill} stroke="var(--np-surface-overlay)" strokeWidth={1} />
         </g>
     );
 });
@@ -207,7 +208,7 @@ const ContestTagRankingsPage = () => {
       };
       fetchRankings();
     } else {
-      const latestDate = Array.from(availableDatesSet)[0];
+      const latestDate = Array.from(availableDatesSet).sort((a, b) => b.localeCompare(a))[0];
       if (latestDate) {
         navigate(`/contests/${year}/tags/rankings/${latestDate}`, { replace: true });
       }
@@ -271,41 +272,38 @@ const ContestTagRankingsPage = () => {
   };
 
   return (
-    <div className="page-height-manager">
-      <div className="page-banner">
-        <div className="page-banner-inner">
-          <div className="d-flex flex-wrap align-items-center gap-2">
-            <h1 className="page-banner-title">우주최강 공모전</h1>
-            <Dropdown onSelect={handleYearChange}>
-              <Dropdown.Toggle variant="outline-secondary" id="dropdown-year-select" size="sm" className="year-dropdown-toggle">
-                {year}년
-              </Dropdown.Toggle>
-              <Dropdown.Menu className="year-dropdown-menu">
-                {['2025'].map(y => (
-                  <Dropdown.Item key={y} eventKey={y} active={y === year}>{y}년</Dropdown.Item>
-                ))}
-              </Dropdown.Menu>
-            </Dropdown>
-            <OverlayTrigger
-              trigger="click"
-              rootClose
-              placement="bottom"
-              overlay={
-                <BootstrapTooltip id="contest-description-tooltip">
-                  우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
-                </BootstrapTooltip>
-              }
-            >
-              <span className="d-md-none page-banner-info-icon" style={{ cursor: 'pointer' }}>
-                <InfoCircle />
-              </span>
-            </OverlayTrigger>
-          </div>
-          <p className="page-banner-desc d-none d-md-block">
-            우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
-          </p>
-        </div>
-      </div>
+    <div className="page-shell">
+      <PageHero
+        title="공모전"
+        actions={
+          <Dropdown onSelect={handleYearChange}>
+            <Dropdown.Toggle variant="outline-secondary" id="dropdown-year-select" size="sm" className="year-dropdown-toggle">
+              {year}년
+            </Dropdown.Toggle>
+            <Dropdown.Menu className="year-dropdown-menu">
+              {['2025'].map(y => (
+                <Dropdown.Item key={y} eventKey={y} active={y === year}>{y}년</Dropdown.Item>
+              ))}
+            </Dropdown.Menu>
+          </Dropdown>
+        }
+      >
+        <OverlayTrigger
+          trigger="click"
+          rootClose
+          placement="bottom"
+          overlay={
+            <BootstrapTooltip id="contest-description-tooltip">
+              우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
+            </BootstrapTooltip>
+          }
+        >
+          <button type="button" className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2">
+            <InfoCircle size={14} />
+            <span>집계 안내</span>
+          </button>
+        </OverlayTrigger>
+      </PageHero>
 
       {/* 모바일 컨트롤 바 */}
       <div className="mobile-controls-bar d-md-none d-flex align-items-center gap-2 px-2 py-2">
@@ -364,7 +362,7 @@ const ContestTagRankingsPage = () => {
                   <div className="d-md-none" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
                     <div className="p-1">
                       {processedTags.map((tag) => (
-                        <Card key={tag.tag} className="mb-2 shadow-sm">
+                        <Card key={tag.tag} className="mb-2">
                           <Card.Body className="p-2">
                             <div className="d-flex justify-content-between align-items-center">
                               <div className="flex-grow-1 me-2">

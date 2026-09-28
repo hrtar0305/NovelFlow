@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Spinner, Alert, Card, Row, Col } from 'react-bootstrap';
+import NovelCover from '../components/NovelCover';
+import { useParams, Link } from 'react-router-dom';
+import { Spinner, Alert } from 'react-bootstrap';
 import { getAuthorNovels } from '../services/api';
+import PageHero from '../components/ui/PageHero';
+import EmptyState from '../components/ui/EmptyState';
 
 // API로부터 받는 소설 데이터 타입 정의
 interface Novel {
@@ -15,6 +18,7 @@ interface Novel {
   Fav: number;
   Alr: number;
   Tags: string[];
+  ThumbnailURL?: string | null;
 }
 
 const formatNum = (n: number): string => {
@@ -29,15 +33,6 @@ const AuthorPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authorName, setAuthorName] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
 
   useEffect(() => {
     if (!authorId) return;
@@ -73,14 +68,8 @@ const AuthorPage = () => {
     fetchAuthorNovels();
   }, [authorId]);
 
-  const handleCardClick = (novelId: string) => {
-    if (isMobile) {
-      navigate(`/novels/${novelId}`);
-    }
-  };
-
   return (
-    <div className="np-page-container">
+    <div className="page-shell author-page">
       {loading ? (
         <div className="text-center">
           <Spinner animation="border" />
@@ -91,63 +80,47 @@ const AuthorPage = () => {
         </Alert>
       ) : (
         <>
-          {authorName && <h1 className="mb-2 h2 fs-page-title">{authorName}</h1>}
-          <div>
-            {novels.length > 0 ? (
-              novels.map((novel) => (
-                <Card 
-                  key={novel.ID} 
-                  className="mb-2 shadow-sm"
-                  onClick={() => handleCardClick(novel.ID)}
-                  style={isMobile ? { cursor: 'pointer' } : {}}
-                >
-                  <Card.Body className="p-3 author-novel-card-body">
-                    <Card.Title className="h5 mb-2 fs-author-page-novel-title">
-                      {isMobile ? (
-                        <span className="author-novel-title-link">{novel.Title || '(제목 없음)'}</span>
-                      ) : (
-                        <Link to={`/novels/${novel.ID}`} className="author-novel-title-link">
-                          {novel.Title || '(제목 없음)'}
-                        </Link>
-                      )}
-                    </Card.Title>
-                    {/* 모바일: 인라인 한 줄 */}
-                    <div className="d-md-none author-stats-inline">
-                      <span>{novel.Eps.toLocaleString()}화</span>
-                      <span className="author-stats-dot">·</span>
-                      <span>조회 {formatNum(novel.View)}</span>
-                      <span className="author-stats-dot">·</span>
-                      <span>선호 {formatNum(novel.Fav)}</span>
-                    </div>
-                    {/* 데스크탑: 그리드 */}
-                    <Row xs={4} className="d-none d-md-flex g-2 text-start mb-2 author-page-stats">
-                      <Col><div className="author-stat-label">회차</div><strong className="author-stat-value">{novel.Eps.toLocaleString()}화</strong></Col>
-                      <Col><div className="author-stat-label">조회수</div><strong className="author-stat-value">{novel.View.toLocaleString()}</strong></Col>
-                      <Col><div className="author-stat-label">추천</div><strong className="author-stat-value">{novel.Like.toLocaleString()}</strong></Col>
-                      <Col><div className="author-stat-label">선호</div><strong className="author-stat-value">{novel.Fav.toLocaleString()}</strong></Col>
-                    </Row>
-                    {novel.Tags && novel.Tags.length > 0 && (
-                      <div className="pt-2 border-top">
-                        <div className="d-flex flex-wrap gap-1">
-                          {novel.Tags.map((tag) => (
-                            <span key={tag} className="author-page-tag-chip">{tag}</span>
-                          ))}
-                        </div>
+          <PageHero
+            title={authorName || '작가 페이지'}
+          />
+          <section className="author-work-section">
+              {novels.length > 0 ? (
+                <div className="author-work-grid">
+                  {novels.map((novel) => (
+                    <Link key={novel.ID} to={`/novels/${novel.ID}`} className="author-work-card media-rank-card media-rank-card--poster">
+                      <div className="media-rank-card__cover">
+                        <NovelCover
+                          url={novel.ThumbnailURL}
+                          title={novel.Title}
+                          imageClassName="media-rank-card__cover-image"
+                        />
                       </div>
-                    )}
-                  </Card.Body>
-                </Card>
-              ))
-            ) : (
-              <Alert variant="info">이 작가의 작품을 찾을 수 없습니다.</Alert>
-            )}
-          </div>
+                      <div className="media-rank-card__overlay">
+                        <div className="media-rank-card__title">{novel.Title || '(제목 없음)'}</div>
+                        <div className="media-rank-card__meta">
+                          <span className="mini-kpi">{novel.Eps.toLocaleString()}화</span>
+                          <span className="mini-kpi">조회 {formatNum(novel.View)}</span>
+                          <span className="mini-kpi">선호 {formatNum(novel.Fav)}</span>
+                        </div>
+                        {novel.Tags && novel.Tags.length > 0 && (
+                          <div className="author-work-tags">
+                            {novel.Tags.slice(0, 6).map((tag) => (
+                              <span key={tag} className="author-page-tag-chip">{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="이 작가의 작품을 찾을 수 없습니다." />
+              )}
+          </section>
         </>
       )}
     </div>
   );
 };
-
-
 
 export default AuthorPage;
