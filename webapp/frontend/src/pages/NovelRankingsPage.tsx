@@ -1,6 +1,7 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
+import { Search as SearchIcon } from 'react-bootstrap-icons';
 import { getAvailableDates, getNovelRankingShowcase, getNovelRankingsByDate } from '../services/api';
 import PageTitle from '../components/ui/PageTitle';
 import DateNav from '../components/ui/DateNav';
@@ -82,6 +83,8 @@ export default function NovelRankingsPage() {
   const hit = useMemo(() => new Set(filter.rule ? [] : filter.tags), [filter]);
   const onTag = useCallback((t: string) => update(toggleTag(filter, t)), [filter, update]);
 
+  const strongIf = (keys: SortKey[], v: ReactNode) => (keys.includes(sort.key) ? <b className="rank-strong">{v}</b> : v);
+
   const columns: RankColumn<RankingNovel>[] = [
     { key: 'rank', header: '순위', width: '48px', sortKey: 'Ranking',
       render: n => <span className={`rank-num${n.Ranking <= 3 ? ' is-top' : ''}`}>{n.Ranking}</span> },
@@ -94,13 +97,15 @@ export default function NovelRankingsPage() {
           <Link to={`/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link>
         </span>
       ) },
+    // 볼드: 순위·제목·작가는 늘, 숫자 열은 지금 정렬 기준인 것만. 순위는 점수로 매기므로
+    // 순위순(기본)일 때도 점수를 볼드로 둔다.
     { key: 'author', header: '작가', width: '108px',
       render: n => n.AuthorID ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" onClick={e => e.stopPropagation()}>{n.AuthorName}</Link> : <span className="rank-author">{n.AuthorName || '(작자 미상)'}</span> },
-    { key: 'score', header: '점수', width: '76px', sortKey: 'Score', render: n => <b className="rank-strong">{formatInt(n.Score)}</b> },
-    { key: 'eps', header: '회차', width: '54px', sortKey: 'Eps', render: n => formatInt(n.Eps) },
-    { key: 'ratio', header: '추천비', width: '62px', sortKey: 'like_to_view_ratio', render: n => formatRatio(n.like_to_view_ratio, 2) },
-    { key: 'early', header: '초반 잔류', aside: <FootnoteRef id="early" n={1} />, width: '72px', sortKey: 'EarlyRetentionRate', render: n => formatRatio(n.EarlyRetentionRate, 0) },
-    { key: 'recent', header: '최신 잔류', aside: <FootnoteRef id="recent" n={2} />, width: '72px', sortKey: 'RecentRetentionRate', render: n => formatRatio(n.RecentRetentionRate, 0) },
+    { key: 'score', header: '점수', width: '76px', sortKey: 'Score', render: n => strongIf(['Score', 'Ranking'], formatInt(n.Score)) },
+    { key: 'eps', header: '회차', width: '54px', sortKey: 'Eps', render: n => strongIf(['Eps'], formatInt(n.Eps)) },
+    { key: 'ratio', header: '추천비', width: '62px', sortKey: 'like_to_view_ratio', render: n => strongIf(['like_to_view_ratio'], formatRatio(n.like_to_view_ratio, 2)) },
+    { key: 'early', header: '초반 잔류', aside: <FootnoteRef id="early" n={1} />, width: '72px', sortKey: 'EarlyRetentionRate', render: n => strongIf(['EarlyRetentionRate'], formatRatio(n.EarlyRetentionRate, 0)) },
+    { key: 'recent', header: '최신 잔류', aside: <FootnoteRef id="recent" n={2} />, width: '72px', sortKey: 'RecentRetentionRate', render: n => strongIf(['RecentRetentionRate'], formatRatio(n.RecentRetentionRate, 0)) },
     { key: 'tags', header: '태그', width: 'minmax(0,1.3fr)', render: n => <TagLinks tags={n.Tags} limit={n.Tags.length} wrap highlighted={hit} onSelect={onTag} /> },
   ];
 
@@ -118,6 +123,16 @@ export default function NovelRankingsPage() {
   );
 
   const count = activeFilterCount(filter);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [searchInput, setSearchInput] = useState(filter.search);
+  useEffect(() => { setSearchInput(filter.search); }, [filter.search]);
+  const applySearch = (q: string) => {
+    update({ ...filter, search: q });
+    // 표 안쪽까지 내려와 있으면 결과가 줄어 화면이 빈 곳으로 튄다 — 표 머리로 올려 준다.
+    const el = toolbarRef.current;
+    if (el && el.getBoundingClientRect().top < 0) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72 });
+  };
+  const submitSearch = (e: FormEvent) => { e.preventDefault(); applySearch(searchInput.trim()); };
   const filtered = count > 0 || filter.search.trim() !== '';
   // 10열은 992px 미만에서 제목 칸이 남지 않는다 — 그 폭부터 모바일 행(RankTable compactBelow)으로 그린다.
   return (
@@ -129,18 +144,22 @@ export default function NovelRankingsPage() {
       <Showcase top={showcase.top} movers={showcase.movers} showcaseDate={showcase.date} tableDate={dateParam ?? null} />
 
       {/* 급상승·신규 진입 탭은 두지 않는다 — 변동 열 내림차순이 곧 NEW → 상승 폭 순이다. */}
-      <div className="rank-toolbar">
+      <div className="rank-toolbar" ref={toolbarRef}>
         <h2 className="rank-toolbar__title">
           전체 순위
           <span className="rank-toolbar__count">
             {filtered ? <>조건에 맞는 <b>{formatInt(sorted.length)}</b>편 / {formatInt(rows.length)}편</> : <>{formatInt(rows.length)}편</>}
           </span>
         </h2>
-        <input className="toolbar-search" type="search" placeholder="제목·작가 검색" aria-label="제목·작가 검색"
-          value={filter.search} onChange={e => update({ ...filter, search: e.target.value })} />
         <button type="button" className={`toolbar-filter${count ? ' is-on' : ''}`} onClick={() => setDrawer(true)} aria-haspopup="dialog">
           필터{count ? <span className="toolbar-filter__n">{count}</span> : null}
         </button>
+        {/* 타이핑마다 거르면 결과 수가 바뀔 때마다 페이지 높이가 요동친다 — 엔터·검색 버튼으로 한 번에 적용한다. */}
+        <form className="toolbar-searchform" role="search" onSubmit={submitSearch}>
+          <input className="toolbar-search" type="search" placeholder="제목·작가 검색" aria-label="제목·작가 검색"
+            value={searchInput} onChange={e => { setSearchInput(e.target.value); if (e.target.value === '' && filter.search) applySearch(''); }} />
+          <button type="submit" className="toolbar-searchbtn" aria-label="검색"><SearchIcon size={15} aria-hidden="true" /></button>
+        </form>
       </div>
       <AppliedFilters filter={filter} onChange={update} />
 
