@@ -1,5 +1,6 @@
 import { EyeFill, EyeSlashFill } from 'react-bootstrap-icons';
 import { useCoverMask } from '../theme/coverMaskContext';
+import StableLabel from './ui/StableLabel';
 
 const CoverMaskToggle = () => {
   const { maskAll, toggleMaskAll } = useCoverMask();
@@ -16,7 +17,7 @@ const CoverMaskToggle = () => {
       <span className="theme-toggle-btn__icon">
         {maskAll ? <EyeSlashFill size={14} /> : <EyeFill size={14} />}
       </span>
-      <span>{maskAll ? '표지 숨김' : '표지 표시'}</span>
+      <StableLabel current={maskAll ? '표지 숨김' : '표지 표시'} options={['표지 숨김', '표지 표시']} />
     </button>
   );
 };
