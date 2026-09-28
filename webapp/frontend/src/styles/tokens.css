@@ -1,76 +1,81 @@
-/* NovelFlow 디자인 토큰 — "클린 모던"(F)
+/* NovelFlow 디자인 토큰 — 차트 페이지(2026-09-28, docs/superpowers/specs/2026-09-28-webapp-redesign-design.md)
  *
- * 이전 테마는 네이비(#0b1220) + SaaS 블루(#4f8cff) + 20px 라운드 + 소프트 그림자였다.
- * 흔한 대시보드 인상이라 무채색 다크 + 인디고 액센트 + 작은 반경 + 그림자 제거로 교체했다.
- * 사용자는 개발자가 아니라 웹소설 독자·작가다. 결정 근거는 docs/DECISIONS.md 참고.
+ * 토큰 **이름은 이전(클린 모던) 그대로** 두고 값만 바꿨다. CSS 전체가 이 이름을 쓰므로
+ * 값만 바꾸면 전 페이지가 한 번에 새 인상으로 바뀐다. 새로 필요한 것만 아래에 추가했다.
  *
- * 면 분리는 '그림자'가 아니라 '표면 밝기 차 + 아주 옅은 헤어라인'으로 한다.
- * 그림자 토큰은 남겨 두되 거의 0에 가깝게 눌렀다 — 호출부를 전부 고치지 않고도
- * 인상이 바뀌고, 나중에 개별 조정 여지가 남는다.
+ * - 면은 하나다(canvas = surface). 섹션은 박스가 아니라 가로선으로 나눈다.
+ * - 강조(accent)는 빨강 — 활성 탭 밑줄, 1~3위 숫자, 차트 선. 채운 버튼은 accent-solid(본문색).
+ * - 상승 빨강 / 하락 파랑(한국 차트 관례). positive/negative도 같은 값이다.
+ * - 글자색은 canvas·surface-alt 위 4.5:1 이상 — scripts/contrast.mjs로 검사한다.
  */
 :root {
   color-scheme: dark;
+  --np-font-sans: 'Wanted Sans Variable', 'Wanted Sans', -apple-system, BlinkMacSystemFont, system-ui,
+    'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --np-header-h: 64px;
 
-  /* 표면 — 네이비를 걷어낸 무채색 계열. 단계마다 밝기만 올린다. */
-  --np-canvas: #101114;
-  --np-canvas-elevated: #15161a;
-  --np-surface: #17181d;
-  --np-surface-alt: #1d1f26;
-  --np-surface-raised: #23262f;
-  --np-surface-overlay: rgba(16, 17, 20, 0.94);
+  --np-canvas: #121418;
+  --np-canvas-elevated: #121418;
+  --np-surface: #121418;
+  --np-surface-alt: #1b1e23;
+  --np-surface-raised: #23262d;
+  --np-surface-overlay: rgba(18, 20, 24, 0.96);
+  --np-cover-bg: #2a2d34;
 
-  /* 경계 — 색이 아니라 흰색 알파로. 어떤 표면 위에서도 같은 세기로 보인다. */
-  --np-border: rgba(255, 255, 255, 0.075);
-  --np-border-strong: rgba(255, 255, 255, 0.14);
+  --np-border: #262930;
+  --np-border-strong: #353942;
 
-  --np-text-primary: #d9dde4;
-  --np-text-secondary: #8d93a0;
-  --np-text-heading: #f5f7fa;
+  --np-text-primary: #eceef2;
+  --np-text-secondary: #a0a6b1;
+  --np-text-faint: #858b96;
+  --np-text-heading: #eceef2;
 
-  --np-accent: #7d8cff;
-  --np-accent-strong: #9aa5ff;
-  --np-accent-soft: rgba(125, 140, 255, 0.14);
-  --np-accent-ghost: rgba(125, 140, 255, 0.08);
-  --np-accent-warm: #5ec8e8;
-  --np-accent-warm-soft: rgba(94, 200, 232, 0.12);
+  --np-accent: #ff5c70;
+  --np-accent-strong: #ff8190;
+  --np-accent-soft: rgba(255, 92, 112, 0.14);
+  --np-accent-ghost: rgba(255, 92, 112, 0.08);
+  --np-accent-warm: #5c95ff;
+  --np-accent-warm-soft: rgba(92, 149, 255, 0.12);
+  --np-accent-solid: #eceef2;
+  --np-on-accent-solid: #121418;
 
-  --np-positive: #3dcf8e;
-  --np-negative: #f0647a;
-  --np-warning: #f5b544;
-  --np-focus-ring: rgba(125, 140, 255, 0.3);
+  --np-positive: #ff5c70;
+  --np-negative: #5c95ff;
+  --np-warning: #f2a23a;
+  --np-focus-ring: rgba(92, 149, 255, 0.45);
+  --np-rank-up: #ff5c70;
+  --np-rank-down: #5c95ff;
+  --np-new-text: #f2a23a;
 
-  --np-banner-start: rgba(23, 24, 29, 0.96);
-  --np-banner-end: rgba(16, 17, 20, 0.98);
+  --np-zone-mainstream: #9a86ff;
+  --np-zone-gem: #2cc4ac;
+  --np-zone-saturated: #f0a030;
+  --np-zone-cold: #858b96;
+  --np-zone-mainstream-text: #9a86ff;
+  --np-zone-gem-text: #2cc4ac;
+  --np-zone-saturated-text: #f0a030;
+  --np-zone-cold-text: #a0a6b1;
+
+  --np-banner-start: #121418;
+  --np-banner-end: #121418;
   --np-bg: var(--np-canvas);
   --np-border-subtle: var(--np-border);
 
-  /* 순위 변동은 배경 없이 색만 쓰는 텍스트다. 다크에서는 채움색과 같아도
-     대비가 충분해(9.45 / 6.12) 그대로 쓴다. 라이트에서만 갈라진다. */
-  --np-rank-up: var(--np-positive);
-  --np-rank-down: var(--np-negative);
+  --np-chart-1: #ff5c70;
+  --np-chart-2: #5c95ff;
+  --np-chart-3: #9a86ff;
+  --np-chart-4: #2cc4ac;
+  --np-chart-5: #f2a23a;
+  --np-chart-6: #a0a6b1;
 
-  /* 흰 글자를 얹는 '채워진 강조 배경'. --np-accent(#7d8cff)를 그대로 쓰면
-     흰 글자 대비가 2.7로 미달한다. 흰 글자 대비 5.54인 값을 따로 잡는다. */
-  --np-accent-solid: #4e5bd6;
+  --np-radius-sm: 4px;
+  --np-radius-md: 8px;
+  --np-radius-lg: 10px;
+  --np-radius-xl: 14px;
 
-  --np-chart-1: #7d8cff;
-  --np-chart-2: #5ec8e8;
-  --np-chart-3: #b98cff;
-  --np-chart-4: #3dcf8e;
-  --np-chart-5: #ff9e6e;
-  --np-chart-6: #f5b544;
-
-  /* 반경 — 20/26px의 둥근 카드 인상을 걷어낸다. 칩은 7, 카드는 14. */
-  --np-radius-sm: 7px;
-  --np-radius-md: 10px;
-  --np-radius-lg: 14px;
-  --np-radius-xl: 18px;
-
-  /* 그림자 — 면 분리를 표면 밝기와 헤어라인으로 옮겼으므로 거의 쓰지 않는다.
-     0으로 두지 않은 이유는 떠 있어야 하는 요소(드롭다운, 모달)가 남아서다. */
-  --np-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.16);
-  --np-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.24);
-  --np-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.36);
+  --np-shadow-sm: none;
+  --np-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --np-shadow-lg: -12px 0 32px rgba(0, 0, 0, 0.45);
 
   --np-space-1: 0.375rem;
   --np-space-2: 0.625rem;
@@ -80,15 +85,15 @@
   --np-space-6: 2rem;
   --np-space-7: 2.75rem;
   --np-space-8: 3.5rem;
-  --np-fs-micro: 0.72rem;
-  --np-fs-meta: 0.84rem;
-  --np-fs-body: 0.95rem;
-  --np-fs-body-lg: 1.02rem;
-  --np-fs-title-sm: 1.2rem;
-  --np-fs-title-md: clamp(1.45rem, 1.8vw, 2rem);
-  --np-fs-title-lg: clamp(1.65rem, 2.3vw, 2.5rem);
-  --np-content-max: 1480px;
-  --np-transition: 170ms ease;
+  --np-fs-micro: 0.75rem;
+  --np-fs-meta: 0.8125rem;
+  --np-fs-body: 0.875rem;
+  --np-fs-body-lg: 0.9375rem;
+  --np-fs-title-sm: 1.1875rem;
+  --np-fs-title-md: 1.875rem;
+  --np-fs-title-lg: 2rem;
+  --np-content-max: 1200px;
+  --np-transition: 150ms ease;
   --bs-body-bg: var(--np-canvas);
   --bs-body-color: var(--np-text-primary);
   --bs-border-color: var(--np-border);
@@ -100,64 +105,63 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  /* 라이트는 '흰 패널 + 회색 캔버스'. 이전의 푸른 기(#edf3fb)를 뺐다. */
-  --np-canvas: #f6f7f9;
-  --np-canvas-elevated: #fbfbfc;
+  --np-canvas: #ffffff;
+  --np-canvas-elevated: #ffffff;
   --np-surface: #ffffff;
-  --np-surface-alt: #f1f2f5;
-  --np-surface-raised: #eef0f4;
-  --np-surface-overlay: rgba(255, 255, 255, 0.96);
+  --np-surface-alt: #f7f8fa;
+  --np-surface-raised: #f1f2f5;
+  --np-surface-overlay: rgba(255, 255, 255, 0.97);
+  --np-cover-bg: #d9dce1;
 
-  --np-border: rgba(20, 23, 32, 0.08);
-  --np-border-strong: rgba(20, 23, 32, 0.14);
+  --np-border: #edeef1;
+  --np-border-strong: #dfe1e6;
 
-  --np-text-primary: #3a3f4b;
-  /* 보조 텍스트가 놓이는 가장 밝은 표면은 surface-raised(#eef0f4)다.
-     #787f8c는 그 위에서 3.53으로 AA 미달이라 한 단계 어둡게 잡는다(최저 4.68). */
-  --np-text-secondary: #656b79;
-  --np-text-heading: #191c24;
+  --np-text-primary: #15171c;
+  --np-text-secondary: #6a707b;
+  --np-text-faint: #6c717c;
+  --np-text-heading: #15171c;
 
-  /* 액센트는 링크·라벨 텍스트로도 쓰이므로 본문 대비 4.5를 넘겨야 한다.
-     #5265e8은 raised 위에서 4.20이라 미달 → 4.76인 값으로 내린다. */
-  --np-accent: #4a5cdd;
-  --np-accent-strong: #3e4dc8;
-  --np-accent-soft: rgba(74, 92, 221, 0.1);
-  --np-accent-ghost: rgba(74, 92, 221, 0.06);
-  --np-accent-warm: #0e93b8;
-  --np-accent-warm-soft: rgba(14, 147, 184, 0.1);
+  --np-accent: #d42a44;
+  --np-accent-strong: #b81f37;
+  --np-accent-soft: rgba(212, 42, 68, 0.1);
+  --np-accent-ghost: rgba(212, 42, 68, 0.06);
+  --np-accent-warm: #2c6be0;
+  --np-accent-warm-soft: rgba(44, 107, 224, 0.1);
+  --np-accent-solid: #15171c;
+  --np-on-accent-solid: #ffffff;
 
-  /* 채움색(차트·막대·배지 배경)은 선명하게 유지한다. */
-  --np-positive: #0da467;
-  --np-negative: #de4560;
-  --np-warning: #d99a1e;
-  --np-focus-ring: rgba(74, 92, 221, 0.22);
+  --np-positive: #d42a44;
+  --np-negative: #2c6be0;
+  --np-warning: #a35f00;
+  --np-focus-ring: rgba(44, 107, 224, 0.35);
+  --np-rank-up: #d42a44;
+  --np-rank-down: #2c6be0;
+  --np-new-text: #a35f00;
 
-  --np-banner-start: rgba(255, 255, 255, 0.98);
-  --np-banner-end: rgba(246, 247, 249, 0.96);
+  --np-zone-mainstream: #6247d6;
+  --np-zone-gem: #0f9a86;
+  --np-zone-saturated: #d9820a;
+  --np-zone-cold: #a1a6af;
+  --np-zone-mainstream-text: #6247d6;
+  --np-zone-gem-text: #0d7f6f;
+  --np-zone-saturated-text: #a1600a;
+  --np-zone-cold-text: #6a707b;
+
+  --np-banner-start: #ffffff;
+  --np-banner-end: #ffffff;
   --np-bg: var(--np-canvas);
   --np-border-subtle: var(--np-border);
 
-  /* 순위 변동은 배경 없이 색만 쓰는 텍스트라, 채움색을 그대로 쓰면 라이트에서
-     2.82 / 3.59까지 떨어진다. 텍스트용으로만 따로 어둡게 잡는다(최저 5.05 / 4.82).
-     차트·테두리·배지 배경은 위의 원래 색을 계속 쓴다. */
-  --np-rank-up: #097546;
-  /* #c0334c는 하락 배지의 틴트 배경(rgba(222,69,96,.16) 위) 에서 4.45로 아슬하게
-     미달한다. 캔버스가 아니라 배지 배경 기준으로 잡아야 한다(4.99). */
-  --np-rank-down: #b42d45;
+  --np-chart-1: #d42a44;
+  --np-chart-2: #2c6be0;
+  --np-chart-3: #6247d6;
+  --np-chart-4: #0f9a86;
+  --np-chart-5: #d9820a;
+  --np-chart-6: #6a707b;
 
-  --np-accent-solid: #4a5cdd;
-
-  --np-chart-1: #4a5cdd;
-  --np-chart-2: #0e93b8;
-  --np-chart-3: #8b5cf6;
-  --np-chart-4: #0da467;
-  --np-chart-5: #ea7040;
-  --np-chart-6: #d99a1e;
-
-  /* 라이트에서는 그림자를 더 죽인다 — 흰 패널 위 그림자가 가장 촌스럽다. */
-  --np-shadow-sm: 0 1px 2px rgba(20, 23, 32, 0.05);
-  --np-shadow-md: 0 4px 12px rgba(20, 23, 32, 0.07);
-  --np-shadow-lg: 0 12px 32px rgba(20, 23, 32, 0.1);
+  --np-shadow-sm: none;
+  --np-shadow-md: 0 8px 28px rgba(20, 24, 32, 0.14);
+  --np-shadow-lg: -12px 0 32px rgba(20, 24, 32, 0.12);
 
   --bs-body-bg: var(--np-canvas);
   --bs-body-color: var(--np-text-primary);

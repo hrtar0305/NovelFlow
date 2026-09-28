@@ -98,8 +98,7 @@
 
 .compact-meta {
   font-size: var(--np-fs-micro);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--np-text-secondary);
 }
 
@@ -107,8 +106,7 @@
   margin-bottom: 0.4rem;
   font-size: var(--np-fs-micro);
   font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--np-accent);
 }
 
@@ -161,8 +159,7 @@
 .spotlight-card__label {
   font-size: var(--np-fs-micro);
   font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: rgba(248, 251, 255, 0.82);
 }
 
@@ -226,8 +223,7 @@
 .metric-mini-card__title {
   font-size: var(--np-fs-micro);
   font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--np-text-secondary);
 }
 
@@ -546,8 +542,7 @@
   color: #f5f7fa;
   font-size: var(--np-fs-micro);
   font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .featured-tag-card__meta {
@@ -670,8 +665,7 @@
 .custom-table th {
   font-size: 0.68rem;
   font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   color: var(--np-text-secondary) !important;
 }
 
@@ -863,8 +857,7 @@
   color: var(--np-accent);
   font-size: var(--np-fs-micro);
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
@@ -883,8 +876,7 @@
 
 .analysis-brief-card__label {
   font-size: var(--np-fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--np-accent);
   font-weight: 800;
 }
@@ -917,8 +909,7 @@
 
 .empty-state__eyebrow {
   font-size: var(--np-fs-micro);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0;
   color: var(--np-text-secondary);
 }
 

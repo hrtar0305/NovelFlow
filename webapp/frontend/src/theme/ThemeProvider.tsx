@@ -16,8 +16,8 @@ interface ThemeContextValue {
 }
 
 const THEME_BG_COLORS: Record<ThemeMode, string> = {
-  dark: '#101114',
-  light: '#f6f7f9',
+  dark: '#121418',
+  light: '#ffffff',
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);

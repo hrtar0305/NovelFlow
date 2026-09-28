@@ -17,8 +17,7 @@
 .sidebar-label {
   font-size: var(--np-fs-micro);
   font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--np-text-secondary);
 }
 
@@ -120,7 +119,7 @@
   color: var(--np-text-secondary);
   font-size: var(--np-fs-micro);
   font-weight: 850;
-  letter-spacing: 0.14em;
+  letter-spacing: 0;
 }
 
 /* 단일 열. 선택 패널은 오른쪽 열이 아니라 차트 아래 전체폭 스트립으로 흐른다
@@ -355,8 +354,7 @@
 .tag-leader-card__label {
   font-size: var(--np-fs-micro);
   font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--np-text-secondary);
 }
 
@@ -839,8 +837,7 @@
 
 .novel-stat-label {
   font-size: var(--np-fs-micro);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--np-text-secondary);
 }
 
@@ -938,7 +935,7 @@
   color: var(--np-text-heading);
   font-size: 0.92rem;
   font-weight: 850;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 
 .ranking-showcase-group__meta {
@@ -1172,7 +1169,7 @@
   border: 1px solid var(--np-accent-solid);
   border-radius: var(--np-radius-sm);
   background: var(--np-accent-solid);
-  color: #ffffff;
+  color: var(--np-on-accent-solid);
   font-size: 0.74rem;
   font-weight: 850;
   line-height: 1;
@@ -1713,8 +1710,7 @@
   padding: 0.34rem 0.68rem;
   border-radius: 999px;
   font-size: var(--np-fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .contest-award-badge--grand {
@@ -1977,7 +1973,7 @@
 }
 
 .contest-rank-control-tabs .nav-link.active {
-  color: #f5f7fa !important;
+  color: var(--np-on-accent-solid) !important;
   background: var(--np-accent-solid) !important;
   border-color: transparent !important;
   box-shadow: 0 8px 18px color-mix(in srgb, var(--np-accent) 26%, transparent);
@@ -2251,7 +2247,7 @@
   border: 1px solid var(--np-accent-solid);
   border-radius: var(--np-radius-sm);
   background: var(--np-accent-solid);
-  color: #ffffff;
+  color: var(--np-on-accent-solid);
   font-size: 0.76rem;
   font-weight: 850;
   line-height: 1;
@@ -3055,7 +3051,7 @@
 .tag-quadrant-zone-name {
   font-size: 12px;
   font-weight: 850;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .tag-quadrant-zone-name--gem { fill: color-mix(in srgb, var(--np-chart-3) 75%, var(--np-text-secondary) 25%); }
@@ -3105,7 +3101,7 @@
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.7rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
   color: var(--np-accent-strong);
 }
 
@@ -3302,7 +3298,7 @@
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.7rem;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   color: var(--np-text-secondary);
 }
 
@@ -3350,8 +3346,7 @@
 .dc-table thead th {
   font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--np-text-secondary);
   border-bottom-color: var(--np-border-strong);
 }
@@ -3961,7 +3956,7 @@
 .report-preset.is-active {
   border-color: transparent;
   background-color: var(--np-accent-solid);
-  color: #ffffff;
+  color: var(--np-on-accent-solid);
 }
 
 .report-bar__range {
