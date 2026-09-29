@@ -32,8 +32,8 @@
   border-top: 1px solid var(--np-border);
   font-size: var(--np-fs-micro);
   line-height: 1.6;
-  color: var(--np-text-secondary);
-  opacity: 0.55;
+  /* 권리·라이선스 문구가 들어가므로 읽혀야 한다 — 투명도 대신 대비 4.5:1을 넘는 흐림색을 쓴다. */
+  color: var(--np-text-faint);
 }
 
 .route-loading {
