@@ -148,10 +148,9 @@
   display: none;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: var(--np-surface);
-  color: var(--np-text-primary);
+  border: 0;
+  background: none;
+  color: var(--np-text-secondary);
 }
 
 .app-header-mobile-menu {

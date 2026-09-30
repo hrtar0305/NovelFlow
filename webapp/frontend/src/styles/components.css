@@ -1,30 +1,26 @@
 .theme-toggle-btn {
+  /* 헤더 메뉴와 같은 글자 버튼(2026-09-30): 알약 테두리·면·색 원 아이콘은 흔한 기본값이라 걷어냈다. */
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.42rem 0.7rem;
-  border: 1px solid var(--np-border);
-  border-radius: 999px;
-  background-color: var(--np-surface);
-  color: var(--np-text-primary);
-  font-size: var(--np-fs-meta);
-  font-weight: 700;
+  gap: 0.35rem;
+  height: 36px;
+  padding: 0 0.5rem;
+  border: 0;
+  background: none;
+  color: var(--np-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: color var(--np-transition);
 }
 
 .theme-toggle-btn:hover {
-  background-color: var(--np-surface-alt);
-  border-color: var(--np-border-strong);
+  color: var(--np-text-heading);
 }
 
 .theme-toggle-btn__icon {
-  width: 1.2rem;
-  height: 1.2rem;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: var(--np-accent-soft);
-  color: var(--np-accent);
+  color: inherit;
 }
 
 .mobile-nav-link {
@@ -735,7 +731,9 @@
   }
 
   .theme-toggle-btn {
-    padding: 0.5rem;
+    width: 36px;
+    justify-content: center;
+    padding: 0;
   }
 
         .panel-card__header {

@@ -1,5 +1,4 @@
 import React, { useRef, forwardRef, useMemo, useState } from 'react';
-import { Form, InputGroup } from 'react-bootstrap';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { format, startOfDay } from 'date-fns';
@@ -21,14 +20,12 @@ interface DateRangePickerProps {
   showNovelDataIndicator?: boolean; // New prop
 }
 
-const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void; className?: string }>(({ value, onClick, className }, ref) => (
-  <div
-    className={`date-range-display form-control ${className || ''} rounded-0 w-100`}
-    onClick={onClick}
-    ref={ref}
-  >
-    {value || <span className="text-muted">날짜 선택</span>}
-  </div>
+// 상자형 입력칸 대신 점선 밑줄 글자(일간 랭킹의 날짜 이동과 같은 문법). 키보드로도 연다.
+const CustomDateDisplay = forwardRef<HTMLSpanElement, { value?: string; onClick?: () => void; label: string }>(({ value, onClick, label }, ref) => (
+  <span className="range-inline__date" onClick={onClick} ref={ref} role="button" tabIndex={0} aria-label={`${label} ${value || '선택'}`}
+    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}>
+    {value || <span className="range-inline__empty">{label}</span>}
+  </span>
 ));
 
 const DateRangePicker: React.FC<DateRangePickerProps> = ({
@@ -116,10 +113,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   };
 
   return (
-    <Form className={`date-range-picker-container d-flex flex-wrap align-items-end gap-0 ${noMargin ? '' : 'mb-2'}`}>
-      <Form.Group className="flex-grow-1" style={{ minWidth: '80px' }}>
-        <InputGroup>
-          <InputGroup.Text>시작</InputGroup.Text>
+    <div className={`range-inline${noMargin ? '' : ' range-inline--spaced'}`}>
           <DatePicker
             selected={startDate}
             onChange={handleStartDateChange}
@@ -130,19 +124,18 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             filterDate={filterDate}
             dayClassName={getRangeDayClassName}
             renderDayContents={renderDayContents}
-            customInput={<CustomDateDisplay />}
-            dateFormat="yyyy-MM-dd"
+            customInput={<CustomDateDisplay label="시작일" />}
+            dateFormat="yyyy.MM.dd"
             dateFormatCalendar="yyyy년 M월"
             placeholderText="시작일"
             highlightDates={[]}
-            className="rounded-end-0"
             locale={ko}
             wrapperClassName="flex-grow-0"
             calendarClassName="mobile-calendar-small"
             popperPlacement="bottom-start"
             portalId="datepicker-portal"
           />
-          <InputGroup.Text>종료</InputGroup.Text>
+          <span className="range-inline__sep" aria-hidden="true">–</span>
           <DatePicker
             ref={endDatePickerRef}
             key={`end-${startDate ? startDate.getTime() : 'none'}-${endDate ? endDate.getTime() : 'none'}`}
@@ -156,8 +149,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             dayClassName={getRangeDayClassName}
             renderDayContents={renderDayContents}
             openToDate={startDate || undefined}
-            customInput={<CustomDateDisplay />}
-            dateFormat="yyyy-MM-dd"
+            customInput={<CustomDateDisplay label="종료일" />}
+            dateFormat="yyyy.MM.dd"
             dateFormatCalendar="yyyy년 M월"
             placeholderText="종료일"
             open={isEndCalendarOpen}
@@ -165,20 +158,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             onClickOutside={() => setIsEndCalendarOpen(false)}
             highlightDates={[]}
             locale={ko}
-            className="rounded-start-0"
             calendarClassName="mobile-calendar-small"
             wrapperClassName="flex-grow-0"
             popperPlacement="bottom-end"
             portalId="datepicker-portal"
           />
-        </InputGroup>
-      </Form.Group>
-      {isNovelDetailPage && (
-        <div className="w-100 mt-1 datepicker-help-text-container">
-            <p className="text-muted mb-0">데이터가 수집되지 않은 날짜는 비활성화됩니다.</p>
-        </div>
-      )}
-    </Form>
+      {isNovelDetailPage && <span className="range-inline__help">수집되지 않은 날짜는 고를 수 없습니다.</span>}
+    </div>
   );
 };
 
