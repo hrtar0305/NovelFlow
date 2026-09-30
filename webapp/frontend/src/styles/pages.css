@@ -1,38 +1,4 @@
-.page-sidebar {
-  padding: 0.95rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--np-surface-alt) 76%, transparent) 0%, var(--np-surface) 100%);
-  color: var(--np-text-primary);
-  box-shadow: var(--np-shadow-sm);
-}
 
-.sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.2rem 0;
-}
-
-.sidebar-label {
-  font-size: var(--np-fs-micro);
-  font-weight: 800;
-  letter-spacing: 0;
-  color: var(--np-text-secondary);
-}
-
-.sidebar-divider {
-  height: 1px;
-  margin: 0.7rem 0;
-  background-color: var(--np-border);
-}
-
-.novel-detail-header {
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background-color: var(--np-surface);
-  box-shadow: var(--np-shadow-sm);
-}
 
 /* 차트는 상자가 아니다(2026-09-28). 섹션 안에 제목 한 줄 + 차트만 둔다. */
 .chart-card { border: 0; background: none; border-radius: 0; }
@@ -358,23 +324,6 @@
   color: var(--np-text-secondary);
 }
 
-.novel-detail-header {
-  padding: clamp(1rem, 1.8vw, 1.5rem);
-  margin-top: 1.1rem;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--np-surface-alt) 78%, transparent) 0%, var(--np-surface) 100%);
-}
-
-.novel-detail-header-inner {
-  width: min(100%, var(--np-content-max));
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
-  gap: 1.1rem;
-  align-items: stretch;
-}
-
-.novel-detail-cover,
 .author-novel-cover {
   overflow: hidden;
   border-radius: var(--np-radius-md);
@@ -383,12 +332,6 @@
     linear-gradient(135deg, color-mix(in srgb, var(--np-accent) 82%, #fff 18%) 0%, color-mix(in srgb, var(--np-accent-warm) 72%, #fff 28%) 100%);
 }
 
-.novel-detail-cover {
-  aspect-ratio: 2 / 3;
-  min-height: 220px;
-}
-
-.novel-detail-cover-image,
 .author-novel-cover-image {
   width: 100%;
   height: 100%;
@@ -456,14 +399,6 @@
   font-weight: 800;
 }
 
-.contest-novel-detail-header .novel-detail-header-inner {
-  grid-template-columns: minmax(112px, 164px) minmax(0, 1fr);
-}
-
-.contest-novel-detail-header .novel-detail-cover {
-  min-height: 205px;
-}
-
 .contest-detail-meta-row {
   display: flex;
   align-items: center;
@@ -476,68 +411,11 @@
   margin-top: 0;
 }
 
-.contest-detail-award-badge {
-  min-height: 28px;
-  padding: 0.22rem 0.72rem;
-  border-width: 1px;
-  border-radius: 999px;
-  color: #f5f7fa !important;
-  font-size: 0.88rem !important;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0.03em;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.34);
-}
-
-.contest-detail-award-badge.contest-award-badge--grand {
-  background: linear-gradient(135deg, rgba(246, 196, 83, 0.92), rgba(180, 112, 28, 0.86)) !important;
-  border-color: rgba(255, 226, 135, 0.72) !important;
-}
-
-.contest-detail-award-badge.contest-award-badge--excellent {
-  background: linear-gradient(135deg, rgba(125, 140, 255, 0.92), rgba(67, 83, 210, 0.86)) !important;
-  border-color: rgba(165, 180, 252, 0.72) !important;
-}
-
-.contest-detail-award-badge.contest-award-badge--toptoon {
-  background: linear-gradient(135deg, rgba(244, 114, 182, 0.92), rgba(190, 24, 93, 0.86)) !important;
-  border-color: rgba(249, 168, 212, 0.72) !important;
-}
-
-.contest-detail-award-badge.contest-award-badge--winner {
-  background: linear-gradient(135deg, rgba(52, 211, 153, 0.9), rgba(4, 120, 87, 0.86)) !important;
-  border-color: rgba(134, 239, 172, 0.64) !important;
-}
-
-.contest-detail-award-badge.contest-award-badge--special {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.9), rgba(109, 40, 217, 0.86)) !important;
-  border-color: rgba(196, 181, 253, 0.64) !important;
-}
-
-.contest-detail-award-badge.contest-award-badge--finalist {
-  background: linear-gradient(135deg, rgba(113, 113, 122, 0.9), rgba(63, 63, 70, 0.86)) !important;
-  border-color: rgba(228, 228, 231, 0.36) !important;
-}
-
-.novel-detail-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 0.72rem;
-  margin-bottom: 0.95rem;
-}
-
-.novel-detail-tags .badge,
 .author-page-tag-chip {
   padding: 0.4rem 0.78rem;
   background-color: var(--np-surface-raised) !important;
   color: var(--np-text-primary) !important;
   border: 1px solid var(--np-border) !important;
-}
-
-.novel-detail-tags .badge {
-  font-size: 0.82rem;
 }
 
 .novel-stats-stack {
@@ -573,16 +451,6 @@
 
 .novel-stats-divider {
   display: none;
-}
-
-.novel-stat-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.22rem;
-  padding: 0.68rem 0.84rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: color-mix(in srgb, var(--np-surface-alt) 78%, transparent);
 }
 
 .novel-stat-value {
@@ -792,24 +660,6 @@
   margin-bottom: 1.05rem;
 }
 
-.novel-rankings-page .page-sidebar .sidebar-section {
-  flex: 0 0 auto;
-  gap: 0.46rem;
-  padding: 0.12rem 0;
-}
-
-.novel-rankings-page .page-sidebar .sidebar-divider {
-  flex: 0 0 auto;
-  margin: 0.52rem 0;
-}
-
-.novel-rankings-page .sidebar-section-tags {
-  flex: 1 1 auto;
-  min-height: 0;
-  gap: 0.36rem;
-}
-
-.novel-rankings-page .sidebar-label,
 .novel-rankings-page .filter-control-label {
   font-size: 0.78rem !important;
   white-space: nowrap;
@@ -963,117 +813,16 @@
   width: 100%;
 }
 
-.novel-rankings-page .tag-filter-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.4rem;
-  line-height: 1;
-  margin-bottom: 0.42rem !important;
-}
-
-.novel-rankings-page .tag-filter-mode-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.24rem;
-  flex: 0 0 auto;
-}
-
-.novel-rankings-page .tag-filter-mode-controls .btn {
-  min-height: 24px;
-  padding: 0.12rem 0.48rem;
-  border-radius: var(--np-radius-sm);
-  font-size: 0.78rem !important;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.novel-rankings-page .tag-filter-mode-controls .tag-filter-reset-button {
-  margin-left: 0.12rem;
-  border-color: color-mix(in srgb, var(--np-negative) 28%, var(--np-border) 72%) !important;
-  background-color: color-mix(in srgb, var(--np-negative) 7%, transparent) !important;
-  color: color-mix(in srgb, var(--np-negative) 78%, var(--np-text-heading) 22%) !important;
-  font-size: 0.74rem !important;
-  font-weight: 850;
-}
-
-.novel-rankings-page .tag-filter-mode-controls .tag-filter-reset-button:hover,
-.novel-rankings-page .tag-filter-mode-controls .tag-filter-reset-button:focus-visible {
-  border-color: color-mix(in srgb, var(--np-negative) 48%, var(--np-border) 52%) !important;
-  background-color: color-mix(in srgb, var(--np-negative) 13%, transparent) !important;
-  color: var(--np-text-heading) !important;
-}
-
-.novel-rankings-page .tag-filter-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.48rem;
-  min-height: 0;
-}
-
-.novel-rankings-page .tag-filter-advanced-mode-pill {
-  display: flex;
-  align-items: center;
-  min-height: 31px;
-  padding: 0.28rem 0.58rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-sm);
-  background-color: color-mix(in srgb, var(--np-surface-alt) 78%, transparent);
-  color: var(--np-text-secondary);
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.novel-rankings-page .tag-filter-advanced-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -0.08rem;
-}
-
-.novel-rankings-page .tag-filter-apply-button {
-  min-height: 28px;
-  padding: 0.16rem 0.64rem;
-  border-radius: var(--np-radius-sm);
-  font-size: 0.76rem !important;
-  font-weight: 850;
-  line-height: 1.1;
-}
-
-.novel-rankings-page .sidebar-section-tags textarea.form-control {
-  font-size: 0.84rem !important;
-  line-height: 1.45;
-}
-
-.novel-rankings-page .page-sidebar,
 .novel-rankings-page .ranking-table-panel,
 .novel-rankings-page .custom-table-wrapper,
 .novel-rankings-page .form-control,
 .novel-rankings-page .input-group-text,
-.novel-rankings-page .dropdown-menu,
-.novel-rankings-page .selected-tags-box,
-.novel-rankings-page .tag-filter-list {
+.novel-rankings-page .dropdown-menu {
   border-color: var(--np-border) !important;
 }
 
-.novel-rankings-page .ranking-table-scroll,
-.novel-rankings-page .custom-table-wrapper,
-.novel-rankings-page .selected-tags-box,
-.novel-rankings-page .tag-filter-list {
+.novel-rankings-page .custom-table-wrapper {
   overscroll-behavior: contain;
-}
-
-.novel-rankings-page .selected-tags-box,
-.novel-rankings-page .tag-filter-list {
-  overflow-y: auto !important;
-  align-content: flex-start;
-}
-
-.novel-rankings-page .selected-tags-box {
-  max-height: 96px;
-}
-
-.novel-rankings-page .tag-filter-list {
-  max-height: 180px !important;
 }
 
 [data-theme="light"] .novel-rankings-page .page-sidebar,
@@ -1175,81 +924,6 @@
     --ranking-workspace-min-height: 660px;
   }
 
-  .novel-rankings-layout {
-    grid-template-columns: 272px minmax(0, 1fr);
-    gap: 0.62rem;
-    align-items: stretch;
-  }
-
-  .novel-rankings-layout .page-sidebar,
-  .novel-rankings-layout .ranking-table-panel {
-    height: var(--ranking-workspace-height);
-    min-height: var(--ranking-workspace-min-height);
-  }
-
-  .novel-rankings-layout .page-sidebar {
-    overflow: hidden;
-    min-width: 0;
-  }
-
-  .novel-rankings-layout .novel-rankings-main {
-    height: 100%;
-    min-height: 0;
-    gap: 0;
-  }
-
-  .novel-rankings-layout .ranking-table-region {
-    height: 100%;
-    min-height: 0;
-  }
-
-  .novel-rankings-layout .ranking-table-panel {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .novel-rankings-layout .ranking-table-panel .panel-card__header {
-    flex: 0 0 auto;
-  }
-
-  .novel-rankings-layout .ranking-table-panel__body {
-    display: flex;
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
-  .novel-rankings-layout .ranking-table-scroll {
-    flex: 1 1 auto;
-    height: auto;
-    min-height: 0;
-  }
-
-  .novel-rankings-layout .sidebar-section-tags {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-    padding-bottom: 0.7rem;
-  }
-
-  .novel-rankings-layout .sidebar-section-tags .tag-filter-content {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .novel-rankings-layout .sidebar-section-tags .selected-tags-box {
-    flex: 0 0 auto;
-    max-height: 96px;
-    overflow-y: auto;
-  }
-
-  .novel-rankings-layout .sidebar-section-tags .tag-filter-list {
-    flex: 1 1 auto;
-    min-height: 0 !important;
-    max-height: none !important;
-    overflow-y: auto !important;
-    align-content: flex-start;
-  }
 }
 
 @media (max-width: 991.98px) {
@@ -1285,22 +959,6 @@
     margin-bottom: 1.05rem;
   }
 
-  .contest-rank-control-tabs {
-    width: 100%;
-  }
-
-  .contest-rank-control-tabs .nav-item {
-    flex: 1 1 0;
-  }
-
-  .contest-rank-control-tabs .nav-link {
-    text-align: center;
-  }
-
-  .contest-year-toggle {
-    width: 100%;
-  }
-
   .ranking-showcase-group__header {
     align-items: flex-start;
     flex-direction: column;
@@ -1327,14 +985,6 @@
 }
 
 @media (max-width: 767.98px) {
-  .novel-detail-header-inner {
-    grid-template-columns: 96px minmax(0, 1fr);
-    gap: 0.8rem;
-  }
-
-  .novel-detail-cover {
-    min-height: 144px;
-  }
 
   .author-novel-cover {
     width: 58px;
@@ -1413,7 +1063,6 @@
   }
 }
 
-.contest-award-badge,
 .novel-detail-award-badge {
   padding: 0.34rem 0.68rem;
   border-radius: 999px;
@@ -1421,80 +1070,10 @@
   letter-spacing: 0;
 }
 
-.contest-award-badge--grand {
-  background-color: rgba(255, 200, 87, 0.16);
-  color: var(--np-warning);
-}
-
-.contest-award-badge--excellent,
-.contest-award-badge--toptoon {
-  background-color: var(--np-accent-soft);
-  color: var(--np-accent-strong);
-}
-
-.contest-award-badge--winner,
-.contest-award-badge--special,
-.contest-award-badge--finalist {
-  background-color: var(--np-accent-warm-soft);
-  color: var(--np-accent-warm);
-}
-
-.contest-table .contest-award-badge {
-  min-height: 22px;
-  padding: 0.12rem 0.52rem;
-  border-width: 1px;
-  font-size: 0.8rem !important;
-  line-height: 1.1;
-  letter-spacing: 0.01em;
-  text-transform: none;
-}
-
-.contest-table .rank-change-badge {
-  min-width: 51px;
-}
-
-.contest-table .contest-award-badge--grand {
-  background-color: rgba(246, 196, 83, 0.58) !important;
-  border-color: rgba(255, 226, 135, 0.94) !important;
-  color: #fff4b8 !important;
-}
-
-.contest-table .contest-award-badge--excellent {
-  background-color: rgba(125, 140, 255, 0.5) !important;
-  border-color: rgba(165, 180, 252, 0.9) !important;
-  color: #dbeafe !important;
-}
-
-.contest-table .contest-award-badge--toptoon {
-  background-color: rgba(244, 114, 182, 0.52) !important;
-  border-color: rgba(249, 168, 212, 0.9) !important;
-  color: #fce7f3 !important;
-}
-
-.contest-table .contest-award-badge--winner {
-  background-color: rgba(52, 211, 153, 0.46) !important;
-  border-color: rgba(134, 239, 172, 0.84) !important;
-  color: #dcfce7 !important;
-}
-
-.contest-table .contest-award-badge--special {
-  background-color: rgba(167, 139, 250, 0.46) !important;
-  border-color: rgba(196, 181, 253, 0.84) !important;
-  color: #ede9fe !important;
-}
-
-.contest-table .contest-award-badge--finalist {
-  background-color: rgba(255, 255, 255, 0.16) !important;
-  border-color: rgba(255, 255, 255, 0.3) !important;
-  color: #eceef3 !important;
-}
-
 [data-theme="light"] .page-hero,
 [data-theme="light"] .panel-card,
-[data-theme="light"] .page-sidebar,
 [data-theme="light"] .chart-card,
 [data-theme="light"] .tag-leader-card,
-[data-theme="light"] .novel-detail-header,
 [data-theme="light"] .media-rank-card--poster {
   box-shadow: none !important;
 }
@@ -1636,49 +1215,6 @@
   align-items: stretch;
 }
 
-.contest-rank-tabs-row {
-  display: flex;
-  justify-content: flex-start;
-  margin: 0 0 0.62rem;
-  flex: 0 0 auto;
-}
-
-.contest-rank-control-tabs {
-  display: inline-flex;
-  gap: 0.25rem;
-  padding: 0.18rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: color-mix(in srgb, var(--np-surface-alt) 68%, transparent);
-}
-
-.contest-rank-control-tabs .nav-link {
-  color: var(--np-text-secondary) !important;
-  border-color: transparent !important;
-  border-radius: 9px !important;
-  font-size: 0.84rem;
-  font-weight: 800;
-  padding: 0.35rem 0.8rem;
-  text-decoration: none !important;
-}
-
-.contest-rank-control-tabs .nav-link:hover {
-  color: var(--np-text-primary) !important;
-  background: var(--np-surface-soft) !important;
-}
-
-.contest-rank-control-tabs .nav-link.active {
-  color: var(--np-on-accent-solid) !important;
-  background: var(--np-accent-solid) !important;
-  border-color: transparent !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--np-accent) 26%, transparent);
-}
-
-.contest-year-toggle {
-  min-width: 82px;
-  justify-content: center;
-}
-
 .contest-page .page-hero__row {
   justify-content: flex-start;
   align-items: flex-start;
@@ -1765,56 +1301,6 @@
   border: 0;
 }
 
-.contest-award-poster .contest-award-badge {
-  min-height: 28px;
-  padding: 0.22rem 0.72rem;
-  border-width: 1px;
-  font-size: 0.88rem !important;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0.03em;
-  color: #f5f7fa !important;
-  background-color: rgba(10, 11, 14, 0.78) !important;
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.36);
-}
-
-.contest-award-poster .contest-award-badge--grand {
-  background: linear-gradient(135deg, rgba(246, 196, 83, 0.92), rgba(180, 112, 28, 0.86)) !important;
-  border-color: rgba(255, 226, 135, 0.72) !important;
-}
-
-.contest-award-poster .contest-award-badge--excellent {
-  background: linear-gradient(135deg, rgba(125, 140, 255, 0.92), rgba(67, 83, 210, 0.86)) !important;
-  border-color: rgba(165, 180, 252, 0.72) !important;
-}
-
-.contest-award-poster .contest-award-badge--toptoon {
-  background: linear-gradient(135deg, rgba(244, 114, 182, 0.92), rgba(190, 24, 93, 0.86)) !important;
-  border-color: rgba(249, 168, 212, 0.72) !important;
-}
-
-.contest-award-poster .contest-award-badge--winner {
-  background: linear-gradient(135deg, rgba(52, 211, 153, 0.9), rgba(4, 120, 87, 0.86)) !important;
-  border-color: rgba(134, 239, 172, 0.64) !important;
-}
-
-.contest-award-poster .contest-award-badge--special {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.9), rgba(109, 40, 217, 0.86)) !important;
-  border-color: rgba(196, 181, 253, 0.64) !important;
-}
-
-.contest-award-poster .contest-award-badge--finalist {
-  background: linear-gradient(135deg, rgba(113, 113, 122, 0.9), rgba(63, 63, 70, 0.86)) !important;
-  border-color: rgba(228, 228, 231, 0.36) !important;
-}
-
-.contest-award-poster .contest-award-badge--views {
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.92), rgba(194, 65, 12, 0.88)) !important;
-  border-color: rgba(253, 186, 116, 0.7) !important;
-}
-
 .contest-award-poster .media-rank-card__meta {
   margin-top: 0.48rem;
   color: rgba(248, 251, 255, 0.9) !important;
@@ -1864,41 +1350,6 @@
 .contest-award-poster--podium-4 .media-rank-card__title,
 .contest-award-poster--podium-4 .media-rank-card__title a {
   font-size: 1.08rem !important;
-}
-
-.novel-rankings-page .contest-winner-filter {
-  margin-top: 0.52rem;
-}
-
-.novel-rankings-page .contest-winner-filter .form-check {
-  min-height: 0;
-  margin: 0;
-}
-
-.novel-rankings-page .contest-winner-filter .form-check-label {
-  color: var(--np-text-primary) !important;
-  font-size: 0.82rem;
-  font-weight: 750;
-}
-
-.novel-rankings-page .contest-winner-filter .form-check-input {
-  margin-top: 0.18rem;
-  border-color: var(--np-border) !important;
-  background-color: color-mix(in srgb, var(--np-surface-alt) 78%, transparent) !important;
-  box-shadow: none !important;
-}
-
-.novel-rankings-page .contest-winner-filter .form-check-input:not(:checked) {
-  background-image: none !important;
-}
-
-.novel-rankings-page .contest-winner-filter .form-check-input:checked {
-  border-color: var(--np-accent) !important;
-  background-color: var(--np-accent) !important;
-}
-
-.novel-rankings-page .contest-winner-filter .form-check-input:focus {
-  box-shadow: 0 0 0 0.16rem var(--np-focus-ring) !important;
 }
 
 .novel-rankings-page .filter-range-row > .form-control,
@@ -1960,163 +1411,7 @@
   box-shadow: none;
 }
 
-.novel-rankings-page .sidebar-section-tags .selected-tags-box {
-  max-height: 88px !important;
-  overflow-y: auto !important;
-  overscroll-behavior: contain;
-}
-
-.novel-rankings-page .sidebar-section-tags .tag-filter-list {
-  display: block !important;
-  flex: 0 0 auto !important;
-  height: clamp(250px, 30vh, 400px) !important;
-  overflow-y: auto !important;
-  overscroll-behavior-y: contain;
-  margin-bottom: 0.72rem;
-  overflow-anchor: none;
-  position: relative;
-  scrollbar-gutter: stable;
-}
-
-.novel-rankings-page .sidebar-section-tags .tag-filter-list > .tag-button-compact {
-  display: inline-flex;
-  margin: 0 0.34rem 0.34rem 0;
-  max-width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.novel-rankings-page .sidebar-section-tags .tag-filter-list > .text-muted {
-  display: block;
-}
-
-.novel-rankings-page .sidebar-section-tags .tag-filter-input-group {
-  flex: 0 0 auto;
-}
-
-.contest-sidebar-nav-section {
-  flex: 0 0 auto;
-}
-
-.contest-rank-control-tabs--sidebar {
-  width: 100%;
-}
-
-.contest-rank-control-tabs--sidebar .nav-item {
-  flex: 1 1 0;
-}
-
-.contest-rank-control-tabs--sidebar .nav-link {
-  text-align: center;
-  padding-inline: 0.45rem;
-}
-
-.novel-rankings-page .contest-winner-filter .form-check-input,
-.novel-rankings-page .contest-winner-filter .form-check-input:focus,
-.novel-rankings-page .contest-winner-filter .form-check-input:focus-visible,
-.novel-rankings-page .contest-winner-filter .form-check-input:active {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-.novel-rankings-page .contest-winner-filter .form-check-input:not(:checked) {
-  background-color: color-mix(in srgb, var(--np-surface-raised) 70%, var(--np-border) 30%) !important;
-  border-color: color-mix(in srgb, var(--np-border-strong) 72%, transparent) !important;
-  background-image: var(--bs-form-switch-bg) !important;
-}
-
-.contest-winner-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 22px;
-  color: var(--np-text-secondary);
-  cursor: pointer;
-  user-select: none;
-  line-height: 1;
-}
-
-.contest-winner-toggle input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.contest-winner-toggle__track {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  width: 34px;
-  height: 18px;
-  border: 1px solid color-mix(in srgb, var(--np-border-strong) 72%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--np-surface-raised) 62%, var(--np-border) 38%);
-  transition: background-color var(--np-transition), border-color var(--np-transition);
-}
-
-.contest-winner-toggle__thumb {
-  position: absolute;
-  top: 50%;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: var(--np-text-secondary);
-  transform: translateY(-50%);
-  transition: transform var(--np-transition), background-color var(--np-transition);
-}
-
-.contest-winner-toggle input:checked + .contest-winner-toggle__track {
-  border-color: var(--np-accent);
-  background: var(--np-accent);
-}
-
-.contest-winner-toggle input:checked + .contest-winner-toggle__track .contest-winner-toggle__thumb {
-  transform: translate(16px, -50%);
-  background: #f5f7fa;
-}
-
-.contest-winner-toggle:has(input:checked) .contest-winner-toggle__label {
-  color: var(--np-text-heading) !important;
-}
-
-.contest-winner-toggle__label {
-  color: var(--np-text-secondary) !important;
-  font-size: 0.82rem;
-  font-weight: 750;
-  line-height: 1;
-}
-
 @media (max-width: 767.98px) {
-  .filter-panel .tag-filter-list {
-    max-height: 180px !important;
-    overflow-y: auto !important;
-  }
-
-  .contest-rank-control-tabs {
-    width: 100%;
-  }
-
-  .contest-rank-tabs-row {
-    margin-bottom: 0.58rem;
-  }
-
-  .contest-rank-control-tabs .nav-item {
-    flex: 1 1 0;
-  }
-
-  .contest-rank-control-tabs .nav-link {
-    text-align: center;
-  }
-
-  .contest-year-toggle {
-    width: 100%;
-  }
 
   .contest-award-showcase__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2301,9 +1596,6 @@
 }
 
 @media (max-width: 991.98px) {
-  .page-sidebar {
-    display: none !important;
-  }
 
   .tag-analytics-grid {
     grid-template-columns: 1fr;
@@ -2730,12 +2022,6 @@
    열이 하나로 읽힌다 — 우측 정렬은 끝은 맞아도 시작이 제각각이라 헤더만
    오른쪽에 떨어져 있는 것처럼 보였다.
    값끼리 자릿수가 흔들리지 않게 tabular는 유지한다. */
-.novel-rankings-table th:nth-child(n + 5):nth-child(-n + 9),
-.novel-rankings-table td:nth-child(n + 5):nth-child(-n + 9) {
-  text-align: left;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1;
-}
 
 /* 정렬 표시. sortConfig가 계산에만 쓰이고 화면에 그려지지 않아 어느 열로 정렬
    중인지 알 수 없었다.
@@ -2744,14 +2030,12 @@
    (2) 좁은 열(초반/최신 잔류)에서는 셀을 넘쳐 옆 열에 걸쳐 보인다.
    그래서 표시는 절대 배치로 흐름에서 빼고, 헤더와 셀에 같은 오른쪽 여백을 줘서
    글자 기준선을 맞춘다. */
-.novel-rankings-table th[aria-sort],
 .tag-rank-table th[aria-sort] {
   white-space: nowrap;
 }
 
 /* 헤더가 좌측 정렬이므로 표시를 글자 뒤에 그냥 붙여도 글자 시작 위치가 밀리지
    않는다(우측 정렬일 때는 표시 폭만큼 글자가 왼쪽으로 밀려 값과 어긋났다). */
-.novel-rankings-table th[aria-sort]::after,
 .tag-rank-table th[aria-sort]::after {
   content: '↕';
   display: inline-block;
@@ -2762,14 +2046,12 @@
   opacity: 0.3;
 }
 
-.novel-rankings-table th[aria-sort="ascending"]::after,
 .tag-rank-table th[aria-sort="ascending"]::after {
   content: '↑';
   opacity: 1;
   color: var(--np-accent-strong);
 }
 
-.novel-rankings-table th[aria-sort="descending"]::after,
 .tag-rank-table th[aria-sort="descending"]::after {
   content: '↓';
   opacity: 1;
@@ -2777,22 +2059,8 @@
 }
 
 /* 헤더와 셀의 좌우 여백을 같게 둬야 글자 시작 위치가 맞는다. */
-.novel-rankings-table th:nth-child(n + 5):nth-child(-n + 9),
-.novel-rankings-table td:nth-child(n + 5):nth-child(-n + 9) {
-  padding-left: 0.7rem;
-  padding-right: 0.4rem;
-}
 
 /* 태그 알약이 커서 행마다 3줄까지 늘어나 10행이 화면을 다 먹었다. */
-.novel-rankings-table td:last-child .btn {
-  padding: 0.12rem 0.46rem;
-  font-size: 0.72rem;
-  line-height: 1.35;
-}
-
-.novel-rankings-table td:last-child .d-flex {
-  gap: 0.2rem !important;
-}
 
 /* 쇼케이스 카드 위에 알약이 너무 많다 — 순위 배지, 표지 버튼, 작가·점수 알약까지
    한 장에 넷이다. 상승 카드의 '427위 → 330위'는 이미 맨 텍스트라 두 그룹이 서로
@@ -2893,72 +2161,17 @@
 /* ── 소설 랭킹 표 (클린 모던) ─────────────────────────────────────────
    표 안의 링크는 밑줄 없이 색·굵기로만 구분한다. 500행에 밑줄이 깔리면
    행 전체가 소음이 된다. */
-.novel-rankings-page .novel-rankings-table a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.novel-rankings-page .novel-rankings-table a:hover {
-  color: var(--np-accent-strong);
-  text-decoration: none;
-}
-
-.novel-rankings-page .novel-rankings-table td:nth-child(4) a {
-  color: var(--np-text-secondary);
-}
 
 /* 헤더가 두 줄로 접히지 않게. '순위'가 44px 열에서 줄바꿈되고 있었다. */
-.novel-rankings-table thead th {
-  white-space: nowrap;
-}
 
 /* 태그 알약 → 조용한 사각 칩. 부트스트랩 버튼 색을 토큰으로 덮는다. */
-.novel-rankings-page .novel-rankings-table td:last-child .btn {
-  border-radius: var(--np-radius-sm);
-  border: none;
-  background-color: var(--np-surface-alt);
-  color: var(--np-text-secondary);
-  font-weight: 600;
-  box-shadow: none;
-}
-
-.novel-rankings-page .novel-rankings-table td:last-child .btn:hover {
-  background-color: var(--np-surface-raised);
-  color: var(--np-text-primary);
-}
-
-.novel-rankings-page .novel-rankings-table td:last-child .btn-primary {
-  background-color: var(--np-accent-soft);
-  color: var(--np-accent-strong);
-}
 
 /* 행 배경은 그림자가 아니라 아주 옅은 밝기 차로 구분한다. */
-.novel-rankings-page .novel-rankings-table tbody tr:hover td {
-  background-color: color-mix(in srgb, var(--np-text-primary) 4%, transparent);
-}
 
 /* 사이드바 태그 목록은 남는 세로 공간을 채운다.
    위쪽 규칙이 `height: clamp(250px, 30vh, 400px) !important`로 고정 높이를 걸어
    사이드바가 더 길어도 목록은 400px에서 멈추고 아래가 비어 있었다.
    모바일 필터 패널은 높이 제약이 없어 고정 높이가 맞으므로, 데스크톱에서만 푼다. */
-@media (min-width: 768px) {
-  /* 태그 섹션이 남는 높이를 가져가야 한다. `.novel-rankings-page .page-sidebar
-     .sidebar-section`(0,3,0)이 flex: 0 0 auto로 잡고 있어서, 같은 특이도로 뒤에
-     둬야 이긴다 — 앞선 `.novel-rankings-page .sidebar-section-tags`(0,2,0)는 진다.
-     목록에 고정 높이가 걸려 있던 동안에는 이 문제가 드러나지 않았다. */
-  .novel-rankings-page .page-sidebar .sidebar-section-tags {
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
-  .novel-rankings-page .novel-rankings-layout .sidebar-section-tags .tag-filter-list {
-    flex: 1 1 auto !important;
-    height: auto !important;
-    min-height: 120px !important;
-    max-height: none !important;
-    margin-bottom: 0 !important;
-  }
-}
 
 /* ── 데이터 분석: 실제로 갈 수 있는 곳 두 개 ────────────────────────────
    영문 눈썹 + 큰 값 카드(InsightStrip) 패턴을 걷어낸 자리다. 숫자가 없는 곳에

@@ -407,43 +407,24 @@
   scrollbar-color: color-mix(in srgb, var(--np-accent) 46%, var(--np-border) 54%) color-mix(in srgb, var(--np-surface-alt) 60%, transparent);
 }
 
-.custom-table-wrapper::-webkit-scrollbar,
-.virtual-card-scroll::-webkit-scrollbar,
-.tag-filter-list::-webkit-scrollbar,
-.contest-mobile-virtual-list::-webkit-scrollbar {
+.custom-table-wrapper::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-.custom-table-wrapper::-webkit-scrollbar-track,
-.virtual-card-scroll::-webkit-scrollbar-track,
-.tag-filter-list::-webkit-scrollbar-track,
-.contest-mobile-virtual-list::-webkit-scrollbar-track {
+.custom-table-wrapper::-webkit-scrollbar-track {
   background: color-mix(in srgb, var(--np-surface-alt) 64%, transparent);
   border-radius: 999px;
 }
 
-.custom-table-wrapper::-webkit-scrollbar-thumb,
-.virtual-card-scroll::-webkit-scrollbar-thumb,
-.tag-filter-list::-webkit-scrollbar-thumb,
-.contest-mobile-virtual-list::-webkit-scrollbar-thumb {
+.custom-table-wrapper::-webkit-scrollbar-thumb {
   border: 2px solid color-mix(in srgb, var(--np-surface-alt) 64%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--np-accent) 46%, var(--np-border-strong) 54%);
 }
 
-.custom-table-wrapper::-webkit-scrollbar-thumb:hover,
-.virtual-card-scroll::-webkit-scrollbar-thumb:hover,
-.tag-filter-list::-webkit-scrollbar-thumb:hover,
-.contest-mobile-virtual-list::-webkit-scrollbar-thumb:hover {
+.custom-table-wrapper::-webkit-scrollbar-thumb:hover {
   background: var(--np-accent);
-}
-
-.virtual-card-scroll,
-.tag-filter-list,
-.contest-mobile-virtual-list {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--np-accent) 46%, var(--np-border) 54%) color-mix(in srgb, var(--np-surface-alt) 60%, transparent);
 }
 
 .custom-table {
@@ -473,11 +454,6 @@
   vertical-align: middle;
 }
 
-.ranking-table-scroll {
-  height: min(72vh, 760px);
-  min-height: 520px;
-}
-
 .ranking-table-panel {
   border-color: color-mix(in srgb, var(--np-border) 82%, transparent) !important;
 }
@@ -490,18 +466,6 @@
   border: 0 !important;
   border-radius: 0;
   box-shadow: none;
-}
-
-.contest-table-scroll {
-  height: min(72vh, 820px);
-  min-height: 560px;
-}
-
-.contest-mobile-virtual-list {
-  height: min(76dvh, 820px);
-  min-height: 420px;
-  overflow-y: auto;
-  padding-right: 0.2rem;
 }
 
 .custom-table th {
@@ -526,19 +490,6 @@
   background-color: color-mix(in srgb, var(--np-surface-raised) 82%, transparent) !important;
 }
 
-.rank-change-badge {
-  min-width: 46px;
-  height: 26px;
-  padding: 0 0.5rem;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.15rem;
-  font-size: var(--np-fs-meta);
-  font-weight: 800;
-}
-
 /* 배경 틴트는 원래 색(--np-positive/negative)으로 두고 글자만 접근성 토큰을 쓴다.
    라이트 테마에서 --np-positive를 글자에 그대로 쓰면 대비가 2.58까지 떨어졌다. */
 .rank-up {
@@ -553,55 +504,24 @@
 
 /* '변동 없음'은 대부분의 행에 붙는 기본 상태다. 틴트를 14%로 두면 라이트에서
    글자 대비가 4.44로 미달하고, 조용해야 할 배지가 오히려 눈에 띈다. */
-.rank-same {
-  background-color: color-mix(in srgb, var(--np-text-secondary) 10%, transparent);
-  color: var(--np-text-secondary);
-}
 
-.tag-button-compact,
 .rounded-pill.btn,
 .author-page-tag-chip,
-.fs-tag-badge,
-.novel-detail-tags .badge {
+.fs-tag-badge {
   border-radius: 999px !important;
 }
 
-.tag-button-compact,
 .rounded-pill.btn {
   min-height: 28px;
   padding: 0.26rem 0.66rem !important;
   font-size: 0.74rem !important;
 }
 
-.selected-tags-box,
-.tag-filter-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.38rem;
-  min-height: 44px;
-  padding: 0.65rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-sm);
-  background-color: color-mix(in srgb, var(--np-surface-alt) 76%, transparent);
-}
-
-.mobile-controls-bar,
-.tag-ranking-mobile-search,
-.filter-panel {
+.tag-ranking-mobile-search {
   border: 1px solid var(--np-border);
   border-radius: var(--np-radius-md);
   background-color: var(--np-surface);
   box-shadow: var(--np-shadow-sm);
-}
-
-.filter-panel {
-  overflow: hidden;
-  transition: max-height 220ms ease;
-  max-height: 0;
-}
-
-.filter-panel.filter-panel--open {
-  max-height: 920px;
 }
 
 .date-picker-wrapper {
@@ -819,17 +739,6 @@
 }
 
 /* 상세 페이지의 큰 표지 */
-.novel-detail-cover .novel-cover-mask__reveal {
-  font-size: 0.84rem;
-  padding: 0.42rem 0.8rem;
-}
-
-.novel-detail-cover .novel-cover-mask__reveal {
-  top: auto;
-  right: 50%;
-  bottom: 0.6rem;
-  transform: translateX(50%);
-}
 
 /* 좁은 카드에서는 아이콘만 남긴다 */
 @media (max-width: 560px) {
