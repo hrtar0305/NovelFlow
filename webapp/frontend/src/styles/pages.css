@@ -10,471 +10,15 @@
   gap: 1rem;
 }
 
-.tag-ranking-control-bar {
-  display: grid;
-  grid-template-columns: minmax(220px, auto) minmax(260px, 1fr);
-  gap: 0.8rem;
-  align-items: end;
-  padding: 0.75rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background: color-mix(in srgb, var(--np-surface-alt) 76%, transparent);
-}
-
-.tag-ranking-control-bar__item,
-.tag-ranking-control-bar__search {
-  display: grid;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-.tag-ranking-control-bar__label,
-.selected-tag-panel__eyebrow {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-weight: 850;
-  letter-spacing: 0;
-}
-
 /* 단일 열. 선택 패널은 오른쪽 열이 아니라 차트 아래 전체폭 스트립으로 흐른다
    (빈 열 예약 제거 + 선택 시 차트 가로 리플로우 방지). */
-.tag-analytics-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.9rem;
-}
-
-.tag-bubble-map-card {
-  min-width: 0;
-}
-
-.tag-bubble-map-shell {
-  position: relative;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.tag-ranking-chart-area {
-  height: 400px;
-}
-
-.tag-ranking-chart-area--bubble {
-  height: clamp(460px, 46vw, 620px);
-  min-height: 0;
-}
-
-.tag-bubble-point {
-  cursor: pointer;
-  transition: opacity var(--np-transition);
-}
-
-.tag-ranking-empty-chart {
-  min-height: 320px;
-  display: grid;
-  place-items: center;
-  color: var(--np-text-secondary);
-  font-size: 0.9rem;
-  text-align: center;
-}
-
-.tag-bubble-tooltip {
-  padding: 0.62rem 0.78rem;
-  font-size: 0.84rem;
-}
-
-.tag-bubble-tooltip p {
-  margin: 0;
-  color: var(--np-text-secondary);
-}
-
-.tag-bubble-tooltip__title {
-  margin-bottom: 0.22rem !important;
-  color: var(--np-text-heading) !important;
-  font-weight: 850;
-}
 
 /* 선택 패널은 예전에 그리드 칸 안에 있어 height:100% + margin-top:0이 필요했다.
    지금은 페이지 셸의 직계 자식이라 둘 다 잔재이고, margin-top:0이 페이지의
    `> * + *` 간격 규칙을 이겨서 위 요소에 딱 붙어 있었다. */
-.tag-rankings-page .selected-tag-panel {
-  height: auto;
-}
-
-.selected-tag-panel--muted {
-  border-color: var(--np-border);
-}
-
-.selected-tag-panel__title {
-  margin: 0.2rem 0 0;
-  color: var(--np-text-heading);
-  font-size: 1.25rem;
-  font-weight: 900;
-  line-height: 1.18;
-}
-
-.selected-tag-panel__meta {
-  margin: 0.35rem 0 0;
-  color: var(--np-text-secondary);
-  font-size: 0.86rem;
-}
-
-.selected-tag-panel__empty {
-  display: grid;
-  align-content: center;
-  min-height: 100%;
-}
-
-.tag-ranking-pending {
-  position: absolute;
-  z-index: 10;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--np-surface) 42%, transparent);
-}
-
-.tag-rank-change-badge {
-  font-size: 0.78rem;
-  font-weight: 850;
-}
-
-.tag-rank-change-badge--muted {
-  color: var(--np-text-secondary);
-}
-
-.tag-rank-change-badge--up {
-  color: var(--np-rank-up);
-}
-
-.tag-rank-change-badge--down {
-  color: var(--np-rank-down);
-}
-
-.tag-rankings-page .tag-ranking-mobile-list {
-  display: none;
-}
-
-.scatter-point.highlight circle:last-child {
-  stroke: var(--np-text-heading);
-  stroke-width: 2;
-}
-
-.trend-stack {
-  display: grid;
-  gap: 0.9rem;
-}
-
-.tag-leader-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.8rem;
-}
-
-.tag-leader-card {
-  padding: 0.95rem 1rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--np-surface-alt) 76%, transparent) 0%, var(--np-surface) 100%);
-  box-shadow: var(--np-shadow-sm);
-}
-
-.tag-leader-card__label {
-  font-size: var(--np-fs-micro);
-  font-weight: 800;
-  letter-spacing: 0;
-  color: var(--np-text-secondary);
-}
-
-.tag-leader-card__title {
-  margin-top: 0.5rem;
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: var(--np-text-heading);
-}
-
-.tag-leader-card__metric {
-  margin-top: 0.3rem;
-  font-size: var(--np-fs-meta);
-  font-weight: 700;
-}
-
-.tag-leader-card__hint {
-  margin-top: 0.35rem;
-  color: var(--np-text-secondary);
-  line-height: 1.5;
-  font-size: var(--np-fs-meta);
-}
-
-.tag-leader-card--positive .tag-leader-card__metric {
-  color: var(--np-positive);
-}
-
-.tag-leader-card--accent .tag-leader-card__metric {
-  color: var(--np-accent);
-}
-
-.tag-leader-card--warm .tag-leader-card__metric {
-  color: var(--np-accent-warm);
-}
-
-.tag-leader-card--negative .tag-leader-card__metric {
-  color: var(--np-negative);
-}
-
-.tag-analysis-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.tag-category-module {
-  height: 100%;
-}
-
-.tag-rank-list {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.selected-tag-panel {
-  margin-top: 0.7rem;
-  padding: 0.85rem 0.95rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--np-surface-alt) 82%, transparent) 0%, var(--np-surface) 100%);
-}
-
-.selected-tag-panel--positive {
-  border-color: color-mix(in srgb, var(--np-positive) 24%, var(--np-border) 76%);
-}
-
-.selected-tag-panel--accent {
-  border-color: color-mix(in srgb, var(--np-accent) 24%, var(--np-border) 76%);
-}
-
-.selected-tag-panel--warm {
-  border-color: color-mix(in srgb, var(--np-accent-warm) 24%, var(--np-border) 76%);
-}
-
-.selected-tag-panel--negative {
-  border-color: color-mix(in srgb, var(--np-negative) 24%, var(--np-border) 76%);
-}
-
-.selected-tag-panel__header {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.8rem;
-  align-items: start;
-}
-
-.selected-tag-panel__close {
-  width: 2rem;
-  height: 2rem;
-  border: 0;
-  border-radius: 999px;
-  background-color: var(--np-surface-raised);
-  color: var(--np-text-secondary);
-  font-size: 1.2rem;
-  line-height: 1;
-}
 
 /* 이 패널 수치가 어느 구간 것인지 밝히는 줄. 없으면 아래 차트는 14일인데
    위 수치는 무슨 기준인지 알 수 없다 — 실제로 그 지적을 받았다. */
-.selected-tag-panel__basis {
-  margin: 0.55rem 0 0;
-  font-size: var(--np-fs-micro);
-  color: var(--np-text-secondary);
-  letter-spacing: 0.01em;
-}
-
-.selected-tag-panel__basis + .selected-tag-panel__metrics {
-  margin-top: 0.5rem;
-}
-
-.selected-tag-panel__metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1rem;
-  margin-top: 0.8rem;
-}
-
-.selected-tag-panel__metrics span {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 0.18rem;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-}
-
-.selected-tag-panel__metrics strong {
-  color: var(--np-text-heading);
-}
-
-.selected-tag-panel__chart {
-  margin-top: 0.65rem;
-}
-
-.tag-trend-loading {
-  min-height: 220px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  color: var(--np-text-secondary);
-}
-
-.author-novel-cover {
-  overflow: hidden;
-  border-radius: var(--np-radius-md);
-  background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.18), transparent 45%),
-    linear-gradient(135deg, color-mix(in srgb, var(--np-accent) 82%, #fff 18%) 0%, color-mix(in srgb, var(--np-accent-warm) 72%, #fff 28%) 100%);
-}
-
-.author-novel-cover-image {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-.novel-detail-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.novel-detail-title-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.8rem;
-  flex-wrap: wrap;
-}
-
-.novel-detail-title {
-  font-size: var(--np-fs-title-md);
-  line-height: 1.02;
-  color: var(--np-text-heading);
-  margin: 0;
-}
-
-.novel-detail-ext-link {
-  width: 2rem;
-  height: 2rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 0.02rem;
-  border-radius: 999px;
-  border: 1px solid var(--np-border);
-  background-color: var(--np-surface);
-  color: var(--np-text-primary);
-}
-
-.novel-detail-ext-link svg {
-  width: 1.05rem;
-  height: 1.05rem;
-}
-
-.novel-detail-author {
-  margin-top: 0.35rem;
-  font-size: 1.06rem;
-  color: var(--np-text-secondary);
-}
-
-.novel-detail-author a {
-  color: var(--np-text-heading);
-  text-decoration: none;
-}
-
-.novel-detail-contest-label {
-  margin-top: 0.65rem;
-  display: inline-flex;
-  padding: 0.4rem 0.75rem;
-  border-radius: 999px;
-  background: var(--np-accent-soft);
-  color: var(--np-accent);
-  font-size: var(--np-fs-meta);
-  font-weight: 800;
-}
-
-.contest-detail-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.45rem;
-}
-
-.contest-detail-meta-row .novel-detail-contest-label {
-  margin-top: 0;
-}
-
-.author-page-tag-chip {
-  padding: 0.4rem 0.78rem;
-  background-color: var(--np-surface-raised) !important;
-  color: var(--np-text-primary) !important;
-  border: 1px solid var(--np-border) !important;
-}
-
-.novel-stats-stack {
-  display: grid;
-  gap: 0.65rem;
-  margin-top: auto;
-  justify-content: start;
-}
-
-.novel-stats-row {
-  display: grid;
-  gap: 0.65rem;
-  justify-content: start;
-}
-
-.novel-stats-row--primary {
-  grid-template-columns: repeat(5, minmax(94px, 124px));
-}
-
-.novel-stats-row--percent {
-  grid-template-columns: repeat(3, minmax(126px, 156px));
-}
-
-.contest-stats-row {
-  grid-template-columns: repeat(6, minmax(88px, 118px));
-}
-
-@media (min-width: 768px) and (max-width: 1199.98px) {
-  .contest-stats-row {
-    grid-template-columns: repeat(3, minmax(96px, 128px));
-  }
-}
-
-.novel-stats-divider {
-  display: none;
-}
-
-.novel-stat-value {
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: var(--np-text-heading);
-}
-
-.novel-stat-label {
-  font-size: var(--np-fs-micro);
-  letter-spacing: 0;
-  color: var(--np-text-secondary);
-}
-
-.novel-detail-synopsis {
-  margin: 0;
-  padding: 0.95rem 1rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background-color: color-mix(in srgb, var(--np-surface-alt) 78%, transparent);
-  line-height: 1.7;
-  color: var(--np-text-primary);
-  white-space: pre-wrap;
-}
 
 .chart-card {
   overflow: hidden;
@@ -484,35 +28,6 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.author-novel-cover {
-  aspect-ratio: 2 / 3;
-  width: 74px;
-}
-
-.author-novel-content {
-  min-width: 0;
-}
-
-.author-novel-title-link {
-  text-decoration: none;
-  color: var(--np-text-heading);
-}
-
-.author-page-stats .author-stat-label,
-.author-stats-inline,
-.author-stat-label {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-}
-
-.author-stat-value {
-  color: var(--np-text-heading);
-}
-
-.author-stats-dot {
-  opacity: 0.55;
 }
 
 .showcase-section {
@@ -640,189 +155,18 @@
   .ranking-showcase-rising-grid .media-rank-card--mover-5 { grid-column: 2; grid-row: 3; }
 }
 
-.ranking-hero-description {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-}
-
 .novel-rankings-page {
   gap: 0;
   padding-top: 0.85rem;
-}
-
-.novel-rankings-page > .page-hero {
-  margin-bottom: 0.72rem;
 }
 
 .novel-rankings-page > .showcase-section {
   margin-bottom: 1.05rem;
 }
 
-.novel-rankings-page .filter-control-label {
-  font-size: 0.78rem !important;
-  white-space: nowrap;
-}
-
-.novel-rankings-page .filter-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 0.62rem;
-  margin-bottom: 0 !important;
-}
-
-.novel-rankings-page .filter-control-group {
-  min-width: 0 !important;
-}
-
-.novel-rankings-page .filter-control-input-group {
-  flex-wrap: nowrap;
-}
-
-.novel-rankings-page .filter-control-group--range .filter-control-input-group {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-}
-
-.novel-rankings-page .filter-range-row {
-  display: grid;
-  grid-template-columns: minmax(0, 0.86fr) minmax(0, 0.86fr) 66px;
-  gap: 0.42rem;
-  align-items: stretch;
-}
-
-.novel-rankings-page .filter-range-row--compact {
-  grid-template-columns: minmax(0, 0.76fr) minmax(0, 0.76fr) 76px !important;
-  gap: 0.55rem !important;
-  align-items: center !important;
-}
-
-.novel-rankings-page .episode-filter-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px;
-  gap: 0.28rem;
-  align-items: center;
-}
-
-.novel-rankings-page .episode-filter-input {
-  width: 100%;
-  height: 32px;
-  min-height: 32px;
-  max-height: 32px;
-  min-width: 0;
-  padding: 0 0.42rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-sm);
-  background: var(--np-surface);
-  color: var(--np-text-primary);
-  font-size: 0.74rem;
-  font-weight: 650;
-  line-height: 32px;
-  box-sizing: border-box;
-}
-
-.novel-rankings-page .episode-filter-input::placeholder {
-  color: var(--np-text-secondary);
-  opacity: 0.84;
-}
-
-.novel-rankings-page .episode-filter-input:focus {
-  outline: none;
-  border-color: var(--np-accent);
-  box-shadow: 0 0 0 0.12rem var(--np-focus-ring);
-}
-
-.novel-rankings-page .episode-filter-apply {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 32px;
-  min-height: 32px;
-  max-height: 32px;
-  padding: 0 0.34rem;
-  /* --np-accent 위 흰 글자는 대비 2.69로 미달이다. 흰 글자를 얹는
-     '채워진 배경'은 --np-accent-solid(대비 5.54)를 써야 한다. */
-  border: 1px solid var(--np-accent-solid);
-  border-radius: var(--np-radius-sm);
-  background: var(--np-accent-solid);
-  color: var(--np-on-accent-solid);
-  font-size: 0.74rem;
-  font-weight: 850;
-  line-height: 1;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-.novel-rankings-page .episode-filter-apply:hover {
-  border-color: var(--np-accent-strong);
-  background: var(--np-accent-strong);
-}
-
-.novel-rankings-page .episode-filter-apply:focus,
-.novel-rankings-page .episode-filter-apply:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.novel-rankings-page .filter-range-apply {
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  width: auto;
-  min-width: 66px;
-  height: 30px !important;
-  min-height: 30px !important;
-  padding: 0 0.58rem !important;
-  font-size: 0.78rem !important;
-  line-height: 1 !important;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-.novel-rankings-page .filter-control-input-group .form-control {
-  font-size: 0.86rem !important;
-  min-width: 0;
-}
-
-.novel-rankings-page .filter-control-group--search .form-control::placeholder {
-  font-size: 0.86rem;
-}
-
-.novel-rankings-page .filter-range-row .form-control {
-  height: 30px;
-  min-height: 30px;
-  padding: 0 0.42rem;
-  font-size: 0.78rem !important;
-  line-height: 1 !important;
-  box-sizing: border-box;
-}
-
-.novel-rankings-page .filter-range-row .form-control::placeholder {
-  font-size: 0.74rem;
-}
-
-.novel-rankings-page .filter-control-input-group .input-group-text {
-  flex: 0 0 auto;
-  padding-inline: 0.55rem;
-  font-size: 0.86rem !important;
-}
-
-.novel-rankings-page .filter-control-group--range .btn {
-  width: 100%;
-}
-
-.novel-rankings-page .ranking-table-panel,
-.novel-rankings-page .custom-table-wrapper,
 .novel-rankings-page .form-control,
-.novel-rankings-page .input-group-text,
 .novel-rankings-page .dropdown-menu {
   border-color: var(--np-border) !important;
-}
-
-.novel-rankings-page .custom-table-wrapper {
-  overscroll-behavior: contain;
 }
 
 [data-theme="light"] .novel-rankings-page .page-sidebar,
@@ -880,11 +224,6 @@
   font-size: 0.8125rem !important;
   letter-spacing: 0;
   backdrop-filter: none;
-}
-
-.novel-rankings-page .media-rank-card__rank-icon {
-  flex: 0 0 auto;
-  transform: translateY(-1px);
 }
 
 .novel-rankings-page .media-rank-card--split .media-rank-card__title,
@@ -951,10 +290,6 @@
     padding-top: 0.65rem;
   }
 
-  .novel-rankings-page > .page-hero {
-    margin-bottom: 0.65rem;
-  }
-
   .novel-rankings-page > .showcase-section {
     margin-bottom: 1.05rem;
   }
@@ -985,18 +320,6 @@
 }
 
 @media (max-width: 767.98px) {
-
-  .author-novel-cover {
-    width: 58px;
-  }
-
-  .author-work-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .author-work-card {
-    min-height: 360px;
-  }
 
   .contest-award-showcase__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1063,17 +386,7 @@
   }
 }
 
-.novel-detail-award-badge {
-  padding: 0.34rem 0.68rem;
-  border-radius: 999px;
-  font-size: var(--np-fs-micro);
-  letter-spacing: 0;
-}
-
-[data-theme="light"] .page-hero,
-[data-theme="light"] .panel-card,
 [data-theme="light"] .chart-card,
-[data-theme="light"] .tag-leader-card,
 [data-theme="light"] .media-rank-card--poster {
   box-shadow: none !important;
 }
@@ -1084,10 +397,7 @@
 
 [data-theme="dark"] .text-dark,
 [data-theme="dark"] .text-body,
-[data-theme="dark"] .card-title,
 [data-theme="dark"] .modal-title,
-[data-theme="dark"] .accordion-button,
-[data-theme="dark"] .list-group-item,
 [data-theme="dark"] .form-check-label {
   color: var(--np-text-primary) !important;
 }
@@ -1117,13 +427,11 @@
   color: var(--np-text-primary) !important;
 }
 
-.date-picker-wrapper .form-control,
-.date-range-display {
+.date-picker-wrapper .form-control {
   color: var(--np-text-primary) !important;
 }
 
-.date-picker-wrapper .text-muted,
-.date-range-display .text-muted {
+.date-picker-wrapper .text-muted {
   color: var(--np-text-secondary) !important;
   opacity: 1 !important;
 }
@@ -1184,17 +492,6 @@
   color: var(--np-text-primary) !important;
 }
 
-.data-source-link {
-  color: var(--np-accent-strong);
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.data-source-link:hover {
-  color: var(--np-text-heading);
-  text-decoration: none;
-}
-
 .contest-page {
   gap: 0;
   padding-top: 0.85rem;
@@ -1213,21 +510,6 @@
   gap: 0.72rem;
   min-height: 0;
   align-items: stretch;
-}
-
-.contest-page .page-hero__row {
-  justify-content: flex-start;
-  align-items: flex-start;
-  gap: 0.55rem;
-}
-
-.contest-page .page-hero__copy {
-  flex: 0 1 auto;
-}
-
-.contest-page .page-hero__actions {
-  align-self: flex-start;
-  margin-top: 0.02rem;
 }
 
 .contest-award-poster {
@@ -1352,65 +634,6 @@
   font-size: 1.08rem !important;
 }
 
-.novel-rankings-page .filter-range-row > .form-control,
-.novel-rankings-page .filter-range-row > .filter-range-apply,
-.novel-rankings-page .filter-range-input {
-  height: 30px !important;
-  min-height: 30px !important;
-  max-height: 30px !important;
-}
-
-.novel-rankings-page .filter-range-row > .filter-range-apply {
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-}
-
-.novel-rankings-page .filter-range-row > .filter-range-input {
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-}
-
-.novel-rankings-page .filter-range-row--compact > .filter-range-input {
-  height: 28px !important;
-  min-height: 28px !important;
-  max-height: 28px !important;
-  padding: 0 0.42rem !important;
-  font-size: 0.74rem !important;
-  line-height: 28px !important;
-}
-
-.novel-rankings-page .filter-range-apply-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
-  min-height: 28px;
-  max-height: 28px;
-  width: 100%;
-  padding: 0 0.6rem;
-  /* --np-accent 위 흰 글자는 대비 2.69로 미달이다. 흰 글자를 얹는
-     '채워진 배경'은 --np-accent-solid(대비 5.54)를 써야 한다. */
-  border: 1px solid var(--np-accent-solid);
-  border-radius: var(--np-radius-sm);
-  background: var(--np-accent-solid);
-  color: var(--np-on-accent-solid);
-  font-size: 0.76rem;
-  font-weight: 850;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.novel-rankings-page .filter-range-apply-button:hover {
-  background: var(--np-accent-strong);
-  border-color: var(--np-accent-strong);
-}
-
-.novel-rankings-page .filter-range-apply-button:focus,
-.novel-rankings-page .filter-range-apply-button:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
 @media (max-width: 767.98px) {
 
   .contest-award-showcase__grid {
@@ -1478,93 +701,9 @@
   }
 }
 
-.author-page .page-hero {
-  margin-bottom: 0.1rem;
-}
-
-.author-work-section {
-  display: grid;
-  gap: 0.8rem;
-}
-
-.author-work-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem;
-}
-
-.author-work-card {
-  min-height: clamp(360px, 36vw, 520px);
-  aspect-ratio: 3 / 4.25;
-  color: #f5f7fa;
-  text-decoration: none;
-}
-
-.author-work-card:hover {
-  color: #f5f7fa;
-  text-decoration: none;
-}
-
-.author-work-card .media-rank-card__title {
-  color: #f5f7fa;
-}
-
-.author-work-card .mini-kpi,
 .contest-award-poster .mini-kpi {
   background-color: rgba(10, 11, 14, 0.66) !important;
   color: rgba(248, 251, 255, 0.94) !important;
-}
-
-.author-work-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.55rem;
-}
-
-.author-work-tags .author-page-tag-chip {
-  padding: 0.28rem 0.56rem;
-  background-color: rgba(10, 11, 14, 0.58) !important;
-  color: rgba(248, 251, 255, 0.92) !important;
-  border-color: rgba(255, 255, 255, 0.16) !important;
-  font-size: 0.72rem;
-}
-
-.novel-detail-synopsis-panel {
-  width: min(100%, var(--np-content-max));
-  margin: 1rem auto 0;
-}
-
-.detail-chart-shell {
-  padding-top: 1rem;
-}
-
-.detail-chart-panel .panel-card__header {
-  align-items: center;
-}
-
-.detail-chart-panel .panel-card__title {
-  font-size: 1.12rem;
-}
-
-.detail-chart-panel .panel-card__meta {
-  font-size: 0.9rem;
-}
-
-.detail-chart-panel .panel-card__actions {
-  flex: 0 0 auto;
-}
-
-.detail-chart-controls {
-  min-width: min(100%, 520px);
-}
-
-.detail-chart-controls .date-range-picker-container {
-  margin: 0 !important;
-}
-
-.detail-chart-controls .input-group {
-  flex-wrap: nowrap;
 }
 
 .detail-chart-area {
@@ -1593,67 +732,6 @@
 
 .detail-chart-modal {
   max-width: min(96vw, 1360px);
-}
-
-@media (max-width: 991.98px) {
-
-  .tag-analytics-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .tag-ranking-control-bar {
-    grid-template-columns: 1fr;
-  }
-
-  .tag-leader-strip,
-  .tag-analysis-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .detail-chart-panel .panel-card__header {
-    align-items: stretch;
-  }
-
-  .detail-chart-controls {
-    min-width: 0;
-    width: 100%;
-  }
-}
-
-@media (max-width: 767.98px) {
-
-  .novel-stats-stack,
-  .novel-stats-row {
-    gap: 0.45rem;
-  }
-
-  .novel-stats-row--primary,
-  .novel-stats-row--percent {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
-  }
-
-  .novel-stats-divider {
-    display: none;
-  }
-
-  .tag-ranking-chart-area {
-    height: 280px;
-  }
-
-  .tag-ranking-chart-area--bubble {
-    height: 360px;
-  }
-
-  .tag-rankings-page .tag-ranking-mobile-list {
-    display: grid;
-    gap: 0.55rem;
-  }
-
-  .selected-tag-panel__header {
-    grid-template-columns: 1fr;
-  }
-
 }
 
 /* 공모전 쇼케이스: 태블릿 구간(768~991px)이 비어 있어 데스크톱 30열 모자이크가
@@ -1704,316 +782,28 @@
   margin-top: 0.7rem;
 }
 
-.tag-rankings-page > .tag-zone-grid,
-.tag-rankings-page > .tag-mover-grid {
-  margin-top: 0.85rem;
-}
-
 /* 브리핑 6장. 구역 구분은 좌측 점 하나로만 하고, 태그 이름은 전부 흰색으로
    통일한다 — 카드마다 색이 다르면 시선이 분산되고 무엇이 중요한지 흐려진다. */
 /* 4분면 대표 한 장씩. 아래 지도의 4분면, 그 아래 목록 4패널과 같은 수라
    세 영역이 같은 축을 말한다는 것이 한눈에 보인다. */
-.tag-briefing {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.55rem;
-}
-
-.tag-brief-card {
-  display: grid;
-  gap: 0.3rem;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--np-surface-alt) 72%, transparent) 0%, var(--np-surface) 100%);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.12s ease, transform 0.12s ease;
-}
-
-.tag-brief-card:hover {
-  transform: translateY(-1px);
-  border-color: var(--np-border-strong);
-}
-
-.tag-brief-card.is-active {
-  border-color: var(--np-accent);
-  box-shadow: 0 0 0 1px var(--np-accent);
-}
-
-.tag-brief-card__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.32rem;
-  font-size: var(--np-fs-micro);
-  font-weight: 700;
-  color: var(--np-text-secondary);
-}
-
-.tag-brief-card__name {
-  font-size: 1.12rem;
-  font-weight: 800;
-  line-height: 1.25;
-  color: var(--np-text-heading);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tag-brief-card__meta {
-  font-size: var(--np-fs-micro);
-  color: var(--np-text-secondary);
-  white-space: nowrap;
-}
 
 /* 지형 지도 */
-.tag-quadrant-label {
-  font-size: 11px;
-  font-weight: 800;
-  fill: var(--np-text-heading);
-  paint-order: stroke;
-  stroke: var(--np-surface);
-  stroke-width: 3px;
-  stroke-linejoin: round;
-}
 
 /* 지도 범례. 축 두 개·원 크기·이름 규칙만 한 줄씩 늘어놓는다.
    '읽는 법 / 표시 규칙'으로 묶어 문단을 만들었더니 정작 축이 무엇인지가
    묻혔다 — 지도를 볼 때 필요한 건 그것뿐이다. */
-.tag-quadrant-footnote {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem 1.5rem;
-  margin: 0.9rem 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--np-fs-micro);
-  line-height: 1.6;
-  color: var(--np-text-secondary);
-}
-
-.tag-quadrant-footnote li {
-  min-width: 0;
-}
-
-.tag-quadrant-footnote b {
-  margin-right: 0.34rem;
-  font-weight: 700;
-  color: var(--np-text-primary);
-}
-
-@media (max-width: 767.98px) {
-  .tag-quadrant-footnote {
-    flex-direction: column;
-    gap: 0.22rem;
-  }
-}
 
 /* 4분면 카드 그리드 */
 /* 네 구역 패널의 높이를 모두 맞춘다. 태그 수가 6개(과포화)에서 32개(숨은 강자)까지
    벌어지고 '더 보기'가 있는 패널만 길어져서, 내용 높이에 맡기면 과포화만 눈에 띄게
    짧았다. grid-auto-rows: 1fr로 두 행의 높이까지 같게 맞춘다(align-items: start를
    쓰면 행 안에서만 맞고 행끼리는 어긋난다). */
-.tag-zone-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 1fr;
-  gap: 0.7rem;
-}
-
-.tag-zone-card__title {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.tag-zone-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.tag-zone-dot--mainstream { background: var(--np-accent); }
-.tag-zone-dot--gem { background: var(--np-chart-3); }
-.tag-zone-dot--saturated { background: var(--np-warning); }
-.tag-zone-dot--cold { background: var(--np-text-secondary); }
-
-.tag-zone-card--mainstream { border-top: 3px solid color-mix(in srgb, var(--np-accent) 55%, transparent); }
-.tag-zone-card--gem { border-top: 3px solid color-mix(in srgb, var(--np-chart-3) 55%, transparent); }
-.tag-zone-card--saturated { border-top: 3px solid color-mix(in srgb, var(--np-warning) 55%, transparent); }
-.tag-zone-card--cold { border-top: 3px solid color-mix(in srgb, var(--np-text-secondary) 45%, transparent); }
-
-.tag-zone-card__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.tag-zone-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  padding: 0.34rem 0.62rem;
-  border: 1px solid var(--np-border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--np-surface-alt) 70%, transparent);
-  font-size: var(--np-fs-meta);
-  line-height: 1.2;
-  cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
-}
-
-.tag-zone-chip:hover {
-  border-color: var(--np-border-strong);
-  background: var(--np-surface-raised);
-}
-
-.tag-zone-chip.is-active {
-  border-color: var(--np-accent);
-  box-shadow: 0 0 0 1px var(--np-accent);
-}
-
-.tag-zone-chip__name {
-  font-weight: 800;
-  color: var(--np-text-heading);
-}
-
-.tag-zone-chip__meta {
-  font-size: var(--np-fs-micro);
-  color: var(--np-text-secondary);
-  white-space: nowrap;
-}
-
-.tag-zone-card__more {
-  margin-top: 0.6rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: var(--np-fs-meta);
-  font-weight: 700;
-  color: var(--np-accent);
-  cursor: pointer;
-}
-
-.tag-zone-card__more:hover {
-  text-decoration: underline;
-}
-
-.tag-zone-card__empty {
-  margin: 0;
-  font-size: var(--np-fs-meta);
-  color: var(--np-text-secondary);
-}
 
 /* 무버 3열 */
-.tag-mover-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.7rem;
-}
-
-.tag-mover-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.3rem;
-}
-
-.tag-mover-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.42rem 0.6rem;
-  border: 1px solid transparent;
-  border-radius: var(--np-radius-sm);
-  background: none;
-  font-size: var(--np-fs-meta);
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-
-.tag-mover-item:hover {
-  background: color-mix(in srgb, var(--np-surface-alt) 80%, transparent);
-}
-
-.tag-mover-item.is-active {
-  border-color: var(--np-accent);
-}
-
-.tag-mover-item__name {
-  font-weight: 750;
-  color: var(--np-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tag-mover-item__delta {
-  font-size: var(--np-fs-micro);
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.tag-mover-item__delta--up { color: var(--np-rank-up); }
-.tag-mover-item__delta--down { color: var(--np-rank-down); }
-.tag-mover-item__delta--new { color: var(--np-accent); }
-
-.tag-mover-empty {
-  padding: 0.4rem 0.6rem;
-  font-size: var(--np-fs-meta);
-  color: var(--np-text-secondary);
-}
 
 /* 반응형 */
-@media (max-width: 1199.98px) {
-  .tag-briefing {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 991.98px) {
-  .tag-mover-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 767.98px) {
-  .tag-briefing {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .tag-zone-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .tag-rankings-page .tag-ranking-chart-area--bubble {
-    height: 360px;
-  }
-}
 
 /* 지형 지도 구역 이름 */
-.tag-quadrant-zone-name {
-  font-size: 12px;
-  font-weight: 850;
-  letter-spacing: 0;
-}
-
-.tag-quadrant-zone-name--gem { fill: color-mix(in srgb, var(--np-chart-3) 75%, var(--np-text-secondary) 25%); }
-.tag-quadrant-zone-name--mainstream { fill: color-mix(in srgb, var(--np-accent) 75%, var(--np-text-secondary) 25%); }
-.tag-quadrant-zone-name--cold { fill: var(--np-text-secondary); }
-.tag-quadrant-zone-name--saturated { fill: color-mix(in srgb, var(--np-warning) 80%, var(--np-text-secondary) 20%); }
-
-@media (max-width: 767.98px) {
-  /* 좁은 화면에서 상시 라벨은 서로 겹쳐 읽을 수 없다.
-     선택/호버된 태그의 라벨만 남긴다. */
-  .tag-quadrant-label:not(.tag-quadrant-label--active) {
-    display: none;
-  }
-}
 
 /* ── 소설 랭킹: 디자인 정리 ─────────────────────────────────────────────
    기능은 그대로 두고 표시만 손본다. */
@@ -2030,33 +820,9 @@
    (2) 좁은 열(초반/최신 잔류)에서는 셀을 넘쳐 옆 열에 걸쳐 보인다.
    그래서 표시는 절대 배치로 흐름에서 빼고, 헤더와 셀에 같은 오른쪽 여백을 줘서
    글자 기준선을 맞춘다. */
-.tag-rank-table th[aria-sort] {
-  white-space: nowrap;
-}
 
 /* 헤더가 좌측 정렬이므로 표시를 글자 뒤에 그냥 붙여도 글자 시작 위치가 밀리지
    않는다(우측 정렬일 때는 표시 폭만큼 글자가 왼쪽으로 밀려 값과 어긋났다). */
-.tag-rank-table th[aria-sort]::after {
-  content: '↕';
-  display: inline-block;
-  margin-left: 0.22rem;
-  vertical-align: 0.06em;
-  font-size: 0.72em;
-  line-height: 1;
-  opacity: 0.3;
-}
-
-.tag-rank-table th[aria-sort="ascending"]::after {
-  content: '↑';
-  opacity: 1;
-  color: var(--np-accent-strong);
-}
-
-.tag-rank-table th[aria-sort="descending"]::after {
-  content: '↓';
-  opacity: 1;
-  color: var(--np-accent-strong);
-}
 
 /* 헤더와 셀의 좌우 여백을 같게 둬야 글자 시작 위치가 맞는다. */
 
@@ -2184,684 +950,78 @@
 
 /* 날짜 선택기만 둔다. 예전에는 '기간 선택'이라는 제목과 설명을 단 패널로
    감싸져 있었는데, 시작·종료 입력이 이미 무엇인지 말하고 있었다. */
-.tag-trend-range {
-  display: flex;
-  justify-content: flex-end;
-  margin: -0.2rem 0 0.2rem;
-}
-
-.tag-trend-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 1fr;
-  gap: 0.7rem;
-  margin-top: 0.7rem;
-}
-
-@media (max-width: 767.98px) {
-  .tag-trend-grid {
-    grid-template-columns: 1fr;
-    grid-auto-rows: auto;
-  }
-
-  .tag-trend-range {
-    justify-content: stretch;
-  }
-}
-
-.tag-zone-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
 
 /* 클릭할 수 없는 칩(새로 들어온·사라진 태그)은 커서와 hover를 끈다 */
-.tag-zone-chip--static {
-  cursor: default;
-}
-
-.tag-trend-empty,
-.tag-trend-loading {
-  margin: 0;
-  font-size: var(--np-fs-meta);
-  color: var(--np-text-secondary);
-}
-
-.tag-trend-loading {
-  margin-top: 0.7rem;
-}
 
 /* 선택한 태그의 기간 추이. 순위 축은 뒤집어 위로 갈수록 상위가 되게 한다. */
-.tag-trend-chart {
-  height: 220px;
-  margin-top: 0.9rem;
-}
-
-.tag-trend-chart__note {
-  margin: 0.35rem 0 0;
-  font-size: var(--np-fs-micro);
-  color: var(--np-text-secondary);
-}
-
-.tag-trend-foot {
-  margin: 0.9rem 0 0;
-  font-size: var(--np-fs-micro);
-  color: var(--np-text-secondary);
-}
 
 /* 전체 태그 순위표 ────────────────────────────────────────────────
    '태그 랭킹'인데 1위부터 차례로 볼 곳이 없던 걸 메운다. 존 카드는 존마다
    정렬 기준이 달라 순위 목록 노릇을 못 한다. */
-.tag-rank-table-scroll {
-  height: min(60vh, 620px);
-  min-height: 360px;
-}
-
-.tag-rank-table {
-  font-size: var(--np-fs-meta);
-}
 
 /* 헤더와 값이 같은 자리에서 시작해야 한다 — 소설 랭킹 표에서 이미 한 번 고쳤다. */
-.tag-rank-table th,
-.tag-rank-table td {
-  text-align: left;
-  white-space: nowrap;
-}
 
 /* 태그 열에 남는 폭을 전부 주면 이름과 숫자 사이가 화면 절반만큼 벌어져,
    "이 8.0×가 어느 태그였지" 하고 눈이 먼 거리를 되짚게 된다. 폭을 나눠 준다. */
-.tag-rank-table {
-  table-layout: fixed;
-  width: 100%;
-}
-
-.tag-rank-table th[data-col="Rank"] { width: 7%; }
-.tag-rank-table th[data-col="rank_change"] { width: 9%; }
-.tag-rank-table th[data-col="tag"] { width: 34%; }
-.tag-rank-table th[data-col="count"] { width: 14%; }
-.tag-rank-table th[data-col="local_lift"] { width: 18%; }
-.tag-rank-table th[data-col="power_score"] { width: 18%; }
 
 /* 파생 지표 산식. 머리글 hover 와 같은 내용을 글로도 둔다 — 터치 기기에는 hover 가
    없어서 tooltip 만으로는 이 두 지표가 무슨 뜻인지 끝까지 알 수 없다. */
-.tag-rank-table__legend {
-  margin: 0.7rem 0 0;
-  padding: 0.7rem 0 0;
-  border-top: 1px solid var(--np-border);
-  list-style: none;
-  display: grid;
-  gap: 0.35rem;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  line-height: 1.55;
-}
-
-.tag-rank-table__legend b { color: var(--np-text-heading); font-weight: 600; }
-
-.tag-rank-table__th-short { display: none; }
-
-@media (max-width: 640px) {
-  .tag-rank-table__th-full { display: none; }
-  .tag-rank-table__th-short { display: inline; }
-
-  /* 좁은 화면에서는 여백을 줄여 여섯 열을 그대로 유지한다 — 가로 스크롤이 붙은
-     순위표는 훑기가 어렵다. */
-  .tag-rank-table th,
-  .tag-rank-table td {
-    padding: 0.6rem 0.45rem;
-  }
-
-  .tag-rank-table th[data-col="Rank"] { width: 12%; }
-  .tag-rank-table th[data-col="rank_change"] { width: 14%; }
-  .tag-rank-table th[data-col="tag"] { width: 30%; }
-  .tag-rank-table th[data-col="count"] { width: 14%; }
-  .tag-rank-table th[data-col="local_lift"] { width: 15%; }
-  .tag-rank-table th[data-col="power_score"] { width: 15%; }
-}
 
 /* 고정 레이아웃이라 아주 긴 태그 이름은 잘릴 수 있다. 자르되 전체는 title 로 남긴다. */
-.tag-rank-table td[data-col="tag"] {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
-.tag-rank-table td[data-col="Rank"] {
-  font-variant-numeric: tabular-nums;
-  color: var(--np-text-secondary);
-}
-
-.tag-rank-table td[data-col="count"],
-.tag-rank-table td[data-col="local_lift"],
-.tag-rank-table td[data-col="power_score"] {
-  font-variant-numeric: tabular-nums;
-}
-
-.tag-rank-table tbody tr {
-  cursor: pointer;
-}
-
-.tag-rank-table tbody tr:hover td {
-  background-color: var(--np-accent-ghost) !important;
-}
-
-.tag-rank-table tbody tr.is-active td {
-  background-color: var(--np-accent-soft) !important;
-  color: var(--np-text-heading) !important;
-}
-
-.tag-rank-table__name {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--np-text-heading);
-  font: inherit;
-  font-weight: 600;
-}
-
-.tag-rank-table tbody tr.is-active .tag-rank-table__name {
-  color: var(--np-accent-strong);
-}
-
-.tag-rank-move {
-  font-variant-numeric: tabular-nums;
-}
-
-.tag-rank-move--up { color: var(--np-rank-up); }
-.tag-rank-move--down { color: var(--np-rank-down); }
-.tag-rank-move--new { color: var(--np-accent); font-size: var(--np-fs-micro); font-weight: 700; }
 /* 변동 없음(—)과 비교할 데이터 없음(·)은 다른 것이다. 둘 다 눈에 띄지 않아야 하지만
    같은 기호를 쓰면 안 된다. */
-.tag-rank-move--flat,
-.tag-rank-move--none { color: var(--np-text-secondary); }
 
 /* ═══ 데이터 분석 리포트 ══════════════════════════════════════════════════
    기간 선택 하나가 아래 모든 섹션을 지배하는 한 장짜리 리포트. 예전의 모듈
    허브(카드 몇 장 + '준비 중')를 대체한다. */
 
-.report-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem 1.25rem;
-  margin-top: var(--np-space-4);
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background-color: var(--np-surface);
-}
-
-.report-bar__presets { display: flex; gap: 0.4rem; }
-
-.report-preset {
-  padding: 0.42rem 0.9rem;
-  border: 1px solid var(--np-border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-  transition: color var(--np-transition), background-color var(--np-transition);
-}
-
-.report-preset:hover { color: var(--np-text-heading); background-color: var(--np-surface-alt); }
-
-.report-preset.is-active {
-  border-color: transparent;
-  background-color: var(--np-accent-solid);
-  color: var(--np-on-accent-solid);
-}
-
-.report-bar__range {
-  margin: 0;
-  color: var(--np-text-heading);
-  font-size: var(--np-fs-meta);
-  font-variant-numeric: tabular-nums;
-}
-
-.report-bar__range span { color: var(--np-text-secondary); }
-
 /* 기간 요약 — 아래 섹션 전체가 '이 문단의 근거'로 읽히도록 맨 위에 한 덩어리로 둔다.
    왼쪽 강조선만으로 인용문처럼 구분한다(카드로 감싸면 아래 섹션 카드들과 위계가 같아진다). */
-.report-summary {
-  margin-top: var(--np-space-5);
-  padding: 0.9rem 0 0.9rem 1rem;
-  border-left: 3px solid var(--np-accent);
-  background-color: color-mix(in srgb, var(--np-accent) 5%, transparent);
-  border-radius: 0 var(--np-radius-md) var(--np-radius-md) 0;
-}
-
-.report-summary__title {
-  margin: 0 0 0.4rem;
-  color: var(--np-text-heading);
-  font-size: var(--np-fs-meta);
-  font-weight: 600;
-}
-
-.report-summary__text {
-  margin: 0;
-  color: var(--np-text-primary);
-  font-size: var(--np-fs-body-lg);
-  line-height: 1.65;
-}
 
 /* 아직 요약이 없는 상태. 자리를 잡아 두되 '비어 있다'가 결함처럼 보이지 않게
    본문색을 낮추고 기울임으로만 구분한다. */
-.report-summary__pending {
-  margin: 0;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-  font-style: italic;
-  line-height: 1.6;
-}
-
-.report-summary__by {
-  margin: 0.5rem 0 0;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-}
-
-.report-section { margin-top: var(--np-space-5); }
 
 /* 사실과 다르게 읽힐 수 있는 지점만 섹션 맨 아래에. 제목 아래 설명 문구는 쓰지 않는다. */
-.report-caveat {
-  margin: 0.9rem 0 0;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--np-border);
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  line-height: 1.6;
-}
-
-.report-subtitle {
-  margin: 1.2rem 0 0.6rem;
-  color: var(--np-text-heading);
-  font-size: var(--np-fs-meta);
-  font-weight: 600;
-}
-
-.report-subtitle:first-child { margin-top: 0; }
 
 /* 소제목에 붙는 기준 설명. 제목과 같은 줄에 두되 무게를 낮춰, 제목을 읽고 나서
    "무슨 기준인가"가 바로 이어지게 한다. */
-.report-subtitle__hint {
-  margin-left: 0.45rem;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-style: normal;
-  font-weight: 400;
-}
 
 /* KPI 줄 아래에 덧붙이는 보조 문장. 수치 네 칸에 다 넣으면 칸이 좁아지는 값들
    (분포 꼬리·순서 유지도)을 여기로 내린다. */
-.report-note {
-  margin: 0.7rem 0 0;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  line-height: 1.6;
-}
-
-.report-note b {
-  color: var(--np-text-heading);
-  font-variant-numeric: tabular-nums;
-}
-
-.report-subblock { margin-top: 1.2rem; }
-
-.report-empty {
-  margin: 0;
-  padding: 1rem 0;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-}
-
-.report-kpis {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.6rem;
-  margin-bottom: 0.4rem;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-}
-
-.report-kpis b {
-  margin-right: 0.15rem;
-  color: var(--np-text-heading);
-  font-size: var(--np-fs-body-lg);
-  font-variant-numeric: tabular-nums;
-}
 
 /* ── 표 ── */
-.report-table-scroll { height: min(46vh, 460px); min-height: 240px; }
-
-.report-table { font-size: var(--np-fs-meta); table-layout: fixed; width: 100%; }
 
 /* 헤더와 값이 같은 자리에서 시작해야 한다 — 소설 랭킹 표에서 이미 한 번 고쳤다. */
-.report-table th,
-.report-table td { text-align: left; white-space: nowrap; vertical-align: middle; }
-
-.report-table th[data-col="rank"] { width: 8%; }
-.report-table th[data-col="title"] { width: 44%; }
-.report-table th[data-col="eps"],
-.report-table th[data-col="added"],
-.report-table th[data-col="week"],
-.report-table th[data-col="ratio"],
-.report-table th[data-col="early"],
-.report-table th[data-col="recent"] { width: 12%; }
-.report-table th[data-col="tags"] { width: 24%; }
-
-.report-table td[data-col="rank"] { color: var(--np-text-secondary); font-variant-numeric: tabular-nums; }
-.report-table td[data-col="eps"],
-.report-table td[data-col="added"],
-.report-table td[data-col="week"],
-.report-table td[data-col="ratio"],
-.report-table td[data-col="early"],
-.report-table td[data-col="recent"] { font-variant-numeric: tabular-nums; }
-
-.report-table td[data-col="title"],
-.report-table td[data-col="tags"] { overflow: hidden; text-overflow: ellipsis; }
-
-.report-tags { color: var(--np-text-secondary); }
-
-.report-novel { display: inline-flex; align-items: baseline; gap: 0.45rem; min-width: 0; }
-.report-novel__title { color: var(--np-text-heading); font-weight: 600; }
-.report-novel__author { color: var(--np-text-secondary); font-size: var(--np-fs-micro); }
-.report-novel:hover .report-novel__title { color: var(--np-accent-strong); }
-
-.report-badge {
-  margin-left: 0.45rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: var(--np-radius-sm);
-  background-color: var(--np-surface-raised);
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  white-space: nowrap;
-}
-
-.report-badge--warn {
-  background-color: color-mix(in srgb, var(--np-warning) 16%, transparent);
-  color: var(--np-text-primary);
-}
 
 /* ── 가로 막대 ── */
-.report-bars { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5rem; }
-
-.report-bars li {
-  display: grid;
-  grid-template-columns: 6.5rem 1fr auto;
-  align-items: center;
-  gap: 0.7rem;
-}
-
-.report-bars--wide li { grid-template-columns: 7.5rem 1fr auto; }
-
-.report-bars__label { color: var(--np-text-heading); font-size: var(--np-fs-meta); }
-
-.report-bars__track {
-  height: 8px;
-  border-radius: 999px;
-  background-color: var(--np-surface-raised);
-  overflow: hidden;
-}
-
-.report-bars__fill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background-color: var(--np-accent);
-}
-
-.report-bars__value {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 
 /* ── 추천비 목록 ──
    카드 격자였을 때는 카드마다 "100명 중 몇 명이 추천을 눌렀습니다"를 한 줄 더 붙여
    높이를 두 배로 쓰면서 옆의 백분율과 같은 말을 반복했다. 값 + 제목 + 순위만 남긴
    한 줄 목록으로 바꿔 같은 높이에 두 배 많은 작품을 넣는다. */
-.report-ratiolist {
-  margin: 0; padding: 0; list-style: none;
-  display: grid; gap: 0.15rem;
-}
-
-.report-ratiolist li {
-  display: grid;
-  grid-template-columns: 3.6rem 1fr auto;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.32rem 0;
-  border-bottom: 1px solid var(--np-border);
-}
-
-.report-ratiolist li:last-child { border-bottom: 0; }
-
-.report-ratiolist__value {
-  color: var(--np-accent);
-  font-size: var(--np-fs-meta);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.report-ratiolist__meta {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 
 /* ── 작품 검색 ── */
-.report-search { position: relative; max-width: 420px; }
-
-.report-search input {
-  width: 100%;
-  padding: 0.55rem 0.8rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background-color: var(--np-surface-alt);
-  color: var(--np-text-primary);
-  font-size: var(--np-fs-meta);
-}
-
-.report-search__hits {
-  position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0;
-  margin: 0; padding: 0.25rem; list-style: none;
-  border: 1px solid var(--np-border-strong);
-  border-radius: var(--np-radius-md);
-  background-color: var(--np-surface-overlay);
-  box-shadow: var(--np-shadow-md);
-}
-
-.report-search__hits button {
-  display: flex; justify-content: space-between; gap: 1rem; width: 100%;
-  padding: 0.4rem 0.5rem;
-  border: 0; border-radius: var(--np-radius-sm);
-  background: none; color: var(--np-text-primary);
-  font-size: var(--np-fs-meta); text-align: left;
-}
-
-.report-search__hits button:hover { background-color: var(--np-accent-ghost); color: var(--np-text-heading); }
-.report-search__hits span:last-child { color: var(--np-text-secondary); font-size: var(--np-fs-micro); white-space: nowrap; }
-
-.report-diagnose { margin-top: 1.1rem; }
-
-.report-diagnose__head {
-  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
-  margin-bottom: 0.7rem;
-}
-
-.report-clear {
-  padding: 0.25rem 0.6rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-sm);
-  background: none; color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-}
 
 /* ── 리포트 차트 ── */
-.report-chart { height: 260px; }
 
 /* Recharts 는 범례 글자색을 선 색과 같게 인라인으로 박는다. 라이트에서 --np-chart-2
    (#0e93b8)가 흰 배경 위 3.57로 미달했다. 색 구분은 옆의 선 표식이 이미 하고 있으므로
    글자는 본문 보조색으로 되돌린다. */
-.report-chart .recharts-legend-item-text { color: var(--np-text-secondary) !important; }
 
 /* ── 태그 조합 ── */
-.report-pairs {
-  margin: 0; padding: 0; list-style: none;
-  display: grid; gap: 0.4rem;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-}
-
-.report-pairs li {
-  display: flex; justify-content: space-between; align-items: baseline; gap: 0.8rem;
-  padding: 0.5rem 0.7rem;
-  border-radius: var(--np-radius-sm);
-  background-color: var(--np-surface-alt);
-}
-
-.report-pairs__tags { color: var(--np-text-heading); font-size: var(--np-fs-meta); }
-.report-pairs__tags i { color: var(--np-text-secondary); font-style: normal; }
-.report-pairs__value { color: var(--np-text-secondary); font-size: var(--np-fs-micro); white-space: nowrap; }
-
-@media (max-width: 640px) {
-  .report-bars li,
-  .report-bars--wide li { grid-template-columns: 5.5rem 1fr; }
-  .report-bars__value { grid-column: 1 / -1; }
-  .report-table th, .report-table td { padding: 0.55rem 0.4rem; }
-  .report-table th[data-col="tags"], .report-table td[data-col="tags"] { display: none; }
-  .report-table th[data-col="title"] { width: 52%; }
-}
 
 /* 리포트 — 4번(가로 비교), 7번(단일 수치), 11번(태그 강화)에서 추가된 것들 */
 
 /* 들어온 작품 / 빠진 작품을 나란히. 한쪽만 표로 크게 두면 다른 쪽 수치가
    제목 옆 meta 로 밀려 헷갈렸다("들어온 103편 · 빠진 119편"). */
-.report-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.4rem;
-}
-
-.report-flowlist {
-  margin: 0; padding: 0; list-style: none;
-  display: grid; gap: 0.5rem;
-}
-
-.report-flowlist li {
-  display: flex; flex-direction: column; gap: 0.15rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--np-border);
-}
-
-.report-flowlist li:last-child { border-bottom: 0; padding-bottom: 0; }
-
-.report-flowlist__meta {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-variant-numeric: tabular-nums;
-}
 
 /* 리드 지표. 값 아래에 무엇인지 적는다 — 숫자만 크게 두면 무슨 수인지 모른다. */
-.report-kpis--lead {
-  gap: 0.9rem 2.2rem;
-  margin-bottom: 1.1rem;
-}
-
-.report-kpis--lead span {
-  display: flex; flex-direction: column; gap: 0.1rem;
-}
-
-.report-kpis i {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-style: normal;
-}
-
-.report-chart--short { height: 200px; }
 
 /* 순위대 4분위 표시. 고른 작품이 든 칸을 강조한다. */
-.report-quartiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.report-quartiles span {
-  display: flex; flex-direction: column; gap: 0.1rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background-color: var(--np-surface-alt);
-  color: var(--np-text-heading);
-  font-size: var(--np-fs-meta);
-}
-
-.report-quartiles span.is-active {
-  border-color: var(--np-accent);
-  background-color: var(--np-accent-soft);
-}
-
-.report-quartiles i {
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
-}
-
-.report-diagnose__rank {
-  margin-left: auto;
-  margin-right: 0.7rem;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-variant-numeric: tabular-nums;
-}
 
 /* 동반 태그. 태그마다 한 줄로 두고 함께 달린 것들을 옆에 늘어놓는다. */
-.report-companions {
-  margin: 0; padding: 0; list-style: none;
-  display: grid; gap: 0.45rem;
-}
-
-.report-companions li {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.45rem 0.7rem;
-  padding: 0.5rem 0.7rem;
-  border-radius: var(--np-radius-sm);
-  background-color: var(--np-surface-alt);
-}
-
-.report-companions__head {
-  color: var(--np-text-heading);
-  font-size: var(--np-fs-meta);
-  font-weight: 600;
-}
-
-.report-companions__head i,
-.report-companions__with i {
-  margin-left: 0.25rem;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-micro);
-  font-style: normal;
-  font-weight: 400;
-}
-
-.report-companions__with {
-  display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem;
-  color: var(--np-text-primary);
-  font-size: var(--np-fs-meta);
-}
-
-@media (max-width: 860px) {
-  .report-split { grid-template-columns: 1fr; gap: 1.1rem; }
-}
 
 /* 태그 트렌드 리드 지표. 데이터 분석 리포트와 같은 모양을 쓴다 —
    두 화면이 같은 지표(평균 순위 이동·순서 일치도)를 말하므로 생김새도 같아야 한다. */
-.tag-trend-kpis {
-  margin-top: var(--np-space-4);
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background-color: var(--np-surface);
-}
+

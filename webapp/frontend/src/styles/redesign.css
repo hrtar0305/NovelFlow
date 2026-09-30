@@ -3,8 +3,7 @@
  * :root의 --bs-heading-color를 되돌리므로, 토큰만 믿으면 다크에서 제목이 검게 나온다. */
 .empty-line { padding: 3rem 0; color: var(--np-text-secondary); font-size: var(--np-fs-body-lg); }
 .empty-line a { color: var(--np-text-heading); text-decoration: underline; text-underline-offset: 3px; }
-.page-hero__switch { font-size: var(--np-fs-body); font-weight: 600; color: var(--np-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
-.page-hero__switch:hover { color: var(--np-text-heading); }
+
 .change-mark { font-size: 0.78rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .change-mark--up { color: var(--np-rank-up); }
 .change-mark--down { color: var(--np-rank-down); }

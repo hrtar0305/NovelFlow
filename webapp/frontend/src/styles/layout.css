@@ -19,8 +19,7 @@
   background: transparent;
 }
 
-.app-main-inner,
-.page-banner-inner {
+.app-main-inner {
   width: min(100%, var(--np-content-max));
   margin: 0 auto;
 }
@@ -169,88 +168,6 @@
 /* 페이지 제목은 카드가 아니다. 테두리·그라데이션·그림자를 두른 패널이었는데,
    화면 최상단에 또 하나의 카드가 얹히면 아래 내용과 위계가 겹친다.
    캔버스 위에 제목만 놓고 아래 여백으로 구분한다. */
-.page-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.55rem;
-  padding: 0.35rem 0.15rem 0.9rem;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-}
-
-.page-hero__row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-}
-
-.page-hero__eyebrow {
-  font-size: var(--np-fs-micro);
-  font-weight: 800;
-  letter-spacing: 0;
-  color: var(--np-accent);
-}
-
-.page-hero__title {
-  font-size: var(--np-fs-title-md);
-  line-height: 1.05;
-}
-
-.page-hero__title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-}
-
-.page-hero__title-row .page-hero__title {
-  margin: 0;
-}
-
-.page-hero__title-action {
-  display: inline-flex;
-  align-items: center;
-  transform: translateY(0.02rem);
-}
-
-.page-hero__description {
-  max-width: 72ch;
-  margin-top: 0.35rem;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-body);
-  line-height: 1.6;
-}
-
-.page-hero__actions,
-.page-hero__aside {
-  display: flex;
-  gap: 0.6rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.page-layout {
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-}
-
-.page-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.page-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
 
 @media (max-width: 991.98px) {
   .app-header-inner {
@@ -284,9 +201,6 @@
     margin-left: 0;
   }
 
-  .page-layout {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 767.98px) {
@@ -310,18 +224,6 @@
     gap: 0.9rem;
   }
 
-  .page-hero {
-    padding: 0.9rem;
-  }
-
-  .page-hero__row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .page-hero__title {
-    font-size: clamp(1.25rem, 6vw, 1.7rem);
-  }
 }
 
 /* 안내 페이지 진입로. 이 페이지는 정직성 고지 문서인데 소설 랭킹 안의 작은

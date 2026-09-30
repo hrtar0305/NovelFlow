@@ -43,73 +43,8 @@
    한때 아래 __header 규칙과 하나로 합쳐져 있어서 컨테이너에 헤더 스타일
    (가로 플렉스 + 아래 테두리 + 헤더 배경)이 걸렸고, 제목과 본문이 나란히
    놓이면서 패널 모서리도 사라졌다. 두 그룹은 반드시 분리해 둔다. */
-.panel-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-lg);
-  background-color: var(--np-surface);
-}
 
 /* 패널 헤더 */
-.panel-card__header {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.9rem 1rem;
-  border-bottom: 1px solid var(--np-border);
-  background-color: color-mix(in srgb, var(--np-surface-alt) 78%, transparent);
-}
-
-.panel-card__title {
-  font-size: 0.95rem;
-  font-weight: 800;
-  color: var(--np-text-heading);
-}
-
-.panel-card__meta {
-  margin-top: 0.2rem;
-  color: var(--np-text-secondary);
-  font-size: var(--np-fs-meta);
-  line-height: 1.45;
-}
-
-.panel-card__body {
-  padding: 1rem;
-}
-
-.compact-meta {
-  font-size: var(--np-fs-micro);
-  letter-spacing: 0;
-  color: var(--np-text-secondary);
-}
-
-.section-kicker {
-  margin-bottom: 0.4rem;
-  font-size: var(--np-fs-micro);
-  font-weight: 800;
-  letter-spacing: 0;
-  color: var(--np-accent);
-}
-
-.spotlight-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.35rem 0.55rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(248, 251, 255, 0.94);
-  font-size: var(--np-fs-meta);
-  font-weight: 700;
-}
-
-.metric-stack {
-  display: grid;
-  gap: 0.75rem;
-}
 
 /* 이 카드는 JSX에서 클래스 없는 <strong>/<span>을 직접 쓴다.
    색을 명시하지 않으면 상위(PageHero)의 secondary 색을 물려받아
@@ -130,12 +65,6 @@
   box-shadow: var(--np-shadow-sm);
   overflow: hidden;
   transition: transform var(--np-transition), border-color var(--np-transition), box-shadow var(--np-transition);
-}
-
-.media-rank-card--mosaic {
-  min-height: 0;
-  aspect-ratio: auto;
-  border-radius: var(--np-radius-xl);
 }
 
 .media-rank-card--poster:hover {
@@ -279,10 +208,6 @@
     rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0.75) 58%, #000 76%);
 }
 
-.media-rank-card--mosaic .media-rank-card__overlay {
-  min-height: 100%;
-}
-
 .media-rank-card--mover .media-rank-card__overlay {
   padding: 0.72rem;
 }
@@ -397,132 +322,11 @@
   font-weight: 700;
 }
 
-.custom-table-wrapper {
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background-color: var(--np-surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--np-accent) 46%, var(--np-border) 54%) color-mix(in srgb, var(--np-surface-alt) 60%, transparent);
-}
-
-.custom-table-wrapper::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.custom-table-wrapper::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--np-surface-alt) 64%, transparent);
-  border-radius: 999px;
-}
-
-.custom-table-wrapper::-webkit-scrollbar-thumb {
-  border: 2px solid color-mix(in srgb, var(--np-surface-alt) 64%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--np-accent) 46%, var(--np-border-strong) 54%);
-}
-
-.custom-table-wrapper::-webkit-scrollbar-thumb:hover {
-  background: var(--np-accent);
-}
-
-.custom-table {
-  margin-bottom: 0;
-  --bs-table-bg: transparent;
-  --bs-table-color: var(--np-text-primary);
-  --bs-table-border-color: var(--np-border);
-  --bs-table-hover-bg: var(--np-accent-ghost);
-  --bs-table-hover-color: var(--np-text-heading);
-  color: var(--np-text-primary);
-  border-color: var(--np-border) !important;
-}
-
-.custom-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: color-mix(in srgb, var(--np-surface-alt) 84%, var(--np-surface) 16%);
-}
-
-.custom-table th,
-.custom-table td {
-  padding: 0.76rem 0.86rem;
-  border-color: var(--np-border) !important;
-  background-color: transparent !important;
-  color: var(--np-text-primary) !important;
-  vertical-align: middle;
-}
-
-.ranking-table-panel {
-  border-color: color-mix(in srgb, var(--np-border) 82%, transparent) !important;
-}
-
-.ranking-table-panel__body {
-  padding: 0;
-}
-
-.ranking-table-panel .custom-table-wrapper {
-  border: 0 !important;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.custom-table th {
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0;
-  color: var(--np-text-secondary) !important;
-}
-
-.custom-table tbody tr:hover,
-.highlight-row {
-  background-color: var(--np-accent-ghost) !important;
-}
-
-.sortable-header {
-  cursor: pointer;
-  transition: background-color var(--np-transition), color var(--np-transition);
-}
-
-.sortable-header:hover {
-  color: var(--np-text-heading) !important;
-  background-color: color-mix(in srgb, var(--np-surface-raised) 82%, transparent) !important;
-}
-
 /* 배경 틴트는 원래 색(--np-positive/negative)으로 두고 글자만 접근성 토큰을 쓴다.
    라이트 테마에서 --np-positive를 글자에 그대로 쓰면 대비가 2.58까지 떨어졌다. */
-.rank-up {
-  background-color: color-mix(in srgb, var(--np-positive) 16%, transparent);
-  color: var(--np-rank-up);
-}
-
-.rank-down {
-  background-color: color-mix(in srgb, var(--np-negative) 16%, transparent);
-  color: var(--np-rank-down);
-}
 
 /* '변동 없음'은 대부분의 행에 붙는 기본 상태다. 틴트를 14%로 두면 라이트에서
    글자 대비가 4.44로 미달하고, 조용해야 할 배지가 오히려 눈에 띈다. */
-
-.rounded-pill.btn,
-.author-page-tag-chip,
-.fs-tag-badge {
-  border-radius: 999px !important;
-}
-
-.rounded-pill.btn {
-  min-height: 28px;
-  padding: 0.26rem 0.66rem !important;
-  font-size: 0.74rem !important;
-}
-
-.tag-ranking-mobile-search {
-  border: 1px solid var(--np-border);
-  border-radius: var(--np-radius-md);
-  background-color: var(--np-surface);
-  box-shadow: var(--np-shadow-sm);
-}
 
 .date-picker-wrapper {
   display: inline-flex;
@@ -546,17 +350,6 @@
 
 .date-picker-icon {
   color: var(--np-text-secondary);
-}
-
-.date-range-picker-container .input-group-text {
-  font-size: var(--np-fs-meta);
-  color: var(--np-text-secondary) !important;
-}
-
-.date-range-display {
-  display: flex;
-  align-items: center;
-  background: var(--np-surface) !important;
 }
 
 .dropdown-menu {
@@ -597,54 +390,6 @@
   border-color: color-mix(in srgb, var(--np-accent) 24%, var(--np-border) 76%) !important;
 }
 
-.analysis-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.3rem 0.55rem;
-  border-radius: 999px;
-  background-color: var(--np-accent-soft);
-  color: var(--np-accent);
-  font-size: var(--np-fs-micro);
-  font-weight: 800;
-  letter-spacing: 0;
-  white-space: nowrap;
-}
-
-.analysis-brief-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.9rem;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 2rem 1.2rem;
-  border: 1px dashed var(--np-border-strong);
-  border-radius: var(--np-radius-md);
-  text-align: center;
-  background-color: color-mix(in srgb, var(--np-surface-alt) 70%, transparent);
-}
-
-.empty-state__eyebrow {
-  font-size: var(--np-fs-micro);
-  letter-spacing: 0;
-  color: var(--np-text-secondary);
-}
-
-.empty-state__title {
-  font-size: 1.1rem;
-  color: var(--np-text-heading);
-}
-
-.empty-state__description {
-  max-width: 40ch;
-  color: var(--np-text-secondary);
-  line-height: 1.6;
-}
-
 @media (max-width: 767.98px) {
   .theme-toggle-btn span:not(.theme-toggle-btn__icon) {
     display: none;
@@ -656,14 +401,6 @@
     padding: 0;
   }
 
-        .panel-card__header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .analysis-brief-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ==========================================================================

@@ -73,10 +73,7 @@ h2,
 h3,
 h4,
 h5,
-h6,
-.page-hero__title,
-.panel-card__title,
-.data-table-shell__title {
+h6 {
   margin: 0;
   color: var(--np-text-heading);
   letter-spacing: -0.025em;
@@ -90,29 +87,21 @@ p {
   color: var(--np-text-secondary) !important;
 }
 
-.border,
-.border-top,
-.border-bottom,
-.border-start,
-.border-end {
+.border {
   border-color: var(--np-border) !important;
 }
 
 .btn,
 .form-control,
 .form-select,
-.input-group-text,
 .dropdown-menu,
-.modal-content,
-.accordion-item,
-.list-group-item {
+.modal-content {
   border-radius: var(--np-radius-sm);
 }
 
 .btn,
 .form-control,
-.form-select,
-.input-group-text {
+.form-select {
   min-height: 40px;
   border-color: var(--np-border) !important;
   background-color: var(--np-surface) !important;
@@ -126,11 +115,7 @@ p {
   letter-spacing: 0.01em;
 }
 
-.form-label,
-.filter-control-label,
-.panel-card__meta,
-.data-table-shell__description,
-.compact-meta {
+.form-label {
   font-size: var(--np-fs-micro) !important;
 }
 
@@ -180,8 +165,7 @@ p {
   border-color: color-mix(in srgb, var(--np-accent) 25%, var(--np-border) 75%) !important;
 }
 
-.form-control::placeholder,
-.search-input::placeholder {
+.form-control::placeholder {
   color: var(--np-text-secondary) !important;
 }
 
@@ -198,11 +182,8 @@ p {
   box-shadow: 0 0 0 3px var(--np-focus-ring) !important;
 }
 
-.card,
 .modal-content,
 .dropdown-menu,
-.accordion-item,
-.list-group-item,
 .alert {
   background-color: var(--np-surface) !important;
   border-color: var(--np-border) !important;
@@ -224,29 +205,6 @@ p {
   color: var(--np-text-primary) !important;
   border-color: var(--np-border) !important;
   box-shadow: none !important;
-}
-
-.card-header,
-.accordion-button:not(.collapsed) {
-  background-color: var(--np-surface-alt) !important;
-  color: var(--np-text-heading) !important;
-}
-
-.accordion-button {
-  background-color: var(--np-surface) !important;
-  color: var(--np-text-heading) !important;
-}
-
-.accordion-button::after {
-  filter: invert(0.88);
-}
-
-[data-theme="light"] .accordion-button::after {
-  filter: saturate(0.7);
-}
-
-.badge {
-  font-weight: 700;
 }
 
 .spinner-border {
