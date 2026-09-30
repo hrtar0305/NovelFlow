@@ -132,7 +132,7 @@
 .row-expand__facts b { color: var(--np-text-heading); }
 .row-expand__go { margin-left: auto; font-weight: 700; color: var(--np-text-heading); text-decoration: none; border-bottom: 1.5px solid var(--np-text-heading); }
 .detail-back { display: inline-block; margin-top: 1.6rem; font-size: 0.875rem; font-weight: 600; color: var(--np-text-secondary); text-decoration: none; }
-.detail-head { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 2.25rem; padding: 1.4rem 0 2rem; border-bottom: 1px solid var(--np-border); }
+.detail-head { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 1.25rem 2.25rem; padding: 1.4rem 0 2rem; border-bottom: 1px solid var(--np-border); }
 .detail-head__cover { width: 200px; height: 282px; border-radius: 8px; overflow: hidden; background: var(--np-cover-bg); }
 .detail-head__cover-img { width: 100%; height: 100%; object-fit: cover; }
 .detail-head__title { margin: 0.4rem 0 0.5rem; color: var(--np-text-heading); font-size: 2rem; font-weight: 800; letter-spacing: -0.035em; line-height: 1.25; }
