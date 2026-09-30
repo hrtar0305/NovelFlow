@@ -171,7 +171,6 @@
   .detail-head__now { margin: 0.9rem 0 0.4rem; }
 }
 
-.chart-zoom-link { border: 0; background: none; padding: 0; font-size: 0.8125rem; color: var(--np-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
 .detail-sec__head { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .detail-sec__head .detail-sec__h { margin: 0; }
 .detail-sec__range { display: flex; align-items: center; flex-wrap: wrap; gap: 0.625rem 0.875rem; font-size: 0.875rem; }
@@ -401,3 +400,40 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .author-out small { font-size: 0.75rem; }
 .rank-mrow--author { grid-template-columns: 48px minmax(0, 1fr); }
 .detail-head .inline-nums__item { white-space: nowrap; }
+
+/* ── 작품 상세 지표(2026-09-30): 요약 한 줄 · 순위 선 · 증가량 묶음 · 날짜별 표 ── */
+.mx-sum { margin: 0 0 1.1rem; font-size: 0.9375rem; line-height: 1.75; color: var(--np-text-secondary); }
+.mx-sum b { color: var(--np-text-heading); font-weight: 700; }
+.mx-sum i { font-style: normal; margin: 0 0.6rem; color: var(--np-border-strong); }
+.mx-stack { position: relative; touch-action: pan-y; }
+.mx-svg { display: block; overflow: visible; }
+.mx-row__h { display: flex; justify-content: space-between; align-items: baseline; margin: 0.9rem 0 0.2rem; font-size: 0.8125rem; font-weight: 700; color: var(--np-text-heading); }
+.mx-row__h:first-child { margin-top: 0; }
+.mx-row__total { font-weight: 500; color: var(--np-text-secondary); }
+.mx-row__total b { color: var(--np-text-heading); font-weight: 700; }
+.mx-hl { fill: var(--np-surface-raised); }
+.mx-grid { stroke: var(--np-border); }
+.mx-tick { font-size: 11px; fill: var(--np-text-faint); }
+.mx-out { fill: var(--np-border-strong); }
+.mx-rankline { fill: none; stroke: var(--np-accent); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.mx-rankdot { fill: var(--np-accent); }
+.mx-mark { fill: var(--np-canvas); stroke: var(--np-accent); stroke-width: 2; }
+.mx-marklabel { font-size: 12px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-canvas); stroke-width: 3px; stroke-linejoin: round; }
+.mx-bar { fill: var(--np-border-strong); }
+.mx-bar.is-on { fill: var(--np-text-heading); }
+.mx-bar.is-count { fill: var(--np-text-secondary); }
+.mx-bar.is-multi { fill: none; stroke: var(--np-text-secondary); stroke-dasharray: 3 2; }
+.mx-scoreline { fill: none; stroke: var(--np-text-secondary); stroke-width: 1.8; stroke-linejoin: round; }
+.mx-tip { position: absolute; top: 26px; z-index: 3; min-width: 180px; padding: 0.55rem 0.75rem; border: 1px solid var(--np-border); border-radius: var(--np-radius-sm); background: var(--np-canvas); box-shadow: var(--np-shadow-md); font-size: 0.8125rem; line-height: 1.65; color: var(--np-text-secondary); pointer-events: none; white-space: nowrap; }
+.mx-tip b { color: var(--np-text-heading); font-weight: 700; }
+.mx-tip__d { font-weight: 700; color: var(--np-text-heading); }
+.mx-tip__note { font-size: 0.75rem; color: var(--np-text-faint); }
+.mx-cap { margin: 0.5rem 0 0; font-size: 0.75rem; color: var(--np-text-faint); }
+.mx-table-wrap { overflow-x: auto; margin-top: 1.5rem; }
+.mx-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.mx-table th, .mx-table td { padding: 0.5rem 0.9rem 0.5rem 0; border-top: 1px solid var(--np-border); text-align: left; white-space: nowrap; color: var(--np-text-primary); background: none; }
+.mx-table thead th { border-top: 0; font-size: 0.8125rem; font-weight: 600; color: var(--np-text-secondary); }
+.mx-table td b { color: var(--np-text-heading); font-weight: 700; }
+.mx-table td small { margin-left: 0.3rem; font-size: 0.75rem; color: var(--np-text-faint); }
+.mx-table__out { color: var(--np-text-faint); }
+.mx-more { margin-top: 0.6rem; font-size: 0.875rem; }

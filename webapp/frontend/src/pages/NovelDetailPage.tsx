@@ -1,25 +1,14 @@
-import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Spinner, Alert, Modal } from 'react-bootstrap';
+import { Spinner, Alert } from 'react-bootstrap';
 import { useNovelData } from '../hooks/useNovelData';
 import NovelHeader from '../components/novel/NovelHeader';
 import { describeCurrentRank, previousCalendarDay } from '../utils/currentRank';
 import { getNovelTrend } from '../services/api';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { format, parseISO, subDays } from 'date-fns';
-
-const SmallMultiplesChart = lazy(() => import('../components/novel/SmallMultiplesChart'));
-
-const TOP_300_END_DATE = '2025-07-20';
-const TOP_500_START_DATE = '2025-07-21';
-
-const metricConfigs: { [key: string]: { name: string } } = {
-  Ranking: { name: '랭킹' },
-  Score: { name: '점수' },
-  View: { name: '조회수' },
-  Like: { name: '추천' },
-  Fav: { name: '선호' }
-};
+import MetricsPanel from '../components/novel/MetricsPanel';
+import { buildMetricPoints } from '../utils/metricSeries';
 
 const NovelDetailPage = () => {
   const { novelId } = useParams<{ novelId: string }>();
@@ -39,8 +28,6 @@ const NovelDetailPage = () => {
   } = useNovelData(novelId);
 
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
 
   // 머리의 전일 대비는 차트 기간과 따로, 달력 기준 전날~마지막 기록일 2일치를 불러와 계산한다.
   // 차트 창은 작품의 첫 기록일에서 잘리므로(처음 진입한 작품은 하루뿐) 거기서 계산하면 NEW가 빠진다.
@@ -99,32 +86,7 @@ const NovelDetailPage = () => {
     }
   };
 
-  const handleZoomClick = (metric: string) => {
-    setSelectedMetric(metric);
-    setShowModal(true);
-  };
-
-  const hasBothPeriods = useMemo(() => {
-    if (!novelData) return false;
-    const hasBefore300 = novelData.some(d => parseISO(d.Date) <= parseISO(TOP_300_END_DATE));
-    const hasAfter500 = novelData.some(d => parseISO(d.Date) >= parseISO(TOP_500_START_DATE));
-    return hasBefore300 && hasAfter500;
-  }, [novelData]);
-
-  const renderChartInModal = () => {
-    if (!selectedMetric) return null;
-    return (
-      <SmallMultiplesChart 
-        data={novelData} 
-        hasBothPeriods={hasBothPeriods} 
-        onZoomClick={() => {}} 
-        metricConfigs={metricConfigs}
-        isModal={true}
-        modalMetric={selectedMetric}
-        breakOutOfRank
-      />
-    )
-  }
+  const points = useMemo(() => buildMetricPoints(novelData, 'calendar'), [novelData]);
 
   return (
     <div>
@@ -160,26 +122,11 @@ const NovelDetailPage = () => {
                 />
               </div>
             </div>
-            <div className="detail-chart-area position-relative" aria-busy={loading}>
-              <div style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-                {novelData.length > 0 ? (
-                  <Suspense fallback={<div className="rank-skeleton" aria-busy="true"><div /><div /><div /></div>}>
-                    <SmallMultiplesChart data={novelData} hasBothPeriods={hasBothPeriods} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} breakOutOfRank />
-                  </Suspense>
-                ) : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
-              </div>
+            <div className="detail-chart-area" aria-busy={loading} style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+              {novelData.length > 0 ? <MetricsPanel points={points} kind="daily" />
+                : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
             </div>
           </section>
-          <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false} dialogClassName="detail-chart-modal">
-            <Modal.Header closeButton>
-              <Modal.Title>{selectedMetric ? `${metricConfigs[selectedMetric]?.name || selectedMetric} 상세 보기` : ''}</Modal.Title>
-            </Modal.Header>
-            <Modal.Body style={{ height: '76vh' }}>
-              <Suspense fallback={<div className="text-center p-5"><Spinner animation="border" /></div>}>
-                {renderChartInModal()}
-              </Suspense>
-            </Modal.Body>
-          </Modal>
         </>
       )}
     </div>

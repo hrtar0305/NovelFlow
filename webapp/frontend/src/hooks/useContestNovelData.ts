@@ -58,7 +58,7 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
     try {
       const yearNum = parseInt(year, 10);
       const response = await getContestNovelTrend(yearNum, novelId, format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'));
-      // API 응답 데이터를 SmallMultiplesChart가 요구하는 형태로 매핑합니다.
+      // 일간 추이와 같은 모양(Ranking)으로 맞춘다. 공모전은 점수가 없다.
       const mappedData = response.data.map((d: ContestTrendData) => ({
         ...d,
         Ranking: d.Rank, // Rank를 Ranking으로 매핑

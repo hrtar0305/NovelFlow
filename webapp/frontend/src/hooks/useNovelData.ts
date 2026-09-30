@@ -12,6 +12,8 @@ interface NovelData {
   Like: number | null;
   Fav: number | null;
   Score: number | null;
+  Eps?: number | null;
+  Alr?: number | null;
 }
 
 interface NovelDetails {
@@ -66,33 +68,17 @@ export const useNovelData = (novelId: string | undefined) => {
       const fullDateRangeData: NovelData[] = [];
       let currentDate = startOfDay(start);
       const endDateFormatted = startOfDay(end);
-      const TOP_300_END_DATE_STR = '2025-07-20';
 
       while (currentDate <= endDateFormatted) {
         const formattedDate = format(currentDate, 'yyyy-MM-dd');
         
         // Only process dates that are available globally
+        // 수집한 날만 넣는다. 그날 기록이 없으면(순위권 밖) 값 없이 둔다 — 가짜 순위(501·301)로 채우지 않는다.
         if (availableDateSet.has(formattedDate)) {
-          let existingData = fetchedDataMap.get(formattedDate);
-
-          if (existingData) {
-            // Data for this date exists, check if Ranking is null (which means rank out)
-            if (existingData.Ranking === null) {
-              const rankOutValue = formattedDate <= TOP_300_END_DATE_STR ? 301 : 501;
-              // Clone and modify the object to set the rank out value
-              existingData = { ...existingData, Ranking: rankOutValue };
-            }
-            fullDateRangeData.push(existingData);
-          } else {
-            // No data for this date at all, create a full placeholder for rank out
-            const rankOutValue = formattedDate <= TOP_300_END_DATE_STR ? 301 : 501;
-            fullDateRangeData.push({
-              Date: formattedDate,
-              Ranking: rankOutValue,
-              Title: details?.Title || '',
-              View: null, Like: null, Fav: null, Score: null,
-            });
-          }
+          fullDateRangeData.push(fetchedDataMap.get(formattedDate) ?? {
+            Date: formattedDate, Ranking: null, Title: details?.Title || '',
+            View: null, Like: null, Fav: null, Score: null,
+          });
         }
         currentDate = addDays(currentDate, 1);
       }

@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Modal } from 'react-bootstrap';
 import { format, parseISO, subDays } from 'date-fns';
 import { useContestNovelData } from '../hooks/useContestNovelData';
 import { getContestNovelTrend } from '../services/api';
@@ -8,15 +7,8 @@ import NovelHeader from '../components/novel/NovelHeader';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { describeContestRank } from '../utils/currentRank';
 import { formatMan, formatRatio } from '../utils/format';
-
-const SmallMultiplesChart = lazy(() => import('../components/novel/SmallMultiplesChart'));
-
-const metricConfigs: { [key: string]: { name: string } } = {
-  Ranking: { name: '랭킹' },
-  View: { name: '조회수' },
-  Like: { name: '추천' },
-  Fav: { name: '선호' },
-};
+import MetricsPanel from '../components/novel/MetricsPanel';
+import { buildMetricPoints } from '../utils/metricSeries';
 
 /**
  * 공모전 작품 상세(2026-09-30 개편) — 일간 작품 상세와 같은 머리·섹션 문법.
@@ -30,8 +22,6 @@ const ContestNovelDetailPage = () => {
     minDate, maxDate, novelAvailableDatesSet, fetchTrendData,
   } = useContestNovelData(year, novelId);
 
-  const [showModal, setShowModal] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
 
   // 머리의 전일 대비는 차트 기간과 따로, 마지막 기록일까지 열흘치를 불러와 직전 수집일과 비교한다.
   const [head, setHead] = useState<{ id: string; series: Array<{ Date: string; Ranking: number | null }> } | null>(null);
@@ -70,7 +60,8 @@ const ContestNovelDetailPage = () => {
     setEndDate(date);
     if (startDate && date) fetchTrendData(startDate, date);
   };
-  const handleZoomClick = (metric: string) => { setSelectedMetric(metric); setShowModal(true); };
+  // 공모전은 전날 = 실제 직전 수집일(DECISIONS 2026-07-01).
+  const points = useMemo(() => buildMetricPoints(trendData, 'collection'), [trendData]);
 
   if (error) return <div className="page-shell"><p className="empty-line">{error}</p></div>;
   if (!details) return <div className="page-shell"><div className="rank-skeleton" aria-busy="true"><div /><div /><div /></div></div>;
@@ -109,25 +100,12 @@ const ContestNovelDetailPage = () => {
             />
           </div>
         </div>
-        <div className="detail-chart-area position-relative" aria-busy={loading}>
-          <div style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-            {trendData.length > 0 ? (
-              <Suspense fallback={<div className="rank-skeleton" aria-busy="true"><div /><div /><div /></div>}>
-                <SmallMultiplesChart data={trendData} hasBothPeriods={false} onZoomClick={handleZoomClick} metricConfigs={metricConfigs} />
-              </Suspense>
-            ) : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
-          </div>
+        <div className="detail-chart-area" aria-busy={loading} style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+          {trendData.length > 0 ? <MetricsPanel points={points} kind="contest" />
+            : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
         </div>
       </section>
 
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false} dialogClassName="detail-chart-modal">
-        <Modal.Header closeButton><Modal.Title>{selectedMetric ? `${metricConfigs[selectedMetric]?.name || selectedMetric} 크게 보기` : ''}</Modal.Title></Modal.Header>
-        <Modal.Body style={{ height: '76vh' }}>
-          <Suspense fallback={<div className="rank-skeleton" aria-busy="true"><div /><div /><div /></div>}>
-            {selectedMetric ? <SmallMultiplesChart data={trendData} hasBothPeriods={false} onZoomClick={() => {}} isModal={true} metricConfigs={metricConfigs} modalMetric={selectedMetric} /> : null}
-          </Suspense>
-        </Modal.Body>
-      </Modal>
     </div>
   );
 };
