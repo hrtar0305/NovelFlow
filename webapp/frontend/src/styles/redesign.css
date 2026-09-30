@@ -43,7 +43,7 @@
 .fn-ref a:hover, .fn-ref a:focus-visible { color: var(--np-accent); }
 
 .tag-links { font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-.tag-links__tag { margin-right: 0.5rem; padding: 0; border: 0; background: none; color: var(--np-text-secondary); font: inherit; }
+.tag-links__tag { margin-right: 0.5rem; padding: 0; border: 0; background: none; color: var(--np-text-secondary); font: inherit; text-decoration: none; }
 .tag-links__tag:hover { color: var(--np-text-heading); text-decoration: underline; }
 .tag-links__tag.is-hit { color: var(--np-rank-up); font-weight: 700; }
 .tag-links__more { color: var(--np-text-faint); }
@@ -379,3 +379,9 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .an-picked { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.9rem; margin: 0 0 0.5rem; }
 .an-picked .an-list__meta { grid-column: auto; }
 .an-sec > h2 + :not(.inline-nums) { margin-top: 1rem; }
+
+/* ── 작가(2026-09-30) ── */
+.author-table { margin-top: 1.25rem; }
+.author-out { display: flex; flex-direction: column; font-size: 0.875rem; color: var(--np-text-faint); }
+.author-out small { font-size: 0.75rem; }
+.rank-mrow--author { grid-template-columns: 48px minmax(0, 1fr); }
