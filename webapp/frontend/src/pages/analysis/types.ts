@@ -37,10 +37,6 @@ export interface ReportLeaver {
 
 export interface TagLift { tag: string; count: number; share: number; lift: number }
 export interface TagCombo { tags: string[]; count: number; lift: number }
-export interface TagCompanion {
-  tag: string; count: number;
-  with: { tag: string; count: number; lift: number }[];
-}
 
 export interface Quartile { label: string; min: number; max: number | null; count: number }
 
@@ -53,7 +49,7 @@ export interface DiagnoseWork {
 }
 
 /** 하루 세 번(7/30/90일) 미리 만들어 두는 기간 요약. 아직 생성 경로가 없어
- *  백엔드가 `null` 을 준다 — 화면은 그때 빈 영역을 그린다. */
+ *  백엔드가 `null` 을 준다 — 화면은 그때 자리를 숨긴다. */
 export interface AiSummary {
   text: string;
   model: string | null;
@@ -110,8 +106,6 @@ export interface AnalysisReport {
   };
   retention: { rows: ReportWork[] };
   diagnose: { quartiles: Quartile[]; works: DiagnoseWork[] };
-  tags: {
-    pairs: TagCombo[]; triples: TagCombo[];
-    entrant_pairs: TagCombo[]; companions: TagCompanion[];
-  };
+  /** 두 태그: 우연 대비 배수. 세 태그: 가장 강한 두 태그 짝 대비 배수(2026-09-30, analysis_report.tag_combinations). */
+  tags: { pairs: TagCombo[]; triples: TagCombo[] };
 }

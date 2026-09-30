@@ -273,63 +273,56 @@ def tag_lift(subset: list[dict], all_rows: list[dict], top: int = 8) -> list[dic
     return out[:top]
 
 
-def tag_combinations(rows: list[dict], size: int, min_count: int, top: int) -> list[dict]:
-    """같이 달린 태그 조합. 흔한 태그끼리는 그냥 자주 만나므로 빈도가 아니라
-    **각자 흔한 정도 대비 몇 배로 함께 나오는지**(lift)로 줄 세운다."""
+def tag_combinations(rows: list[dict], size: int, min_count: int, top: int,
+                     max_jaccard: float = 0.5) -> list[dict]:
+    """같이 달린 태그 조합(2026-09-30 개편). 흔한 태그끼리는 그냥 자주 만나므로 빈도가 아니라
+    **우연히 만날 때보다 몇 배인지**로 줄 세운다.
+
+    - 두 태그: 기대값 = c(a)·c(b)/N. 달린 작품이 절반 이상 겹치는 짝(Jaccard ≥ 0.5)은 뺀다 —
+      '현대판타지 + 현대'처럼 사실상 같은 말이라 조합이라 부를 수 없다.
+    - 세 태그: 기대값 = 세 가지로 나눈 '두 태그 짝 + 나머지 하나' 중 가장 큰 값, 즉
+      max(c(짝)·c(셋째)/N). 단순 lift(c(a)·c(b)·c(c)/N²)로 세면 이미 강한 짝 하나에 아무 태그나
+      붙어도 배수가 커져, 목록이 그 짝의 변주로 찬다. 가장 강한 짝 대비로 세야 '셋이어야 생기는'
+      조합이 남는다. 안에 든 짝이 하나라도 위 겹침 조건에 걸리면 뺀다.
+    """
     from itertools import combinations
     n = max(len(rows), 1)
     solo = tag_counts(rows)
+    pair: dict[tuple, int] = {}
     combo: dict[tuple, int] = {}
     for r in rows:
         tags = sorted(dict.fromkeys(r.get('Tags') or []))
-        if len(tags) < size:
-            continue
-        for c in combinations(tags, size):
-            combo[c] = combo.get(c, 0) + 1
+        for c in combinations(tags, 2):
+            pair[c] = pair.get(c, 0) + 1
+        if size != 2 and len(tags) >= size:
+            for c in combinations(tags, size):
+                combo[c] = combo.get(c, 0) + 1
+    if size == 2:
+        combo = pair
+
+    def overlaps(a: str, b: str) -> bool:
+        both = pair.get((a, b), 0)
+        union = solo.get(a, 0) + solo.get(b, 0) - both
+        return union > 0 and both / union >= max_jaccard
 
     out = []
     for key, c in combo.items():
         if c < min_count:
             continue
-        expected = n
-        for t in key:
-            expected *= solo.get(t, 0) / n
+        if any(overlaps(a, b) for a, b in combinations(key, 2)):
+            continue
+        if size == 2:
+            expected = solo.get(key[0], 0) * solo.get(key[1], 0) / n
+        else:
+            expected = max(
+                pair.get(tuple(sorted(p)), 0) * solo.get(next(t for t in key if t not in p), 0) / n
+                for p in combinations(key, 2)
+            )
         if expected <= 0:
             continue
         out.append({'tags': list(key), 'count': c, 'lift': c / expected})
     out.sort(key=lambda x: (-x['lift'], -x['count']))
     return out[:top]
-
-
-def tag_companions(rows: list[dict], top_tags: int = 10, per_tag: int = 5,
-                   min_count: int = 3) -> list[dict]:
-    """가장 많이 쓰인 태그마다 '같이 달리는 태그' 상위. 조합 목록만으로는
-    "내가 아는 태그에 뭘 붙이나"에 답하지 못한다."""
-    n = max(len(rows), 1)
-    solo = tag_counts(rows)
-    main = sorted(solo.items(), key=lambda kv: -kv[1])[:top_tags]
-    pair: dict[tuple, int] = {}
-    for r in rows:
-        tags = sorted(dict.fromkeys(r.get('Tags') or []))
-        for i in range(len(tags)):
-            for j in range(i + 1, len(tags)):
-                pair[(tags[i], tags[j])] = pair.get((tags[i], tags[j]), 0) + 1
-
-    out = []
-    for tag, cnt in main:
-        withs = []
-        for (a, b), c in pair.items():
-            if a != tag and b != tag:
-                continue
-            other = b if a == tag else a
-            if c < min_count:
-                continue
-            expected = n * (solo.get(tag, 0) / n) * (solo.get(other, 0) / n)
-            withs.append({'tag': other, 'count': c,
-                          'lift': c / expected if expected > 0 else 0})
-        withs.sort(key=lambda x: (-x['count'], -x['lift']))
-        out.append({'tag': tag, 'count': cnt, 'with': withs[:per_tag]})
-    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────

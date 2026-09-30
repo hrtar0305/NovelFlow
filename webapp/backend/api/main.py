@@ -1792,10 +1792,10 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
         'retention': {'rows': [ratio_row(w) for w in active[:12]]},
         'diagnose': {'quartiles': quartiles, 'works': diagnose_works},
         'tags': {
-            'pairs': AR.tag_combinations(end_rows, 2, 4, 16),
-            'triples': AR.tag_combinations(end_rows, 3, 4, 10),
-            'entrant_pairs': AR.tag_combinations(entrant_rows, 2, 3, 10),
-            'companions': AR.tag_companions(end_rows),
+            # 두 태그 10편 이상 상위 15, 세 태그 6편 이상 상위 12(2026-09-30).
+            # '많이 쓰인 태그의 짝'과 '신규작에서만 보이는 조합'은 화면에서 뺐다.
+            'pairs': AR.tag_combinations(end_rows, 2, 10, 15),
+            'triples': AR.tag_combinations(end_rows, 3, 6, 12),
         },
     }
 

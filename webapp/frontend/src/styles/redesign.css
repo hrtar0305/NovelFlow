@@ -329,3 +329,53 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
   .tab-bar__tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .tab-bar__tabs::-webkit-scrollbar { display: none; }
 }
+
+/* ── 분석(2026-09-30): 그래프 없이 h2 + 한 줄 수치 + 표/목록 + 각주 한 줄 ── */
+.an-summary { margin-top: 1.5rem; padding: 1.1rem 1.25rem; border-radius: var(--np-radius-sm); background: var(--np-surface-alt); }
+.an-summary p { margin: 0; font-size: 0.9375rem; line-height: 1.8; color: var(--np-text-primary); }
+.an-summary .an-summary__by { margin-top: 0.5rem; font-size: 0.8125rem; color: var(--np-text-faint); }
+.an-sec { padding-top: 2.5rem; }
+.an-sec:last-child { padding-bottom: 3rem; }
+.an-sec h2 { margin: 0 0 0.5rem; font-size: 1.1875rem; font-weight: 800; letter-spacing: -0.02em; color: var(--np-text-heading); }
+.an-sec h3 { margin: 0 0 0.35rem; font-size: 0.9375rem; font-weight: 700; color: var(--np-text-heading); }
+.an-sec .inline-nums { margin: 0 0 1rem; }
+.an-sec__foot { margin: 0.9rem 0 0; font-size: 0.8125rem; line-height: 1.7; color: var(--np-text-faint); }
+.an-soft { font-weight: 500; color: var(--np-text-secondary); }
+.an-on { color: var(--np-accent); }
+.an-split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem 2.5rem; }
+@media (max-width: 767.98px) { .an-split { grid-template-columns: 1fr; } }
+.an-work { display: inline-flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.an-work__title { font-weight: 700; color: var(--np-text-heading); text-decoration: none; }
+.an-work__title:hover { text-decoration: underline; text-underline-offset: 3px; }
+.an-work__author { font-size: 0.8125rem; color: var(--np-text-secondary); white-space: nowrap; }
+.an-list { margin: 0; padding: 0; list-style: none; }
+.an-list li { display: grid; grid-template-columns: 3.75rem minmax(0, 1fr); column-gap: 0.75rem; padding: 0.55rem 0; border-top: 1px solid var(--np-border); font-size: 0.9375rem; }
+.an-list li > .an-work { grid-column: 2; flex-wrap: wrap; row-gap: 0; }
+.an-list__rank { grid-row: span 2; font-weight: 700; color: var(--np-text-secondary); white-space: nowrap; }
+.an-list__rank--value { color: var(--np-text-heading); }
+.an-list__meta { grid-column: 2; font-size: 0.8125rem; color: var(--np-text-secondary); }
+.an-list__meta b { color: var(--np-text-heading); font-weight: 700; }
+.an-list--combo li { grid-template-columns: minmax(0, 1fr); }
+.an-list--combo li > * { grid-column: 1; }
+.an-combo { font-weight: 700; color: var(--np-text-heading); }
+.an-combo i { font-style: normal; font-weight: 400; color: var(--np-text-faint); }
+.an-tagline { margin: 0.6rem 0 0; font-size: 0.875rem; line-height: 1.8; color: var(--np-text-secondary); }
+.an-tagline__label { margin-right: 0.6rem; font-weight: 600; color: var(--np-text-heading); }
+.an-tagline a { color: var(--np-text-primary); text-decoration: none; }
+.an-tagline a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.an-tagline__x { color: var(--np-text-faint); }
+.an-table-wrap { overflow-x: auto; }
+.an-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.an-table th, .an-table td { padding: 0.6rem 1rem 0.6rem 0; border-top: 1px solid var(--np-border); text-align: left; vertical-align: baseline; white-space: nowrap; }
+.an-table td:has(.an-work) { white-space: normal; min-width: 14rem; }
+.an-table thead th { border-top: 0; font-size: 0.8125rem; font-weight: 600; color: var(--np-text-secondary); }
+.an-table td b { color: var(--np-text-heading); }
+.an-search { position: relative; max-width: 420px; margin-bottom: 0.75rem; }
+.an-search .toolbar-search { width: 100%; }
+.an-search__hits { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 0.25rem 0; list-style: none; border: 1px solid var(--np-border); border-radius: var(--np-radius-sm); background: var(--np-canvas); box-shadow: var(--np-shadow-md); }
+.an-search__hits button { display: flex; flex-direction: column; width: 100%; padding: 0.45rem 0.75rem; border: 0; background: none; text-align: left; font-size: 0.875rem; color: var(--np-text-secondary); }
+.an-search__hits button b { color: var(--np-text-heading); }
+.an-search__hits button:hover, .an-search__hits button:focus-visible { background: var(--np-surface-alt); }
+.an-picked { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.9rem; margin: 0 0 0.5rem; }
+.an-picked .an-list__meta { grid-column: auto; }
+.an-sec > h2 + :not(.inline-nums) { margin-top: 1rem; }
