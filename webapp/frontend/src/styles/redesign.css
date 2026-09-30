@@ -466,3 +466,19 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .mx-day__n { font-size: 11px; font-weight: 700; fill: var(--np-on-accent); pointer-events: none; }
 .mx-day__n.is-multi { fill: var(--np-accent); }
 .mx-rest { color: var(--np-warning) !important; }
+.mx-day__unknown { stroke: var(--np-border-strong); stroke-width: 2; stroke-linecap: round; }
+
+/* ── 일간 랭킹 행 펼침(2026-10-01): 30일 순위선+연재 줄 / 작품 소개 / 수치. 제목 열(116px)에서 시작 ── */
+.novel-expand { display: grid; grid-template-columns: 300px minmax(0, 1fr) 320px; gap: 2.25rem; align-items: start; padding: 0.9rem 1.5rem 1.2rem 116px; font-size: 0.875rem; color: var(--np-text-secondary); }
+.novel-expand--loading { display: block; min-height: 120px; color: var(--np-text-faint); }
+.novel-expand__h { margin: 0 0 4px; font-size: 0.75rem; font-weight: 700; color: var(--np-text-heading); }
+.novel-expand__h small { margin-left: 0.35rem; font-size: inherit; font-weight: 500; color: var(--np-text-faint); }
+.novel-expand__cap { display: flex; justify-content: space-between; margin: 2px 0 10px; font-size: 0.6875rem; color: var(--np-text-faint); }
+.novel-expand__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-surface-alt); stroke-width: 3px; stroke-linejoin: round; }
+.novel-expand__none { margin: 0; height: 52px; display: flex; align-items: center; color: var(--np-text-faint); }
+.novel-expand__synopsis { margin: 0; white-space: pre-line; font-size: 0.875rem; line-height: 1.7; color: var(--np-text-primary); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.novel-expand__synopsis.is-empty { color: var(--np-text-faint); }
+.novel-expand__facts { margin: 0; line-height: 1.9; }
+.novel-expand__facts b { color: var(--np-text-heading); font-weight: 700; }
+.novel-expand__go { display: inline-block; margin-top: 0.5rem; font-weight: 700; color: var(--np-text-heading); text-decoration: none; border-bottom: 1.5px solid var(--np-text-heading); }
+@media (max-width: 1199.98px) { .novel-expand { grid-template-columns: 300px minmax(0, 1fr); } .novel-expand > :last-child { grid-column: 2; } }

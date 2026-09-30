@@ -41,6 +41,8 @@ export const useNovelData = (novelId: string | undefined) => {
   const [endDate, setEndDate] = useState<Date | null>(null);
   
   const [novelData, setNovelData] = useState<NovelData[]>([]);
+  /** novelData 중 화면 기간의 첫날. 그 앞 하루는 첫날을 전날과 견주기 위한 기준값이다. */
+  const [dataStart, setDataStart] = useState<string | null>(null);
   const [details, setDetails] = useState<NovelDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +59,9 @@ export const useNovelData = (novelId: string | undefined) => {
     const finalAvailableDates = datesToUse || availableDates;
 
     try {
-      const response = await getNovelTrend(novelId, format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'));
+      // 하루 앞(달력 기준 전날)부터 받는다 — 기간 첫날의 증가량·연재 여부·변동을 전날과 견줘 채우기 위해서다.
+      const baseline = subDays(startOfDay(start), 1);
+      const response = await getNovelTrend(novelId, format(baseline, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'));
       const fetchedData = response.data.sort((a: NovelData, b: NovelData) => a.Date.localeCompare(b.Date));
 
       // Create a map for quick lookup of fetched data by date
@@ -66,7 +70,7 @@ export const useNovelData = (novelId: string | undefined) => {
 
       const availableDateSet = new Set(finalAvailableDates.map(d => format(d, 'yyyy-MM-dd')));
       const fullDateRangeData: NovelData[] = [];
-      let currentDate = startOfDay(start);
+      let currentDate = baseline;
       const endDateFormatted = startOfDay(end);
 
       while (currentDate <= endDateFormatted) {
@@ -84,6 +88,7 @@ export const useNovelData = (novelId: string | undefined) => {
       }
 
       setNovelData(fullDateRangeData);
+      setDataStart(format(startOfDay(start), 'yyyy-MM-dd'));
     } catch {
       setError('해당 소설을 찾을 수 없습니다.');
       setNovelData([]);
@@ -150,6 +155,7 @@ export const useNovelData = (novelId: string | undefined) => {
     setStartDate,
     setEndDate,
     novelData,
+    dataStart,
     details,
     loading,
     error,

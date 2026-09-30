@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getLatestContestNovelDetails, getContestNovelTrend, getContestAvailableDates, getContestNovelAvailableDates } from '../services/api';
 import { format, subDays, parseISO, startOfDay } from 'date-fns';
 
@@ -42,6 +42,11 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
   const [endDate, setEndDate] = useState<Date | null>(null);
   
   const [trendData, setTrendData] = useState<MappedTrendData[]>([]);
+  /** trendData 중 화면 기간의 첫날. 그 앞은 첫날을 직전 수집일과 견주기 위한 기준값이다. */
+  const [dataStart, setDataStart] = useState<string | null>(null);
+  // 공모전 수집일. 추이 API가 수집하지 않은 날(예: 2026-09-11)도 빈 행으로 채워 주므로 이것으로 거른다.
+  // 첫 요청이 상태 갱신보다 먼저 나가서 상태 대신 ref에 둔다.
+  const contestDatesRef = useRef<Set<string>>(new Set());
   const [details, setDetails] = useState<ContestNovelDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,14 +62,17 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
     setError(null);
     try {
       const yearNum = parseInt(year, 10);
-      const response = await getContestNovelTrend(yearNum, novelId, format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'));
+      // 공모전은 전날 = 실제 직전 수집일이라, 수집이 빠진 날이 있어도 기준값이 잡히게 일주일 앞부터 받는다.
+      const response = await getContestNovelTrend(yearNum, novelId, format(subDays(start, 7), 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'));
       // 일간 추이와 같은 모양(Ranking)으로 맞춘다. 공모전은 점수가 없다.
-      const mappedData = response.data.map((d: ContestTrendData) => ({
+      const collected = contestDatesRef.current;
+      const mappedData = response.data.filter((d: ContestTrendData) => collected.size === 0 || collected.has(d.Date)).map((d: ContestTrendData) => ({
         ...d,
         Ranking: d.Rank, // Rank를 Ranking으로 매핑
         Score: null,     // Score 속성 추가
       }));
       setTrendData(mappedData);
+      setDataStart(format(startOfDay(start), 'yyyy-MM-dd'));
     } catch {
       setError('트렌드 데이터를 불러오는 데 실패했습니다.');
       setTrendData([]);
@@ -85,6 +93,7 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
     ]).then(([contestDatesRes, detailsRes, novelDatesRes]) => {
         const contestDates = (contestDatesRes.data.available_dates || []).sort((a: string, b: string) => a.localeCompare(b));
         setAvailableDates(contestDates.map((d: string) => parseISO(d)));
+        contestDatesRef.current = new Set<string>(contestDates);
 
         const novelDates = new Set<string>(novelDatesRes.data.available_dates || []);
         setNovelAvailableDatesSet(novelDates);
@@ -127,5 +136,5 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, novelId]);
 
-  return { startDate, endDate, setStartDate, setEndDate, trendData, details, loading, error, minDate, maxDate, availableDates, novelAvailableDatesSet, fetchTrendData };
+  return { startDate, endDate, setStartDate, setEndDate, trendData, dataStart, details, loading, error, minDate, maxDate, availableDates, novelAvailableDatesSet, fetchTrendData };
 };

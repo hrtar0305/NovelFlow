@@ -18,7 +18,7 @@ import { buildMetricPoints } from '../utils/metricSeries';
 const ContestNovelDetailPage = () => {
   const { year = '2025', novelId } = useParams<{ year: string; novelId: string }>();
   const {
-    startDate, endDate, setStartDate, setEndDate, trendData, details, loading, error,
+    startDate, endDate, setStartDate, setEndDate, trendData, dataStart, details, loading, error,
     minDate, maxDate, novelAvailableDatesSet, fetchTrendData,
   } = useContestNovelData(year, novelId);
 
@@ -61,7 +61,7 @@ const ContestNovelDetailPage = () => {
     if (startDate && date) fetchTrendData(startDate, date);
   };
   // 공모전은 전날 = 실제 직전 수집일(DECISIONS 2026-07-01).
-  const points = useMemo(() => buildMetricPoints(trendData, 'collection'), [trendData]);
+  const points = useMemo(() => buildMetricPoints(trendData, 'collection', dataStart ?? undefined), [trendData, dataStart]);
 
   if (error) return <div className="page-shell"><p className="empty-line">{error}</p></div>;
   if (!details) return <div className="page-shell"><div className="rank-skeleton" aria-busy="true"><div /><div /><div /></div></div>;
@@ -101,7 +101,7 @@ const ContestNovelDetailPage = () => {
           </div>
         </div>
         <div className="detail-chart-area" aria-busy={loading} style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-          {trendData.length > 0 ? <MetricsPanel points={points} kind="contest" />
+          {points.length > 0 ? <MetricsPanel points={points} kind="contest" />
             : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
         </div>
       </section>

@@ -18,6 +18,7 @@ const NovelDetailPage = () => {
     setStartDate,
     setEndDate,
     novelData,
+    dataStart,
     details,
     loading,
     error,
@@ -86,7 +87,7 @@ const NovelDetailPage = () => {
     }
   };
 
-  const points = useMemo(() => buildMetricPoints(novelData, 'calendar'), [novelData]);
+  const points = useMemo(() => buildMetricPoints(novelData, 'calendar', dataStart ?? undefined), [novelData, dataStart]);
 
   return (
     <div>
@@ -123,7 +124,7 @@ const NovelDetailPage = () => {
               </div>
             </div>
             <div className="detail-chart-area" aria-busy={loading} style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-              {novelData.length > 0 ? <MetricsPanel points={points} kind="daily" status={(details as { serial_status?: string | null } | null)?.serial_status} />
+              {points.length > 0 ? <MetricsPanel points={points} kind="daily" status={(details as { serial_status?: string | null } | null)?.serial_status} />
                 : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
             </div>
           </section>

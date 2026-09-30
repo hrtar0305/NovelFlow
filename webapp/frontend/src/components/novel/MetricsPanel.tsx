@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import ChangeMark from '../ui/ChangeMark';
+import UploadCells from './UploadCells';
 import { formatDateKo, formatInt, formatMan, formatRatio } from '../../utils/format';
 import { rankTicks, signed, summarizeMetrics, uploadStats, type MetricPoint } from '../../utils/metricSeries';
 
@@ -180,22 +181,10 @@ export default function MetricsPanel({ points, kind, status }: Props) {
 
   function uploadSvg() {
     const h = 24;
-    const cw = Math.max(3, Math.min(col - 3, 28));
     return (
       <svg width={width} height={h} className="mx-svg" aria-hidden="true">
         {hl(h)}
-        {points.map((p, i) => {
-          if (!p.rec || !p.d || p.d.eps == null) return null;
-          const on = p.d.eps > 0;
-          const multi = p.span > 1;
-          const cls = `mx-day${on ? ' is-up' : ' is-rest'}${multi ? ' is-multi' : ''}${hover === i ? ' is-on' : ''}`;
-          return (
-            <g key={p.date}>
-              <rect x={X(i) - cw / 2} y={2} width={cw} height={h - 4} rx={3} className={cls} />
-              {on && p.d.eps > 1 && cw >= 14 ? <text x={X(i)} y={h / 2 + 4} textAnchor="middle" className={`mx-day__n${multi ? ' is-multi' : ''}`}>{p.d.eps}</text> : null}
-            </g>
-          );
-        })}
+        <UploadCells points={points} X={X} cw={Math.max(3, Math.min(col - 3, 28))} h={h - 4} y={2} hover={hover} />
       </svg>
     );
   }

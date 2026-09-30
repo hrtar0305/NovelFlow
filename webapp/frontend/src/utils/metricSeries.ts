@@ -46,7 +46,12 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 const dayNo = (iso: string) => Math.round(Date.parse(`${iso}T00:00:00Z`) / 86_400_000);
 const sub = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null);
 
-export function buildMetricPoints(rows: MetricRow[], compare: Compare): MetricPoint[] {
+/**
+ * `windowStart`를 주면 그보다 앞선 행은 **비교 기준으로만** 쓰고 결과에서 뺀다. 기간 첫날도 전날과 견줄 수 있게
+ * 호출부가 하루(공모전은 직전 수집일이 나오도록 며칠) 더 앞에서부터 받아 넘긴다 — 없으면 30일을 골라도
+ * 연재 여부·증가량이 29일치만 나왔다.
+ */
+export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowStart?: string): MetricPoint[] {
   const sorted = [...rows].sort((a, b) => a.Date.localeCompare(b.Date));
   const out: MetricPoint[] = [];
   let prevRec: MetricPoint | null = null;
@@ -73,7 +78,7 @@ export function buildMetricPoints(rows: MetricRow[], compare: Compare): MetricPo
     out.push(p);
     if (rec) prevRec = p;
   }
-  return out;
+  return windowStart ? out.filter(p => p.date >= windowStart) : out;
 }
 
 export interface MetricSummary {
@@ -95,7 +100,12 @@ export function summarizeMetrics(points: MetricPoint[]): MetricSummary | null {
   const last = recs[recs.length - 1];
   const ranked = recs.filter(p => p.rank != null);
   const best = ranked.length ? ranked.reduce((a, b) => (b.rank! < a.rank! ? b : a)) : last;
-  const d: Delta = { view: sub(last.view, first.view), like: sub(last.like, first.like), fav: sub(last.fav, first.fav), eps: sub(last.eps, first.eps) };
+  // 기간 증가량 = 첫 기록의 전날 기준값부터 마지막 기록까지. 첫날의 증가량을 알면(기준값이 있으면) 그것도 넣는다.
+  const base = (k: keyof Delta, v: number | null) => (v != null ? v - (first.d?.[k] ?? 0) : null);
+  const d: Delta = {
+    view: sub(last.view, base('view', first.view)), like: sub(last.like, base('like', first.like)),
+    fav: sub(last.fav, base('fav', first.fav)), eps: sub(last.eps, base('eps', first.eps)),
+  };
   return { first, last, best, days: recs.length, total: points.length, d, ratio: d.view && d.view > 0 && d.like != null ? d.like / d.view : null };
 }
 

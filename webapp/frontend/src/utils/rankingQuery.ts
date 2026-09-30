@@ -19,6 +19,7 @@ export interface RankingNovel {
   ThumbnailURL?: string | null;
   /** 그 날 스냅샷의 연재 상태. 기록 없는 날(2026-09-05 이전)은 null. 판정은 백엔드 _derive_serial_status. */
   serial_status?: string | null;
+  Synopsis?: string | null;
 }
 
 export type TagMode = 'include-and' | 'include-or' | 'exclude';

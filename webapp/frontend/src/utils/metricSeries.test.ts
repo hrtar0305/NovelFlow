@@ -74,3 +74,22 @@ describe('uploadStats', () => {
     expect(uploadStats(eps([10, 11, null, 13, 14]))).toEqual({ known: 2, uploaded: 2, streak: 1, resting: 0 });
   });
 });
+
+describe('windowStart(기간 전날 기준값)', () => {
+  const rows = [rec('2026-08-31', 60, 900, { Eps: 9 }), rec('2026-09-01', 50, 1000, { Eps: 10 }), rec('2026-09-02', 40, 1500, { Eps: 11 })];
+  const pts = buildMetricPoints(rows, 'calendar', '2026-09-01');
+  it('기준일은 결과에서 빠지고 첫날도 증가량·변동을 갖는다', () => {
+    expect(pts.map(p => p.date)).toEqual(['2026-09-01', '2026-09-02']);
+    expect(pts[0]).toMatchObject({ span: 1, d: { view: 100, eps: 1 }, change: 10 });
+  });
+  it('기간 증가량은 기준일부터 센다', () => {
+    expect(summarizeMetrics(pts)!.d).toMatchObject({ view: 600, eps: 2 });
+  });
+  it('연재 판단도 첫날부터', () => {
+    expect(uploadStats(pts)).toMatchObject({ known: 2, uploaded: 2 });
+  });
+  it('기준일이 순위권 밖이면 첫날은 알 수 없음', () => {
+    const p = buildMetricPoints([out('2026-08-31'), ...rows.slice(1)], 'calendar', '2026-09-01');
+    expect(p[0]).toMatchObject({ d: null, change: 'New' });
+  });
+});
