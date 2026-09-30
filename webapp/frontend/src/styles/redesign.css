@@ -317,3 +317,15 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
   /* 좁은 화면에서 상시 라벨은 서로 겹친다 — 강조된 태그만 남긴다. */
   .tag-map__label:not(.is-on) { display: none; }
 }
+
+/* ── 태그 트렌드(2026-09-30): 기간 선택 · 탭 여섯 개 ── */
+.period-pick { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.875rem; font-size: 0.9375rem; }
+.period-pick > button { border: 0; background: none; padding: 0; font-weight: 600; color: var(--np-text-faint); white-space: nowrap; }
+.period-pick > button.is-on { color: var(--np-text-heading); }
+.tag-trends-page .inline-nums { margin: 0.25rem 0 0; }
+.rank-mrow--plain { grid-template-columns: minmax(0, 1fr); }
+/* 탭이 여섯 개라 좁은 화면에서는 가로로 밀어 본다(줄바꿈하면 밑줄 기준선이 두 줄로 갈린다). */
+@media (max-width: 767.98px) {
+  .tab-bar__tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .tab-bar__tabs::-webkit-scrollbar { display: none; }
+}

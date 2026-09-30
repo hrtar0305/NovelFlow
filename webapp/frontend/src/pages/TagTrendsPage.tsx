@@ -1,430 +1,218 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Spinner, Alert } from 'react-bootstrap';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { format, parseISO, subDays } from 'date-fns';
 import { getAvailableDates, getTagSeries } from '../services/api';
-import TagRankChart from '../components/tag/TagRankChart';
-import { Link } from 'react-router-dom';
-import PageHero from '../components/ui/PageHero';
-import PanelCard from '../components/ui/PanelCard';
+import PageTitle from '../components/ui/PageTitle';
+import ViewSwitch from '../components/ui/ViewSwitch';
+import InlineNums from '../components/ui/InlineNums';
+import TabBar from '../components/ui/TabBar';
+import ChangeMark from '../components/ui/ChangeMark';
+import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
+import RankTable, { type RankColumn } from '../components/ranking/RankTable';
+import TagRowExpand from '../components/tag/TagRowExpand';
 import DateRangePicker from '../components/novel/DateRangePicker';
+import { MIN_WORKS, SPIKE_MIN, SWING_DAYS, SWING_TOP, buildTagTrends, type TagEdge, type TagSeriesResponse, type TagTrend } from '../utils/tagTrends';
+import { formatInt } from '../utils/format';
 
 /**
- * 태그 트렌드 — 정한 기간 동안 무엇이 바뀌었나.
- *
- * 이전 판은 백엔드의 4분류 API(trend_leader / broad_popular / efficient_niche /
- * declining)를 그대로 그렸는데 두 가지가 문제였다.
- *
- * 1) 보여주는 수치가 '기울기 +0.051', '로컬 리프트', '평균 총합 점수'였다.
- *    독자·작가가 "이게 좋은 건가"에 답할 수 없는 값이고, 태그 랭킹이 쓰는 말
- *    (작품 수 / 집중도 / 인기 점수)과도 달랐다.
- * 2) 4분류가 태그 랭킹의 4분면과 하는 일이 겹쳤다. 태그 랭킹이 '오늘의 지형'을
- *    맡으므로 여기는 '기간 동안의 변화'만 맡는다.
- *
- * 그래서 기간 안의 **모든 수집일**을 한 번에 받아(`/api/trends/tags/series`)
- * 태그별 시계열을 만들고, 시작과 끝을 비교해 뜬 태그·식은 태그·새로 들어온 태그·
- * 사라진 태그로 나눈다. 태그를 고르면 그 시계열을 차트로 보여준다.
+ * 태그 트렌드(2026-09-30 개편) — 정한 기간 동안 무엇이 바뀌었나. 태그 랭킹이 '오늘의 지형'을 맡고
+ * 여기는 '기간 동안의 변화'만 맡는다. 요약 상자·칩 패널 여섯 개를 한 줄 수치 + 탭 여섯 개 + 탭별 표로 바꿨다.
+ * 패널 밑 해명 문구 두 개는 탭 이름과 주석으로 대신한다. 목록 정의는 utils/tagTrends.
  */
 
-/** 기본 기간. 짧게 잡아야 '요즘'이 읽힌다. */
+const RANGES = [7, 14, 30];
 const DEFAULT_DAYS = 7;
 
-/** 꼬리 태그 배제 하한. 이걸 두지 않으면 순위 변동 상위가 전부 1~2작품짜리로 찬다
- *  (실측: 하한 없을 때 최대 +93계단이 '1작품 → 7작품'짜리였다).
- *  태그 랭킹의 집중도 산출 하한과 같은 값이다. */
-const MIN_WORKS = 5;
-
-type SeriesResponse = {
-  dates: string[];
-  tags: Record<string, {
-    rank: (number | null)[];
-    count: (number | null)[];
-    score: (number | null)[];
-    lift: (number | null)[];
-  }>;
+type Tab = 'risers' | 'fallers' | 'entered' | 'left' | 'spikes' | 'swings';
+const TAB_LABEL: Record<Tab, string> = {
+  risers: '뜬 태그', fallers: '식은 태그', entered: '새로 들어옴', left: '빠짐', spikes: '치솟았다 돌아옴', swings: '많이 출렁임',
+};
+const EMPTY_TEXT: Record<Tab, string> = {
+  risers: '이 기간에 순위가 오른 태그가 없습니다.',
+  fallers: '이 기간에 순위가 내린 태그가 없습니다.',
+  entered: '이 기간에 새로 들어온 태그가 없습니다.',
+  left: '이 기간에 빠진 태그가 없습니다.',
+  spikes: '이 기간에 치솟았다 돌아온 태그가 없습니다.',
+  swings: '이 기간에 출렁인 태그가 없습니다.',
 };
 
-type Edge = { tag: string; rank: number; count: number };
+const NOTES = [
+  { id: 'tau', content: <>순서 일치도 = 첫날과 마지막 날에 다 있는 태그 두 개씩 짝지어, 두 날의 앞뒤가 같으면 +1 · 뒤집히면 −1로 센 평균(Kendall τ). 1이면 순서 그대로, 0이면 무작위입니다.</> },
+  { id: 'elig', content: <>뜬 태그 · 식은 태그 · 치솟았다 돌아옴 · 많이 출렁임은 첫날과 마지막 날 모두 작품 {MIN_WORKS}편 이상인 태그만 봅니다. 치솟았다 돌아옴은 첫날·마지막 날 중 나은 순위보다 {SPIKE_MIN}계단 이상 위로 갔던 태그, 많이 출렁임은 기록이 {SWING_DAYS}일 이상인 태그 중 최고~최저 폭이 큰 {SWING_TOP}개입니다.</> },
+];
 
-type Point = { date: string; rank: number; count: number; score: number; lift: number | null };
-type TagTrend = {
-  tag: string;
-  series: Point[];
-  first: Point;
-  last: Point;
-  scoreChange: number;   // 인기 점수 변화율 (0.42 = +42%)
-  rankChange: number;    // + 면 순위가 올랐다
-  bestRank: number;      // 기간 중 가장 높았던 순위
-  worstRank: number;
-  spike: number;         // 시작·끝 중 나은 쪽보다 기간 최고가 몇 계단 위였나
-  swing: number;         // 최고~최저 폭
-};
+const rank = (n: number) => `${formatInt(n)}위`;
+const pct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v * 100))}%`;
+const strong = (v: ReactNode) => <b className="rank-strong">{v}</b>;
+const tagCell = (tag: string) => <span className="rank-title">{tag}</span>;
 
-/** 태그판 전체가 얼마나 뒤집혔는지. 소설 쪽 리포트와 같은 지표를 쓴다. */
-type Churn = {
-  footrule: number | null;   // 양쪽에 다 있는 태그의 평균 |순위 변동|
-  tau: number | null;        // 1 = 순서 그대로, 0 = 무작위
-  common: number;
-  startTags: number;
-  endTags: number;
-};
-
-/** 태그판 전체가 얼마나 갈렸나. 양쪽에 다 있는 태그의 평균 순위 이동과 Kendall tau.
- *
- *  평균 이동은 "전원이 제자리면 0"이라 화면에서 바로 읽히고, tau 는 −1~1로 묶여 있어
- *  기간 길이가 달라도 비교된다. 소설 쪽 리포트와 같은 지표를 써서 두 화면이 같은 말을
- *  하게 한다. */
-const computeChurn = (tags: SeriesResponse['tags'], lastIdx: number): Churn | null => {
-  const a = new Map<string, number>();
-  const b = new Map<string, number>();
-  for (const [tag, s] of Object.entries(tags)) {
-    if (s.rank[0] != null) a.set(tag, s.rank[0]);
-    if (s.rank[lastIdx] != null) b.set(tag, s.rank[lastIdx]);
-  }
-  const common = [...b.keys()].filter(t => a.has(t));
-  if (common.length < 2) return null;
-
-  const footrule = common.reduce((acc, t) => acc + Math.abs(a.get(t)! - b.get(t)!), 0) / common.length;
-  let con = 0;
-  let dis = 0;
-  for (let i = 0; i < common.length; i += 1) {
-    for (let j = i + 1; j < common.length; j += 1) {
-      const s2 = (a.get(common[i])! - a.get(common[j])!) * (b.get(common[i])! - b.get(common[j])!);
-      if (s2 > 0) con += 1;
-      else if (s2 < 0) dis += 1;
-    }
-  }
-  return {
-    footrule, tau: con + dis ? (con - dis) / (con + dis) : null,
-    common: common.length, startTags: a.size, endTags: b.size,
-  };
-};
-
-const formatLift = (v?: number | null) => (v != null ? `${v.toFixed(1)}×` : '-');
-const formatPct = (v: number) => `${v >= 0 ? '+' : ''}${Math.round(v * 100)}%`;
-
-const SelectedTagPanel = ({ trend, onClose }: { trend: TagTrend; onClose: () => void }) => (
-  <section className="selected-tag-panel">
-    <div className="selected-tag-panel__header">
-      <div>
-        <div className="selected-tag-panel__eyebrow">선택한 태그</div>
-        <h2 className="selected-tag-panel__title">{trend.tag}</h2>
-      </div>
-      <button type="button" className="selected-tag-panel__close" onClick={onClose} aria-label="선택 해제">×</button>
-    </div>
-
-    <div className="selected-tag-panel__metrics">
-      <span>순위<strong>{trend.first.rank}위<i className="mv-arrow" aria-hidden="true" />{trend.last.rank}위</strong></span>
-      <span>등장<strong>{trend.first.count}작품<i className="mv-arrow" aria-hidden="true" />{trend.last.count}작품</strong></span>
-      <span>인기 점수<strong>{trend.first.score.toFixed(1)}<i className="mv-arrow" aria-hidden="true" />{trend.last.score.toFixed(1)} ({formatPct(trend.scoreChange)})</strong></span>
-      <span>집중도<strong>{formatLift(trend.first.lift)}<i className="mv-arrow" aria-hidden="true" />{formatLift(trend.last.lift)}</strong></span>
-    </div>
-
-    <TagRankChart points={trend.series} />
-  </section>
-);
-
-const TagTrendsPage = () => {
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
+export default function TagTrendsPage() {
+  const [available, setAvailable] = useState<string[]>([]);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
-  const [series, setSeries] = useState<SeriesResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [rangeDays, setRangeDays] = useState<number | null>(DEFAULT_DAYS);
+  const [series, setSeries] = useState<TagSeriesResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>('risers');
+  const [openTag, setOpenTag] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+
+  const latest = useMemo(() => (available.length ? parseISO([...available].sort().at(-1)!) : null), [available]);
 
   useEffect(() => {
     getAvailableDates()
-      .then(res => {
-        const ds: string[] = res.data.available_dates ?? [];
-        setAvailableDates(ds);
+      .then(r => {
+        const ds: string[] = r.data.available_dates ?? [];
+        setAvailable(ds);
         if (ds.length) {
-          const latest = parseISO(ds[0]);
-          setEndDate(latest);
-          setStartDate(subDays(latest, DEFAULT_DAYS - 1));
-        }
+          const last = parseISO([...ds].sort().at(-1)!);
+          setEndDate(last);
+          setStartDate(subDays(last, DEFAULT_DAYS - 1));
+        } else setLoading(false);
       })
-      .catch(() => setError('수집된 날짜를 불러오지 못했습니다'));
+      .catch(() => { setError('수집일 목록을 불러오지 못했습니다.'); setLoading(false); });
   }, []);
 
   const windowDates = useMemo(() => {
     if (!startDate || !endDate) return [];
     const s = format(startDate, 'yyyy-MM-dd');
     const e = format(endDate, 'yyyy-MM-dd');
-    return availableDates.filter(d => d >= s && d <= e).sort();
-  }, [availableDates, startDate, endDate]);
+    return available.filter(d => d >= s && d <= e).sort();
+  }, [available, startDate, endDate]);
+  const hasDates = available.length > 0;
+  const first = windowDates[0];
+  const last = windowDates.at(-1);
 
   useEffect(() => {
-    if (windowDates.length < 2) { setSeries(null); return; }
+    if (!first || !last || first === last) { setSeries(null); if (hasDates) setLoading(false); return; }
     let cancelled = false;
-    setLoading(true); setError(null);
-    // 기간 전체를 한 번에 받는다. 날짜를 하나씩 부르면 날짜당 약 0.4초라
-    // 30일이면 12초가 넘는데, 백엔드가 batch_get_item으로 묶어 읽으면 3초다.
-    getTagSeries(windowDates[0], windowDates[windowDates.length - 1])
-      .then(res => { if (!cancelled) setSeries(res.data as SeriesResponse); })
-      .catch(() => { if (!cancelled) setError('태그 데이터를 불러오지 못했습니다'); })
+    setLoading(true);
+    setError(null);
+    setOpenTag(null);
+    // 기간 전체를 한 번에 받는다(백엔드 batch_get_item — 날짜마다 부르면 30일에 12초, 묶으면 3초).
+    getTagSeries(first, last)
+      .then(r => { if (!cancelled) setSeries(r.data as TagSeriesResponse); })
+      .catch(() => { if (!cancelled) { setSeries(null); setError('태그 데이터를 불러오지 못했습니다.'); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [windowDates]);
+  }, [first, last, hasDates, retry]);
 
-  const { risers, fallers, entered, left, spikes, swings, churn, trendMap } = useMemo(() => {
-    const empty = {
-      risers: [] as TagTrend[], fallers: [] as TagTrend[],
-      entered: [] as Edge[], left: [] as Edge[],
-      spikes: [] as TagTrend[], swings: [] as TagTrend[],
-      churn: null as Churn | null, trendMap: new Map<string, TagTrend>(),
-    };
-    if (!series || series.dates.length < 2) return empty;
+  const lists = useMemo(() => buildTagTrends(series), [series]);
+  const { churn } = lists;
 
-    const { dates, tags } = series;
-    const lastIdx = dates.length - 1;
-    const map = new Map<string, TagTrend>();
-    const entered: Edge[] = [];
-    const left: Edge[] = [];
+  const pickRange = (n: number) => {
+    if (!latest) return;
+    setRangeDays(n);
+    setStartDate(subDays(latest, n - 1));
+    setEndDate(latest);
+  };
+  const toggle = (tag: string) => setOpenTag(cur => (cur === tag ? null : tag));
+  const expand = (tag: string) => (series && last
+    ? <TagRowExpand tag={tag} date={last} series={series} novelsHref={`/novels/rankings/${last}?tag=${encodeURIComponent(tag)}`} />
+    : null);
+  const eligAside = <FootnoteRef id="elig" n={2} />;
 
-    for (const [tag, s] of Object.entries(tags)) {
-      const points: Point[] = [];
-      for (let i = 0; i < dates.length; i += 1) {
-        if (s.rank[i] == null) continue;
-        points.push({ date: dates[i], rank: s.rank[i]!, count: s.count[i] ?? 0, score: s.score[i] ?? 0, lift: s.lift[i] });
-      }
-      if (!points.length) continue;
+  const trendCols: RankColumn<TagTrend>[] = [
+    { key: 'tag', header: '태그', aside: eligAside, width: 'minmax(0,1fr)', render: t => tagCell(t.tag) },
+    { key: 'first', header: '첫날', width: '76px', render: t => rank(t.first.rank) },
+    { key: 'last', header: '마지막 날', width: '84px', render: t => rank(t.last.rank) },
+    { key: 'chg', header: '변동', width: '72px', render: t => strong(<ChangeMark value={t.rankChange} />) },
+    { key: 'best', header: '기간 최고', width: '84px', render: t => rank(t.bestRank) },
+    { key: 'count', header: '작품 수', width: '104px', render: t => <>{formatInt(t.first.count)} → {formatInt(t.last.count)}</> },
+    { key: 'score', header: '인기 점수', width: '88px', render: t => pct(t.scoreChange) },
+  ];
+  const spikeCols: RankColumn<TagTrend>[] = [
+    { key: 'tag', header: '태그', aside: eligAside, width: 'minmax(0,1fr)', render: t => tagCell(t.tag) },
+    { key: 'first', header: '첫날', width: '84px', render: t => rank(t.first.rank) },
+    { key: 'best', header: '기간 최고', width: '88px', render: t => rank(t.bestRank) },
+    { key: 'last', header: '마지막 날', width: '88px', render: t => rank(t.last.rank) },
+    { key: 'spike', header: '치솟은 폭', width: '96px', render: t => strong(`${formatInt(t.spike)}계단`) },
+  ];
+  const swingCols: RankColumn<TagTrend>[] = [
+    { key: 'tag', header: '태그', aside: eligAside, width: 'minmax(0,1fr)', render: t => tagCell(t.tag) },
+    { key: 'best', header: '최고', width: '84px', render: t => rank(t.bestRank) },
+    { key: 'worst', header: '최저', width: '84px', render: t => rank(t.worstRank) },
+    { key: 'swing', header: '폭', width: '88px', render: t => strong(`${formatInt(t.swing)}계단`) },
+    { key: 'last', header: '마지막 날', width: '88px', render: t => rank(t.last.rank) },
+  ];
+  const edgeCols = (which: 'entered' | 'left'): RankColumn<TagEdge>[] => [
+    { key: 'tag', header: '태그', width: 'minmax(0,1fr)', render: e => tagCell(e.tag) },
+    { key: 'rank', header: which === 'entered' ? '마지막 날 순위' : '첫날 순위', width: '120px', render: e => strong(rank(e.rank)) },
+    { key: 'count', header: '작품 수', width: '88px', render: e => formatInt(e.count) },
+  ];
 
-      const inFirst = s.rank[0] != null;
-      const inLast = s.rank[lastIdx] != null;
-      // 기간 시작에는 없다가 마지막 날 있는 태그 / 그 반대
-      if (!inFirst && inLast) { entered.push({ tag, rank: s.rank[lastIdx]!, count: s.count[lastIdx] ?? 0 }); continue; }
-      if (inFirst && !inLast) { left.push({ tag, rank: s.rank[0]!, count: s.count[0] ?? 0 }); continue; }
-      if (points.length < 2) continue;
+  const trendRow = (t: TagTrend, facts: ReactNode) => (
+    <div className="rank-mrow rank-mrow--plain">
+      <div className="rank-mrow__main">{tagCell(t.tag)}<p>{facts}</p></div>
+    </div>
+  );
+  const common = { rowKey: (r: { tag: string }) => r.tag, rowHeight: 52, expandedKey: openTag, emptyText: EMPTY_TEXT[tab] };
 
-      const first = points[0];
-      const last = points[points.length - 1];
-      const ranks = points.map(p => p.rank);
-      const bestRank = Math.min(...ranks);
-      const worstRank = Math.max(...ranks);
-      map.set(tag, {
-        tag, series: points, first, last,
-        scoreChange: first.score > 0 ? (last.score - first.score) / first.score : 0,
-        rankChange: first.rank - last.rank,
-        bestRank, worstRank,
-        // 시작·끝만 보면 안 보이는 값. 기간 중 치솟았다 돌아온 태그를 잡는다.
-        spike: Math.min(first.rank, last.rank) - bestRank,
-        swing: worstRank - bestRank,
-      });
+  const table = () => {
+    switch (tab) {
+      case 'risers':
+      case 'fallers':
+        return <RankTable<TagTrend> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists[tab]} columns={trendCols}
+          onToggleRow={t => toggle(t.tag)} renderExpanded={t => expand(t.tag)}
+          renderMobileRow={t => trendRow(t, <>{rank(t.first.rank)} → <b>{rank(t.last.rank)}</b> <ChangeMark value={t.rankChange} /> · 작품 {t.first.count} → {t.last.count} · 점수 {pct(t.scoreChange)}</>)} />;
+      case 'spikes':
+        return <RankTable<TagTrend> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists.spikes} columns={spikeCols}
+          onToggleRow={t => toggle(t.tag)} renderExpanded={t => expand(t.tag)}
+          renderMobileRow={t => trendRow(t, <>{rank(t.first.rank)} → 최고 {rank(t.bestRank)} → {rank(t.last.rank)} · <b>{t.spike}계단</b></>)} />;
+      case 'swings':
+        return <RankTable<TagTrend> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists.swings} columns={swingCols}
+          onToggleRow={t => toggle(t.tag)} renderExpanded={t => expand(t.tag)}
+          renderMobileRow={t => trendRow(t, <>{rank(t.bestRank)} ~ {rank(t.worstRank)} · <b>{t.swing}계단</b> · 마지막 날 {rank(t.last.rank)}</>)} />;
+      default:
+        return <RankTable<TagEdge> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists[tab]} columns={edgeCols(tab)}
+          onToggleRow={e => toggle(e.tag)} renderExpanded={e => expand(e.tag)}
+          renderMobileRow={e => (
+            <div className="rank-mrow rank-mrow--plain"><div className="rank-mrow__main">{tagCell(e.tag)}<p><b>{rank(e.rank)}</b> · 작품 {e.count}</p></div></div>
+          )} />;
     }
+  };
 
-    const eligible = [...map.values()].filter(t => t.first.count >= MIN_WORKS && t.last.count >= MIN_WORKS);
-    // 화면에 보이는 값(순위 변동)으로 정렬해야 목록 순서가 납득된다.
-    // 순위 변동은 동률이 많으므로 인기 점수 변화율을 2차 기준으로 쓴다.
-    const byRise = (a: TagTrend, b: TagTrend) => (b.rankChange - a.rankChange) || (b.scoreChange - a.scoreChange);
-    const up = eligible.filter(t => t.rankChange > 0).sort(byRise);
-    const down = eligible.filter(t => t.rankChange < 0).sort((a, b) => -byRise(a, b));
-
-    // 끝점 비교가 놓치는 것: 기간 중 치솟았다 제자리로 돌아온 태그.
-    // 실측(30일): '스트리머' 74위 → 71위인데 기간 중 58위까지 갔었다.
-    //
-    // **고정 문턱을 쓰지 않는다.** 기간이 짧으면 스파이크도 작다 —
-    // 30일 창은 +8 이상이 5개인데 7일 창은 최대가 +6이라 8로 자르면 늘 빈 목록이 된다.
-    // 대신 3계단(관측 노이즈 경계)만 넘으면 상위 10개를 보여주고, 값을 칩에 적는다.
-    const spikes = eligible.filter(t => t.spike >= 3)
-      .sort((a, b) => b.spike - a.spike).slice(0, 10);
-
-    // 출렁인 태그. '꾸준한 태그'는 만들지 않는다 — 상위권은 작품 수가 압도적이라
-    // 변동폭이 전부 0이고(판타지·하렘·현대판타지…) 목록이 무의미해진다.
-    const swings = eligible.filter(t => t.series.length >= 4)
-      .sort((a, b) => b.swing - a.swing).slice(0, 10);
-
-    return {
-      risers: up.slice(0, 12),
-      fallers: down.slice(0, 12),
-      entered: entered.sort((a, b) => a.rank - b.rank),
-      left: left.sort((a, b) => a.rank - b.rank),
-      spikes, swings,
-      churn: computeChurn(tags, lastIdx),
-      trendMap: map,
-    };
-  }, [series]);
-
-  const handleSelect = useCallback((tag: string) => {
-    setSelectedTag(prev => (prev === tag ? null : tag));
-  }, []);
-
-  const selected = selectedTag ? trendMap.get(selectedTag) ?? null : null;
-  const availableDateObjs = useMemo(() => availableDates.map(d => parseISO(d)), [availableDates]);
-
-  /** 기간 중 최고점을 보여주는 칩. 시작·끝만으로는 안 보이는 값이 요점이다. */
-  const renderSpikeChip = (t: TagTrend) => (
-    <button
-      type="button"
-      key={t.tag}
-      className={`tag-zone-chip ${t.tag === selectedTag ? 'is-active' : ''}`.trim()}
-      onClick={() => handleSelect(t.tag)}
-    >
-      <span className="tag-zone-chip__name">{t.tag}</span>
-      <span className="tag-zone-chip__meta">
-        기간 중 {t.bestRank}위 (+{t.spike}) · 지금 {t.last.rank}위
-      </span>
-    </button>
-  );
-
-  const renderSwingChip = (t: TagTrend) => (
-    <button
-      type="button"
-      key={t.tag}
-      className={`tag-zone-chip ${t.tag === selectedTag ? 'is-active' : ''}`.trim()}
-      onClick={() => handleSelect(t.tag)}
-    >
-      <span className="tag-zone-chip__name">{t.tag}</span>
-      <span className="tag-zone-chip__meta">
-        {t.bestRank}~{t.worstRank}위 · {t.swing}계단
-      </span>
-    </button>
-  );
-
-  const renderTrendChip = (t: TagTrend) => (
-    <button
-      type="button"
-      key={t.tag}
-      className={`tag-zone-chip ${t.tag === selectedTag ? 'is-active' : ''}`.trim()}
-      onClick={() => handleSelect(t.tag)}
-    >
-      <span className="tag-zone-chip__name">{t.tag}</span>
-      <span className="tag-zone-chip__meta">
-        {t.first.rank}위<i className="mv-arrow" aria-hidden="true" />{t.last.rank}위 · {t.first.count}<i className="mv-arrow" aria-hidden="true" />{t.last.count}작품
-      </span>
-    </button>
-  );
-
-  const renderEdgeChip = (e: Edge, suffix: string) => (
-    <span key={e.tag} className="tag-zone-chip tag-zone-chip--static">
-      <span className="tag-zone-chip__name">{e.tag}</span>
-      <span className="tag-zone-chip__meta">{e.count}작품 · {e.rank}위{suffix}</span>
-    </span>
-  );
-
-  const rangeLabel = series && series.dates.length >= 2
-    ? `${format(parseISO(series.dates[0]), 'yyyy.MM.dd')} ~ ${format(parseISO(series.dates[series.dates.length - 1]), 'yyyy.MM.dd')}`
-    : '';
+  const tooShort = !loading && !error && windowDates.length > 0 && windowDates.length < 2;
 
   return (
     <div className="page-shell tag-trends-page">
-      {/* 헤더 내비에서 태그 트렌드를 뺐으므로(태그 하나로 묶음) 두 페이지를 서로 잇는다.
-          계획 3에서 태그 페이지 안의 전환으로 바뀐다. */}
-      <PageHero
-        title="태그 트렌드"
-        titleAction={<Link to="/tags/rankings" className="page-hero__switch">오늘 랭킹</Link>}
-      />
-
-      <div className="tag-trend-range">
-        <DateRangePicker
-          startDate={startDate}
-          endDate={endDate}
-          availableDates={availableDateObjs}
-          novelAvailableDatesSet={new Set(availableDates)}
-          onStartDateChange={setStartDate}
-          onEndDateChange={setEndDate}
-          noMargin
-          /* 선택 가능한 날짜는 이미 흰 글자로 구분된다. 점을 또 찍을 이유가 없다.
-             (소설 상세는 '이 작품의 데이터가 있는 날'이 따로라 점이 필요하다) */
-          showNovelDataIndicator={false}
-        />
-      </div>
-
-      {error && <Alert variant="danger">{error}</Alert>}
-      {loading && (
-        <div className="text-center py-5">
-          <Spinner animation="border" />
-          <p className="tag-trend-loading">기간 데이터를 불러오는 중입니다</p>
-        </div>
-      )}
-
-      {!loading && !error && series && series.dates.length >= 2 && (
-        <>
-          {churn && (
-            <div className="report-kpis report-kpis--lead tag-trend-kpis">
-              <span>
-                <b>{churn.footrule != null ? churn.footrule.toFixed(0) : '-'}</b>계단
-                <i>평균 순위 이동</i>
-              </span>
-              <span>
-                <b>{churn.tau != null ? churn.tau.toFixed(2) : '-'}</b>
-                <i>순서 일치도 (1 = 그대로)</i>
-              </span>
-              <span>
-                <b>{churn.startTags}</b><i className="mv-arrow" aria-hidden="true" /><b>{churn.endTags}</b>
-                <i>태그 수</i>
-              </span>
-              <span>
-                <b>{churn.common}</b>개
-                <i>양쪽에 다 있음</i>
-              </span>
-            </div>
-          )}
-
-          {selected && <SelectedTagPanel trend={selected} onClose={() => setSelectedTag(null)} />}
-
-          <div className="tag-trend-grid">
-            <PanelCard title="뜬 태그" meta={`순위가 오른 순 · ${MIN_WORKS}작품 이상`}>
-              <div className="tag-zone-chip-list">
-                {risers.length ? risers.map(renderTrendChip) : <p className="tag-trend-empty">해당하는 태그가 없습니다</p>}
-              </div>
-            </PanelCard>
-
-            <PanelCard title="식은 태그" meta={`순위가 내린 순 · ${MIN_WORKS}작품 이상`}>
-              <div className="tag-zone-chip-list">
-                {fallers.length ? fallers.map(renderTrendChip) : <p className="tag-trend-empty">해당하는 태그가 없습니다</p>}
-              </div>
-            </PanelCard>
-
-            <PanelCard title="새로 들어온 태그" meta={`기간 시작일 목록에는 없던 태그 ${entered.length}개`}>
-              <div className="tag-zone-chip-list">
-                {entered.length ? entered.slice(0, 24).map(e => renderEdgeChip(e, '')) : <p className="tag-trend-empty">없습니다</p>}
-              </div>
-            </PanelCard>
-
-            <PanelCard title="사라진 태그" meta={`기간 마지막 날 목록에서 빠진 태그 ${left.length}개`}>
-              <div className="tag-zone-chip-list">
-                {left.length ? left.slice(0, 24).map(e => renderEdgeChip(e, '였음')) : <p className="tag-trend-empty">없습니다</p>}
-              </div>
-            </PanelCard>
+      <PageTitle title="태그 트렌드"
+        nav={
+          <div className="period-pick">
+            {RANGES.map(n => (
+              <button key={n} type="button" className={rangeDays === n ? 'is-on' : undefined} aria-pressed={rangeDays === n} onClick={() => pickRange(n)}>{n}일</button>
+            ))}
+            <DateRangePicker startDate={startDate} endDate={endDate}
+              availableDates={available.map(d => parseISO(d))} novelAvailableDatesSet={new Set(available)}
+              onStartDateChange={d => { setRangeDays(null); setStartDate(d); }}
+              onEndDateChange={d => { setRangeDays(null); setEndDate(d); }}
+              noMargin showNovelDataIndicator={false} />
           </div>
+        }
+        aside={<ViewSwitch label="태그 보기" items={[
+          { to: '/tags/rankings', label: '오늘', on: false },
+          { to: '/tags/trends', label: '기간 트렌드', on: true },
+        ]} />}
+        meta={first && last && first !== last ? `수집일 ${windowDates.length}일 · 첫날과 마지막 날의 태그 순위를 견줌` : '첫날과 마지막 날의 태그 순위를 견줌'} />
 
-          <div className="tag-trend-grid">
-            <PanelCard
-              title="기간 중 치솟았던 태그"
-              meta={`시작·끝 순위보다 높이 갔던 태그 ${spikes.length}개 · 기간이 길수록 잘 잡힙니다`}
-            >
-              <div className="tag-zone-chip-list">
-                {spikes.length ? spikes.map(renderSpikeChip)
-                  : <p className="tag-trend-empty">해당하는 태그가 없습니다</p>}
-              </div>
-              <p className="report-caveat">
-                위의 뜬·식은 태그는 시작과 끝만 견주므로, 기간 중간에 올랐다 제자리로
-                돌아온 태그는 거기서 보이지 않습니다
-              </p>
-            </PanelCard>
+      {churn && !loading ? (
+        <InlineNums items={[
+          { label: '평균 순위 이동', value: `${churn.footrule.toFixed(1)}계단` },
+          { label: <>순서 일치도<FootnoteRef id="tau" n={1} /></>, value: churn.tau != null ? churn.tau.toFixed(2) : '–' },
+          { label: '태그', value: `${formatInt(churn.startTags)} → ${formatInt(churn.endTags)}개` },
+          { label: '양쪽에 다 있음', value: `${formatInt(churn.common)}개` },
+        ]} />
+      ) : null}
 
-            <PanelCard
-              title="많이 출렁인 태그"
-              meta={`기간 중 최고~최저 폭이 큰 순 · ${MIN_WORKS}작품 이상`}
-            >
-              <div className="tag-zone-chip-list">
-                {swings.length ? swings.map(renderSwingChip)
-                  : <p className="tag-trend-empty">해당하는 태그가 없습니다</p>}
-              </div>
-              <p className="report-caveat">
-                반대편(꾸준한 태그)은 두지 않았습니다 — 상위권은 작품 수가 압도적이라
-                변동폭이 대부분 0이라 목록이 되지 않습니다
-              </p>
-            </PanelCard>
-          </div>
+      <TabBar<Tab> ariaLabel="목록" value={tab} onChange={t => { setTab(t); setOpenTag(null); }}
+        items={(Object.keys(TAB_LABEL) as Tab[]).map(k => ({ key: k, label: TAB_LABEL[k], count: series ? lists[k].length : undefined }))} />
 
-          <p className="tag-trend-foot">
-            {rangeLabel} · 기간 안의 모든 수집일을 비교합니다
-          </p>
-        </>
-      )}
+      {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => setRetry(n => n + 1)}>다시 시도</button></p>
+        : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
+        : tooShort ? <p className="empty-line">기간 안에 수집일이 2일 이상 있어야 견줄 수 있습니다.</p>
+        : table()}
+
+      {!error && !loading && series ? <Footnotes notes={NOTES} /> : null}
     </div>
   );
-};
-
-export default TagTrendsPage;
+}
