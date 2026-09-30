@@ -132,8 +132,8 @@
 .row-expand__facts b { color: var(--np-text-heading); }
 .row-expand__go { margin-left: auto; font-weight: 700; color: var(--np-text-heading); text-decoration: none; border-bottom: 1.5px solid var(--np-text-heading); }
 .detail-back { display: inline-block; margin-top: 1.6rem; font-size: 0.875rem; font-weight: 600; color: var(--np-text-secondary); text-decoration: none; }
-.detail-head { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 2.25rem; padding: 1.4rem 0 2rem; border-bottom: 1px solid var(--np-border); }
-.detail-head__cover { width: 176px; height: 248px; border-radius: 8px; overflow: hidden; background: var(--np-cover-bg); }
+.detail-head { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 2.25rem; padding: 1.4rem 0 2rem; border-bottom: 1px solid var(--np-border); }
+.detail-head__cover { width: 200px; height: 282px; border-radius: 8px; overflow: hidden; background: var(--np-cover-bg); }
 .detail-head__cover-img { width: 100%; height: 100%; object-fit: cover; }
 .detail-head__title { margin: 0.4rem 0 0.5rem; color: var(--np-text-heading); font-size: 2rem; font-weight: 800; letter-spacing: -0.035em; line-height: 1.25; }
 .detail-head__by { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; margin: 0; font-size: 0.9375rem; color: var(--np-text-secondary); }
@@ -155,14 +155,16 @@
 .detail-head__now .change-mark { font-size: 1.0625rem; font-weight: 700; }
 .detail-head .inline-nums { margin: 0 0 0.35rem; }
 .detail-head__basis { white-space: nowrap; margin-left: 0.4rem; font-size: 0.8125rem; font-weight: 500; color: var(--np-text-faint); }
-.detail-intro { grid-column: 1 / -1; margin-top: 0.4rem; padding-top: 1.4rem; border-top: 1px solid var(--np-border); }
-.detail-intro__h { margin: 0 0 0.6rem; font-size: 1rem; font-weight: 800; letter-spacing: -0.01em; color: var(--np-text-heading); }
-.detail-head__synopsis { max-width: 760px; }
+.detail-intro { grid-column: 1 / -1; padding: 1.1rem 1.35rem; border-radius: var(--np-radius-sm); background: var(--np-surface-alt); }
+.detail-head__synopsis { max-width: 780px; }
 .detail-head__synopsis p { margin: 0; white-space: pre-line; font-size: 0.9375rem; line-height: 1.8; color: var(--np-text-primary); }
-.detail-head__synopsis p.is-clamped { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.detail-head__synopsis p.is-clamped { display: -webkit-box; -webkit-line-clamp: 10; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 767.98px) { .detail-head__synopsis p.is-clamped { -webkit-line-clamp: 14; } }
 .detail-head__synopsis .link-button { margin-top: 0.2rem; font-size: 0.875rem; }
-.detail-intro > .tag-links { margin-top: 1rem; font-size: 0.9375rem; line-height: 1.7; }
-.detail-intro > .tag-links .tag-links__tag { margin-right: 0.7rem; }
+/* 머리의 태그: 표 안 태그보다 한 단계 크고 진하게 — 작품을 볼 때 가장 먼저 보는 정보다. */
+.detail-head__body > .tag-links { margin-top: 0.75rem; font-size: 1rem; line-height: 1.7; }
+.detail-head__body > .tag-links .tag-links__tag { margin-right: 0.75rem; font-weight: 600; color: var(--np-text-primary); }
+.detail-head__body > .tag-links .tag-links__tag:hover { color: var(--np-text-heading); }
 .detail-head__out { font-size: 1.0625rem; font-weight: 700; color: var(--np-text-secondary); }
 .detail-sec { padding: 1.9rem 0; border-bottom: 1px solid var(--np-border); }
 .detail-sec__h { margin: 0 0 1rem; color: var(--np-text-heading); font-size: 1.1875rem; font-weight: 800; letter-spacing: -0.02em; }
@@ -176,7 +178,7 @@
   .detail-head__cover { grid-row: span 3; }
   .detail-head__body { display: contents; }
   .detail-head__title { margin: 0; }
-  .detail-head__now, .detail-head .inline-nums { grid-column: 1 / -1; }
+  .detail-head__now, .detail-head .inline-nums, .detail-head__body > .tag-links { grid-column: 1 / -1; }
   .detail-head__now { margin: 0.9rem 0 0.4rem; }
 }
 
@@ -455,3 +457,12 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
   .detail-head .inline-nums__item::before { display: none !important; }
   .detail-head .inline-nums__item:has(.detail-head__basis) { grid-column: 1 / -1; }
 }
+/* 연재 줄: 올린 날은 채운 칸, 쉰 날은 빈 칸, 여러 날치는 점선. 두 화 이상 올린 날은 칸 안에 수. */
+.mx-day.is-up { fill: var(--np-accent); }
+.mx-day.is-rest { fill: none; stroke: var(--np-border-strong); stroke-width: 1.5; }
+.mx-day.is-multi { fill: none; stroke-dasharray: 3 2; }
+.mx-day.is-up.is-multi { stroke: var(--np-accent); stroke-width: 1.5; }
+.mx-day.is-on { stroke: var(--np-text-heading); stroke-width: 2; }
+.mx-day__n { font-size: 11px; font-weight: 700; fill: var(--np-on-accent); pointer-events: none; }
+.mx-day__n.is-multi { fill: var(--np-accent); }
+.mx-rest { color: var(--np-warning) !important; }

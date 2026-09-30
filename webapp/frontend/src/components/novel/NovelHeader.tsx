@@ -32,7 +32,7 @@ const basis = (aNum?: number | null, aView?: number | null, bNum?: number | null
     : null
 );
 
-/** 작품 소개. 길면 네 줄에서 접고 '더 보기'로 편다. */
+/** 작품 소개. 거의 다 한 번에 보이게 PC 10줄 · 모바일 14줄에서만 접는다(2026-09-30 실측: 95%가 PC 9줄 · 모바일 13줄 안). */
 function Synopsis({ text }: { text: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const [open, setOpen] = useState(false);
@@ -51,7 +51,7 @@ function Synopsis({ text }: { text: string }) {
 
 /**
  * 작품 머리(2026-09-30 개편). 랭킹 표에 있는 값은 모두 여기에도 있고, 표에 없는 것(알람 · 인생픽 · 연재 요일 ·
- * 배지 · 이용 등급 · 잔류율의 근거 조회수)을 더한다. 작품 소개와 태그도 머리 안에 둔다.
+ * 배지 · 이용 등급 · 잔류율의 근거 조회수)을 더한다. 태그는 제목 무리에, 작품 소개는 표지 아래 전체 폭에 둔다.
  * byExtra: 작가 줄 끝에 붙일 문구(공모전 이름·수상). nums: 한 줄 수치를 바꿀 때(공모전은 잔류율이 없다).
  */
 export default function NovelHeader({ details, current, backTo, byExtra, nums, tagHref }: {
@@ -104,6 +104,10 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
               ))}
             </p>
           ) : null}
+          {/* 태그는 독자가 작품을 볼 때 가장 먼저 확인하는 정보라 제목 바로 아래 무리에 둔다. */}
+          {details.Tags && details.Tags.length > 0 ? (
+            <TagLinks tags={details.Tags} limit={details.Tags.length} wrap hrefFor={tagHref ?? (t => `/novels/rankings?tag=${encodeURIComponent(t)}`)} />
+          ) : null}
           <div className="detail-head__now">
             {current.kind === 'ranked' ? (
               <>
@@ -117,16 +121,8 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
           <InlineNums items={popularity} />
           {ratios ? <InlineNums items={ratios} /> : null}
         </div>
-        {/* 작품 소개·태그는 표지 아래부터 전체 폭으로 — 표지 옆 오른쪽 칸에 두면 표지 아래가 통째로 비었다. */}
-        {details.Synopsis || (details.Tags && details.Tags.length > 0) ? (
-          <section className="detail-intro" aria-labelledby="detail-intro-h">
-            <h2 id="detail-intro-h" className="detail-intro__h">작품 소개</h2>
-            {details.Synopsis ? <Synopsis text={details.Synopsis} /> : null}
-            {details.Tags && details.Tags.length > 0 ? (
-              <TagLinks tags={details.Tags} limit={details.Tags.length} wrap hrefFor={tagHref ?? (t => `/novels/rankings?tag=${encodeURIComponent(t)}`)} />
-            ) : null}
-          </section>
-        ) : null}
+        {/* 작품 소개는 표지 아래부터 전체 폭으로(표지 옆에 두면 표지 아래가 비었다). 제목 없이 옅은 바탕 한 덩어리로 소개글임을 드러낸다. */}
+        {details.Synopsis ? <section className="detail-intro" aria-label="작품 소개"><Synopsis text={details.Synopsis} /></section> : null}
       </header>
     </>
   );

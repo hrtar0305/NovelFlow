@@ -116,3 +116,34 @@ export function rankTicks(lo: number, hi: number): number[] {
   for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) if (t >= 1) out.push(t);
   return out;
 }
+
+export interface UploadStats {
+  /** 올렸는지 알 수 있는 날(직전 기록이 바로 전날인 날) */
+  known: number;
+  /** 그중 회차가 늘어난 날 */
+  uploaded: number;
+  /** 기간 끝에서 거꾸로 센 연속 연재일 / 연속 휴재일(둘 중 하나만 0이 아니다) */
+  streak: number;
+  resting: number;
+}
+
+/**
+ * 연재 줄의 요약. 하루 단위로 쪼개면 회차 증가는 거의 늘 1이라 양은 뜻이 없고 **올렸는가 / 쉬었는가**가 뜻이다.
+ * 여러 날치(span > 1)는 그 사이 어느 날 올렸는지 알 수 없어 세지 않고, 연속 계산도 거기서 끊는다.
+ */
+export function uploadStats(points: MetricPoint[]): UploadStats {
+  const days = points.filter(p => p.rec && p.span === 1 && p.d?.eps != null);
+  const uploaded = days.filter(p => (p.d!.eps ?? 0) > 0).length;
+  let streak = 0;
+  let resting = 0;
+  for (let i = points.length - 1; i >= 0; i--) {
+    const p = points[i];
+    if (!p.rec || p.span !== 1 || p.d?.eps == null) break;
+    const up = p.d.eps > 0;
+    if (streak === 0 && resting === 0) { if (up) streak = 1; else resting = 1; continue; }
+    if (up && streak > 0) streak += 1;
+    else if (!up && resting > 0) resting += 1;
+    else break;
+  }
+  return { known: days.length, uploaded, streak, resting };
+}

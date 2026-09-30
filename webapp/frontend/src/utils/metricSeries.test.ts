@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMetricPoints, rankTicks, signed, summarizeMetrics, type MetricRow } from './metricSeries';
+import { buildMetricPoints, rankTicks, signed, summarizeMetrics, uploadStats, type MetricRow } from './metricSeries';
 
 const rec = (Date: string, Ranking: number | null, View: number, extra: Partial<MetricRow> = {}): MetricRow =>
   ({ Date, Ranking, View, Like: View / 10, Fav: 100, Eps: 10, Alr: 5, Score: 1000, ...extra });
@@ -57,5 +57,20 @@ describe('signed / rankTicks', () => {
     expect(rankTicks(128, 496)).toEqual([200, 300, 400]);
     expect(rankTicks(125, 137)).toEqual([125, 130, 135]);
     expect(rankTicks(1, 3)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('uploadStats', () => {
+  const eps = (list: (number | null)[]) => buildMetricPoints(list.map((e, i) => (e == null
+    ? { Date: `2026-09-${String(i + 1).padStart(2, '0')}`, Ranking: null, View: null }
+    : rec(`2026-09-${String(i + 1).padStart(2, '0')}`, 10, 1000 + i, { Eps: e }))), 'calendar');
+  it('올린 날 수와 끝에서 센 연속 연재', () => {
+    expect(uploadStats(eps([10, 11, 11, 12, 13, 14]))).toEqual({ known: 5, uploaded: 4, streak: 3, resting: 0 });
+  });
+  it('끝에서 쉬는 중이면 연속 휴재', () => {
+    expect(uploadStats(eps([10, 11, 12, 12, 12]))).toEqual({ known: 4, uploaded: 2, streak: 0, resting: 2 });
+  });
+  it('여러 날치는 세지 않고 연속도 거기서 끊는다', () => {
+    expect(uploadStats(eps([10, 11, null, 13, 14]))).toEqual({ known: 2, uploaded: 2, streak: 1, resting: 0 });
   });
 });

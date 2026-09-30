@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import ChangeMark from '../ui/ChangeMark';
 import { formatDateKo, formatInt, formatMan, formatRatio } from '../../utils/format';
-import { rankTicks, signed, summarizeMetrics, type MetricPoint } from '../../utils/metricSeries';
+import { rankTicks, signed, summarizeMetrics, uploadStats, type MetricPoint } from '../../utils/metricSeries';
 
 /**
  * 작품 상세 '지표' 영역(2026-09-30 개편). 사용자가 고른 기간 동안 한 작품의 지표를 따라가는 곳이다.
@@ -17,6 +17,8 @@ interface Props {
   points: MetricPoint[];
   /** 일간은 순위권 밖·점수가 있고, 공모전은 전 작품 순위라 순위권 밖이 없고 점수도 없다. */
   kind: 'daily' | 'contest';
+  /** 지금 연재 상태(일간 상세). 완결작은 '며칠째 쉬는 중' 대신 '완결'로 적는다. */
+  status?: string | null;
 }
 
 const TABLE_FOLD = 14;
@@ -36,7 +38,7 @@ function useWidth<T extends HTMLElement>() {
   return [ref, w] as const;
 }
 
-export default function MetricsPanel({ points, kind }: Props) {
+export default function MetricsPanel({ points, kind, status }: Props) {
   const [wrapRef, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const [allRows, setAllRows] = useState(false);
@@ -124,15 +126,24 @@ export default function MetricsPanel({ points, kind }: Props) {
   })();
 
   // ── 증가량 묶음 ──
-  type Row = { key: string; label: string; total: ReactNode; kind: 'bar' | 'count' | 'line'; get: (p: MetricPoint) => number | null };
+  // 연재 줄: 하루 단위 회차 증가는 거의 늘 1이라 양 대신 '올린 날 / 쉰 날'을 칸으로 칠한다.
+  const up = uploadStats(points);
+  const uploadTotal = up.known > 0 ? (
+    <>{up.known}일 중 <b>{up.uploaded}일</b> 연재
+      {status === '완결' ? <> · <b>완결</b></> : up.streak > 1 ? <> · 지금 <b>{up.streak}일</b> 연속</> : up.resting > 0 ? <> · <b className="mx-rest">{up.resting}일째</b> 쉬는 중</> : null}
+      {summary?.d.eps != null ? <> · 기간 <b>{signed(summary.d.eps)}화</b></> : null}
+    </>
+  ) : null;
+  type Row = { key: string; label: string; total: ReactNode; kind: 'bar' | 'upload' | 'line'; get: (p: MetricPoint) => number | null };
   const rows: Row[] = [
     { key: 'view', label: '조회 증가', total: summary?.d.view != null ? `+${formatMan(summary.d.view)}` : null, kind: 'bar', get: p => p.d?.view ?? null },
     { key: 'like', label: '추천 증가', total: summary ? signed(summary.d.like) : null, kind: 'bar', get: p => p.d?.like ?? null },
-    { key: 'eps', label: '회차 증가', total: summary ? signed(summary.d.eps) : null, kind: 'count', get: p => p.d?.eps ?? null },
+    { key: 'eps', label: '연재', total: uploadTotal, kind: 'upload', get: p => p.d?.eps ?? null },
     ...(kind === 'daily' ? [{ key: 'score', label: '점수', total: summary ? formatInt(summary.last.score) : null, kind: 'line' as const, get: (p: MetricPoint) => p.score }] : []),
   ];
   const rowSvg = (r: Row) => {
-    const h = r.kind === 'count' ? 30 : mobile ? 46 : 56;
+    if (r.kind === 'upload') return uploadSvg();
+    const h = mobile ? 46 : 56;
     const per = points.map(p => {
       const v = r.get(p);
       if (v == null) return null;
@@ -160,21 +171,34 @@ export default function MetricsPanel({ points, kind }: Props) {
           const multi = points[i].span > 1;
           const on = hover === i;
           const cls = `mx-bar${multi ? ' is-multi' : ''}${on ? ' is-on' : ''}`;
-          if (r.kind === 'count') {
-            const raw = r.get(points[i])!;
-            return (
-              <g key={points[i].date}>
-                <rect x={X(i) - bw / 2} y={h - 10} width={bw} height={9} rx={2} className={`${cls} is-count`} />
-                {raw > 1 || (multi && !mobile) ? <text x={X(i)} y={h - 14} textAnchor="middle" className="mx-tick">{raw}{multi && !mobile ? ` (${points[i].span}일치)` : ''}</text> : null}
-              </g>
-            );
-          }
           const bh = Math.max(1.5, (v / mx) * (h - 6));
           return <rect key={points[i].date} x={X(i) - bw / 2} y={h - 0.5 - bh} width={bw} height={bh} rx={1.5} className={cls} />;
         })}
       </svg>
     );
   };
+
+  function uploadSvg() {
+    const h = 24;
+    const cw = Math.max(3, Math.min(col - 3, 28));
+    return (
+      <svg width={width} height={h} className="mx-svg" aria-hidden="true">
+        {hl(h)}
+        {points.map((p, i) => {
+          if (!p.rec || !p.d || p.d.eps == null) return null;
+          const on = p.d.eps > 0;
+          const multi = p.span > 1;
+          const cls = `mx-day${on ? ' is-up' : ' is-rest'}${multi ? ' is-multi' : ''}${hover === i ? ' is-on' : ''}`;
+          return (
+            <g key={p.date}>
+              <rect x={X(i) - cw / 2} y={2} width={cw} height={h - 4} rx={3} className={cls} />
+              {on && p.d.eps > 1 && cw >= 14 ? <text x={X(i)} y={h / 2 + 4} textAnchor="middle" className={`mx-day__n${multi ? ' is-multi' : ''}`}>{p.d.eps}</text> : null}
+            </g>
+          );
+        })}
+      </svg>
+    );
+  }
 
   const step = Math.max(1, Math.ceil(n / (mobile ? 5 : 9)));
   const axis = (
@@ -238,7 +262,7 @@ export default function MetricsPanel({ points, kind }: Props) {
             </div>
             {rows.map(r => (
               <div key={r.key} className="mx-block">
-                <div className="mx-row__h"><span>{r.label}</span>{r.total != null ? <span className="mx-row__total">{r.kind === 'line' ? '마지막 날' : '기간'} <b>{r.total}</b></span> : null}</div>
+                <div className="mx-row__h"><span>{r.label}</span>{r.total != null ? <span className="mx-row__total">{r.kind === 'upload' ? r.total : <>{r.kind === 'line' ? '마지막 날' : '기간'} <b>{r.total}</b></>}</span> : null}</div>
                 {rowSvg(r)}
               </div>
             ))}
