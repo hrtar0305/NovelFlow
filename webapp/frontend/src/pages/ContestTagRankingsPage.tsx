@@ -1,466 +1,223 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef, useTransition } from 'react';
-import { Table, Button, Spinner, OverlayTrigger, Tooltip as BootstrapTooltip, Row, Col, Card, ButtonGroup, Alert, Dropdown, Nav } from 'react-bootstrap';
-import { InfoCircle } from 'react-bootstrap-icons';
-import { useParams, useNavigate, NavLink } from 'react-router-dom';
-import { format, parseISO, isValid } from 'date-fns';
-import { getContestTagRankingsByDate, getContestAvailableDates } from '../services/api';
-import CalendarPicker from '../components/CalendarPicker';
-import TagSearchControl from '../components/TagSearchControl';
-import { ResponsiveContainer, ScatterChart, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Scatter, Cell } from 'recharts';
-import PageHero from '../components/ui/PageHero';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { isValid, parseISO } from 'date-fns';
+import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, Cell } from 'recharts';
+import { Search as SearchIcon } from 'react-bootstrap-icons';
+import { getContestAvailableDates, getContestTagRankingsByDate } from '../services/api';
+import ContestHeader from '../components/contest/ContestHeader';
+import RankTable, { type RankColumn } from '../components/ranking/RankTable';
+import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
+import { buildContestTagRows, type ContestTag, type ContestTagRow, type ContestTagSort, type ContestTagSortKey } from '../utils/contestTags';
+import { formatInt } from '../utils/format';
 
-// --- TYPE DEFINITIONS ---
-interface Tag {
-  Rank: number;
-  tag: string;
-  score_linear: number;
-  score_inverse: number;
-  score_log: number;
-  count: number;
-  avg_linear: number;
-  avg_inverse: number;
-  avg_log: number;
-}
+/**
+ * 공모전 태그 랭킹(2026-09-30 개편). 점수는 구 3-track(선형·역순위·로그)을 유지한다(DECISIONS 2026-04).
+ * 열 7개를 '합계 / 평균' 전환으로 6열에 담고, 산식은 머리글 옆 주석 번호 → 표 아래 주석.
+ * 포지셔닝 맵은 한 색의 진하기(진할수록 상위)로 칠하고, 행 호버 → 점 강조를 상태로 한다.
+ */
 
-// --- HELPER FUNCTIONS & CONSTANTS ---
-const RANK_COLORS = [
-  '#BF6E5D', '#C98A58', '#C4A45A', '#8FA46A', '#6E948B',
-  '#7893AA', '#9E8CAD', '#A77E8E', '#7C9584', '#8A7C96'
+type Mode = 'sum' | 'avg';
+const RANGES = [20, 50, 100];
+const NOTES = [
+  { id: 'lin', content: <>선형 점수 = 작품마다 (전체 작품 수 − 순위 + 1)을 더한 값. 모든 순위를 같은 간격으로 셉니다.</> },
+  { id: 'inv', content: <>역순위 점수 = 작품마다 1 ÷ 순위를 더한 값. 1위에 가까울수록 훨씬 크게 셉니다.</> },
+  { id: 'log', content: <>로그 점수 = 작품마다 1 ÷ ln(순위 + 1)을 더한 값. 상위권을 완만하게 더 셉니다.</> },
+  { id: 'avg', content: <>평균 = 합계 ÷ 등장 횟수. 태그가 달린 작품 한 편이 평균적으로 얼마나 위에 있는지입니다.</> },
 ];
 
-const getColorByRank = (rank: number) => {
-  const index = Math.floor((rank - 1) / 10);
-  return RANK_COLORS[index] || RANK_COLORS[RANK_COLORS.length - 1];
-};
-
-const ColorLegend = () => (
-  <div className="d-flex flex-wrap justify-content-center align-items-center">
-    {RANK_COLORS.map((color, index) => (
-      <div key={color} className="d-flex align-items-center me-3 mb-2">
-        <div style={{ width: '20px', height: '20px', backgroundColor: color, marginRight: '8px', border: '1px solid var(--np-border)' }}></div>
-        <span className="text-muted" style={{ fontSize: '0.9rem' }}>{`${index * 10 + 1}-${(index + 1) * 10}위`}</span>
-      </div>
-    ))}
-  </div>
-);
-
-const CustomTooltip = ({ active, payload, yAxisKey, yAxisName }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="custom-tooltip" style={{ fontSize: '0.9rem' }}>
-        <p className="fw-bold mb-1">{data.tag} (랭킹: {data.Rank})</p>
-        <p className="mb-0 text-muted">등장 횟수: {data.count}</p>
-        <p className="mb-2 text-muted">{yAxisName}: {data[yAxisKey].toFixed(2)}</p>
-        <hr className="my-1" />
-        <p className="mb-0 text-muted small">선형 점수: {data.score_linear.toFixed(2)}</p>
-        <p className="mb-0 text-muted small">역순위 점수: {data.score_inverse.toFixed(2)}</p>
-        <p className="mb-0 text-muted small">로그 점수: {data.score_log.toFixed(2)}</p>
-      </div>
-    );
+/** 로그 눈금용 1·2·5 × 10^k 눈금(데이터 범위 안). */
+const logTicks = (min: number, max: number): number[] => {
+  const out: number[] = [];
+  for (let p = Math.floor(Math.log10(Math.max(1, min))); p <= Math.ceil(Math.log10(Math.max(1, max))); p++) {
+    for (const m of [1, 2, 5]) { const v = m * 10 ** p; if (v >= min && v <= max) out.push(v); }
   }
-  return null;
+  return out;
 };
 
-const CustomScatterShape = React.memo((props: any) => {
-    const { cx, cy, fill, payload } = props;
-    if (isNaN(cx) || isNaN(cy)) return null;
-    
-    const className = `scatter-point scatter-point-${CSS.escape(payload.tag)}`;
+const fmt = (v: number, digits: number) => (digits === 0 ? formatInt(Math.round(v)) : v.toFixed(digits));
 
-    return (
-        <g className={className}>
-            <circle cx={cx} cy={cy} r={12} fill="transparent" />
-            <circle cx={cx} cy={cy} r={6} fill={fill} stroke="var(--np-surface-overlay)" strokeWidth={1} />
-        </g>
-    );
-});
-
-
-// --- MAIN COMPONENT ---
-const ContestTagRankingsPage = () => {
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [date, setDate] = useState<Date | null>(null);
+export default function ContestTagRankingsPage() {
+  const { year = '2025', date: dateParam } = useParams<{ year: string; date?: string }>();
+  const navigate = useNavigate();
+  const [dates, setDates] = useState<Set<string>>(new Set());
+  const [tags, setTags] = useState<ContestTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set());
-  const [sortConfig, setSortConfig] = useState<{ key: keyof Tag; direction: 'ascending' | 'descending' }>({ key: 'score_linear', direction: 'descending' });
-  const [topN, setTopN] = useState<number>(20);  
-  const [searchTerm, setSearchTerm] = useState('');
-  const activeTagRef = useRef<string | null>(null);
-  const [mobileViewMode, setMobileViewMode] = useState<'card' | 'table'>('card');
-  const [isPending, startTransition] = useTransition();
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const hasFetchedDates = useRef(false);
-  const [chartHeight, setChartHeight] = useState(400);
-
-  const { year, date: dateParam } = useParams<{ year: string; date?: string }>();
-  const navigate = useNavigate();
+  const [mode, setMode] = useState<Mode>('sum');
+  const [sort, setSort] = useState<ContestTagSort>({ key: 'score_linear', direction: 'descending' });
+  const [range, setRange] = useState(20);
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [hover, setHover] = useState<string | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleResize = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      if (mobile) {
-        setChartHeight(180);
-      } else {
-        // 뷰포트 높이의 30%를 사용하되, 최소 200px, 최대 500px로 제한
-        const calculatedHeight = Math.max(200, Math.min(500, window.innerHeight * 0.30));
-        setChartHeight(calculatedHeight);
-      }
-    };
+    getContestAvailableDates(parseInt(year, 10))
+      .then(r => setDates(new Set<string>(r.data.available_dates || [])))
+      .catch(() => { setError('조회 가능한 날짜를 불러오지 못했습니다.'); setLoading(false); });
+  }, [year]);
 
-    handleResize(); // 초기 로드 시 실행
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const handleMouseEnter = useCallback((event: React.MouseEvent<HTMLTableRowElement>) => {
-    const tag = event.currentTarget.dataset.tag;
-    if (!tag || tag === activeTagRef.current) return;
-
-    if (activeTagRef.current) {
-        const prevRow = document.querySelector(`tr[data-tag="${CSS.escape(activeTagRef.current)}"]`);
-        if (prevRow) prevRow.classList.remove('highlight-row');
-        
-        const prevPoint = document.querySelector(`.scatter-point.highlight`);
-        if (prevPoint) prevPoint.classList.remove('highlight');
+  useEffect(() => {
+    if (dates.size === 0) return;
+    if (!dateParam || !isValid(parseISO(dateParam)) || !dates.has(dateParam)) {
+      navigate(`/contests/${year}/tags/rankings/${[...dates].sort().at(-1)}`, { replace: true });
+      return;
     }
-    
-    event.currentTarget.classList.add('highlight-row');
-    const safeSelector = CSS.escape(tag);
-    const point = document.querySelector(`.scatter-point-${safeSelector}`);
-    if (point) point.classList.add('highlight');
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    getContestTagRankingsByDate(parseInt(year, 10), dateParam)
+      .then(r => { if (!cancelled) setTags(r.data || []); })
+      .catch(() => { if (!cancelled) { setTags([]); setError('태그 랭킹을 불러오지 못했습니다.'); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [year, dateParam, dates, navigate]);
 
-    activeTagRef.current = tag;
-  }, []);
+  const rows = useMemo(() => buildContestTagRows(tags, sort, search), [tags, sort, search]);
+  // 지도는 늘 선형 합계 기준 상위 N개다(표 정렬·검색과 무관하게 같은 그림).
+  const mapRows = useMemo(() => buildContestTagRows(tags, { key: 'score_linear', direction: 'descending' }, '').slice(0, range), [tags, range]);
 
-  const handleTableMouseLeave = useCallback(() => {
-    if (activeTagRef.current) {
-        const prevRow = document.querySelector(`tr[data-tag="${CSS.escape(activeTagRef.current)}"]`);
-        if (prevRow) prevRow.classList.remove('highlight-row');
+  const countRange = useMemo(() => {
+    const cs = mapRows.map(r => r.count).filter(c => c > 0);
+    return cs.length ? [Math.min(...cs) * 0.9, Math.max(...cs) * 1.1] : [1, 10];
+  }, [mapRows]);
 
-        const prevPoint = document.querySelector(`.scatter-point.highlight`);
-        if (prevPoint) prevPoint.classList.remove('highlight');
-        
-        activeTagRef.current = null;
-    }
-  }, []);
-
-  const requestSort = (key: keyof Tag) => {
-    startTransition(() => {
-        const allowedSortKeys: (keyof Tag)[] = ['score_linear', 'avg_linear', 'score_inverse', 'avg_inverse', 'score_log', 'avg_log', 'count'];
-        if (!allowedSortKeys.includes(key)) return;
-        let direction: 'ascending' | 'descending' = 'descending';
-        if (sortConfig.key === key && sortConfig.direction === 'descending') {
-          direction = 'ascending';
-        }
-        setSortConfig({ key, direction });
+  const onSort = (key: string) => setSort(s => ({
+    key: key as ContestTagSortKey,
+    direction: s.key === key && s.direction === 'descending' ? 'ascending' : 'descending',
+  }));
+  const pickMode = (m: Mode) => {
+    setMode(m);
+    // 보고 있던 점수 종류는 그대로 두고 합계 ↔ 평균만 바꾼다.
+    setSort(s => {
+      const base = s.key.replace(/^(score|avg)_/, '');
+      if (s.key === 'count') return s;
+      return { ...s, key: `${m === 'sum' ? 'score' : 'avg'}_${base}` as ContestTagSortKey };
     });
   };
-
-  const handleSearchChange = useCallback((term: string) => {
-    startTransition(() => setSearchTerm(term));
-  }, []);
-
-  const handleDateChange = (newDate: Date | null) => {
-    if (newDate && year && (!date || format(newDate, 'yyyy-MM-dd') !== format(date, 'yyyy-MM-dd'))) {
-      navigate(`/contests/${year}/tags/rankings/${format(newDate, 'yyyy-MM-dd')}`);
-    }
+  const submitSearch = (e: FormEvent) => {
+    e.preventDefault();
+    setSearch(searchInput.trim());
+    const el = toolbarRef.current;
+    if (el && el.getBoundingClientRect().top < 0) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72 });
   };
 
-  useEffect(() => {
-    const yearNum = parseInt(year || '0', 10);
-    if (!yearNum) return;
+  const k = (name: 'linear' | 'inverse' | 'log') => `${mode === 'sum' ? 'score' : 'avg'}_${name}` as const;
+  const strongIf = (key: ContestTagSortKey, v: ReactNode) => (sort.key === key ? <b className="rank-strong">{v}</b> : v);
+  const digits = { linear: 0, inverse: mode === 'sum' ? 2 : 4, log: mode === 'sum' ? 1 : 3 };
 
-    if (hasFetchedDates.current) return;
-    hasFetchedDates.current = true;
+  const columns: RankColumn<ContestTagRow>[] = [
+    { key: 'rank', header: '순위', width: '56px', render: r => <span className={`rank-num${r.Rank <= 3 ? ' is-top' : ''}`}>{r.Rank}</span> },
+    { key: 'tag', header: '태그', width: 'minmax(0,1fr)', render: r => <span className="rank-title">{r.tag}</span> },
+    { key: 'lin', header: mode === 'sum' ? '선형 점수' : '평균 선형', aside: <FootnoteRef id="lin" n={1} />, width: '120px', sortKey: k('linear'),
+      render: r => strongIf(k('linear'), fmt(r[k('linear')], digits.linear)) },
+    { key: 'inv', header: mode === 'sum' ? '역순위 점수' : '평균 역순위', aside: <FootnoteRef id="inv" n={2} />, width: '120px', sortKey: k('inverse'),
+      render: r => strongIf(k('inverse'), fmt(r[k('inverse')], digits.inverse)) },
+    { key: 'log', header: mode === 'sum' ? '로그 점수' : '평균 로그', aside: <FootnoteRef id="log" n={3} />, width: '120px', sortKey: k('log'),
+      render: r => strongIf(k('log'), fmt(r[k('log')], digits.log)) },
+    { key: 'count', header: '등장 횟수', width: '96px', sortKey: 'count', render: r => strongIf('count', formatInt(r.count)) },
+  ];
 
-    const fetchAvailableDates = async () => {
-      try {
-        const response = await getContestAvailableDates(yearNum);
-        const fetchedDates: string[] = response.data.available_dates || [];
-        setAvailableDatesSet(new Set(fetchedDates));
-      } catch (err) {
-        setError("조회 가능한 날짜 목록을 불러오는 데 실패했습니다.");
-      }
-    };
-    fetchAvailableDates();
-  }, [year]); // Refetch if year changes
-
-  useEffect(() => {
-    if (availableDatesSet.size === 0 || !year) return;
-
-    if (dateParam && isValid(parseISO(dateParam)) && availableDatesSet.has(dateParam)) {
-      const fetchRankings = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-          setDate(parseISO(dateParam));
-          const response = await getContestTagRankingsByDate(parseInt(year, 10), dateParam);
-          setTags(response.data || []);
-        } catch (_err) {
-          setError('태그 랭킹을 불러오는 데 실패했습니다.');
-          setTags([]);
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchRankings();
-    } else {
-      const latestDate = Array.from(availableDatesSet).sort((a, b) => b.localeCompare(a))[0];
-      if (latestDate) {
-        navigate(`/contests/${year}/tags/rankings/${latestDate}`, { replace: true });
-      }
-    }
-  }, [year, dateParam, navigate, availableDatesSet]); // Keep availableDatesSet here
-
-  const processedTags = useMemo(() => {
-    let sortableItems = tags.map(tag => ({
-      ...tag,
-      avg_linear: tag.count > 0 ? tag.score_linear / tag.count : 0,
-      avg_inverse: tag.count > 0 ? tag.score_inverse / tag.count : 0,
-      avg_log: tag.count > 0 ? tag.score_log / tag.count : 0,
-    }));
-    if (sortConfig.key) {
-      sortableItems.sort((a, b) => {
-        const aValue = a[sortConfig.key];
-        const bValue = b[sortConfig.key];
-        if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
-        if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
-        const tieBreaker = a.tag.localeCompare(b.tag);
-        return sortConfig.direction === 'ascending' ? -tieBreaker : tieBreaker;
-      });
-    }
-    let rankedItems = sortableItems.map((item, index) => ({
-      ...item,
-      Rank: sortConfig.direction === 'descending' ? index + 1 : sortableItems.length - index,
-    }));
-
-    if (searchTerm) {
-      const lowercasedTerm = searchTerm.toLowerCase();
-      rankedItems = rankedItems.filter(item => item.tag.toLowerCase().includes(lowercasedTerm));
-    }
-
-    return rankedItems;
-  }, [tags, sortConfig, searchTerm]);
-
-  const chartData = useMemo(() => {
-    const itemsWithAvgs = tags.map(tag => ({ ...tag, avg_linear: tag.count > 0 ? tag.score_linear / tag.count : 0 }));
-    const sortedForChart = [...itemsWithAvgs].sort((a, b) => b.score_linear - a.score_linear || a.tag.localeCompare(b.tag));
-    const rankedForChart = sortedForChart.map((tag, index) => ({ ...tag, Rank: index + 1 }));
-    return rankedForChart.slice(0, topN);
-  }, [tags, topN]);
-
-
-  const getAxisDomain = (data: number[], padding = 0.1) => {
-      if (data.length === 0) return [0, 1];
-      const min = Math.min(...data);
-      const max = Math.max(...data);
-      const pad = (max - min) * padding;
-      return [Math.max(0, min - pad), max + pad];
-  };
-
-  const topNOptions = [20, 50, 100];
-  const xDomain = useMemo(() => getAxisDomain(chartData.map(d => d.count)), [chartData]);
-  const yDomain = useMemo(() => getAxisDomain(chartData.map(d => d.avg_linear)), [chartData]);
-
-  const handleYearChange = (newYear: string | null) => {
-    if (newYear && newYear !== year) {
-      navigate(`/contests/${newYear}/tags/rankings`);
-    }
-  };
-
-  return (
-    <div className="page-shell">
-      <PageHero
-        title="공모전"
-        actions={
-          <Dropdown onSelect={handleYearChange}>
-            <Dropdown.Toggle variant="outline-secondary" id="dropdown-year-select" size="sm" className="year-dropdown-toggle">
-              {year}년
-            </Dropdown.Toggle>
-            <Dropdown.Menu className="year-dropdown-menu">
-              {['2025'].map(y => (
-                <Dropdown.Item key={y} eventKey={y} active={y === year}>{y}년</Dropdown.Item>
-              ))}
-            </Dropdown.Menu>
-          </Dropdown>
-        }
-      >
-        <OverlayTrigger
-          trigger="click"
-          rootClose
-          placement="bottom"
-          overlay={
-            <BootstrapTooltip id="contest-description-tooltip">
-              우주최강 공모전 출품작 데이터를 보여줍니다. 데이터는 매일 오후 2시 집계됩니다.
-            </BootstrapTooltip>
-          }
-        >
-          <button type="button" className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2">
-            <InfoCircle size={14} />
-            <span>집계 안내</span>
-          </button>
-        </OverlayTrigger>
-      </PageHero>
-
-      {/* 모바일 컨트롤 바 */}
-      <div className="mobile-controls-bar d-md-none d-flex align-items-center gap-2 px-2 py-2">
-        <CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} />
-        <ButtonGroup size="sm" className="ms-auto">
-          <Button variant={mobileViewMode === 'card' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('card')}>요약</Button>
-          <Button variant={mobileViewMode === 'table' ? 'primary' : 'outline-secondary'} onClick={() => setMobileViewMode('table')}>상세</Button>
-        </ButtonGroup>
+  const mobileRow = (r: ContestTagRow) => (
+    <div className="rank-mrow rank-mrow--tag">
+      <div className="rank-mrow__rank"><span className={`rank-num${r.Rank <= 3 ? ' is-top' : ''}`}>{r.Rank}</span></div>
+      <div className="rank-mrow__main">
+        <span className="rank-title">{r.tag}</span>
+        <p>선형 <b>{fmt(r[k('linear')], digits.linear)}</b> · 역순위 <b>{fmt(r[k('inverse')], digits.inverse)}</b> · 로그 <b>{fmt(r[k('log')], digits.log)}</b> · {formatInt(r.count)}회</p>
       </div>
-
-      {/* 모바일: 태그 검색 — page-layout 밖에 배치 */}
-      <div className="d-md-none px-2 pb-1">
-        <TagSearchControl onSearchChange={handleSearchChange} />
-      </div>
-
-      <div className="page-layout">
-        {/* 데스크탑 사이드바 */}
-        <aside className="page-sidebar d-none d-md-flex flex-column">
-          <div className="sidebar-section">
-            <div className="sidebar-label">날짜 선택</div>
-            <CalendarPicker selectedDate={date} onDateChange={handleDateChange} availableDates={availableDatesSet} />
-          </div>
-          <hr className="my-2 sidebar-divider" />
-          <div className="sidebar-section">
-            <div className="sidebar-label">표시 범위</div>
-            <ButtonGroup size="sm" className="w-100">
-              {topNOptions.map(option => (
-                <Button key={option} variant={topN === option ? 'primary' : 'outline-secondary'} onClick={() => setTopN(option)}>{`Top ${option}`}</Button>
-              ))}
-            </ButtonGroup>
-          </div>
-          <hr className="my-2 sidebar-divider" />
-          <div className="sidebar-section" style={{ flex: 1 }}>
-            <div className="sidebar-label">태그 검색</div>
-            <TagSearchControl onSearchChange={handleSearchChange} />
-          </div>
-        </aside>
-
-        <div className="page-main d-flex flex-column overflow-hidden">
-          <Nav variant="tabs" className="mb-2 flex-shrink-0">
-            <Nav.Item>
-              <Nav.Link as={NavLink} to={`/contests/${year}/${dateParam || ''}`} end>소설 랭킹</Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link as={NavLink} to={`/contests/${year}/tags/rankings/${dateParam || ''}`} end>태그 랭킹</Nav.Link>
-            </Nav.Item>
-          </Nav>
-
-          {loading && <div className="text-center py-5"><Spinner animation="border" /></div>}
-          {error && <Alert variant="danger">{error}</Alert>}
-
-          {!loading && !error && (
-            tags.length > 0 ? (
-              <div className="d-flex flex-column" style={{ flex: '1 1 auto', minHeight: 0 }}>
-                {mobileViewMode === 'card' && (
-                  <div className="d-md-none" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
-                    <div className="p-1">
-                      {processedTags.map((tag) => (
-                        <Card key={tag.tag} className="mb-2">
-                          <Card.Body className="p-2">
-                            <div className="d-flex justify-content-between align-items-center">
-                              <div className="flex-grow-1 me-2">
-                                <div className="d-flex align-items-baseline gap-2">
-                                  <span className="fw-bold text-primary text-nowrap" style={{ fontSize: '1rem' }}>{tag.Rank}위</span>
-                                  <h5 className="mb-0 h6">{tag.tag}</h5>
-                                </div>
-                              </div>
-                              <div className="flex-shrink-0 text-end" style={{ minWidth: '65px' }}>
-                                <div className="text-muted small">선형 점수</div>
-                                <div className="fw-bold">{tag.score_linear.toFixed(2)}</div>
-                              </div>
-                              <div className="flex-shrink-0 text-end ms-3" style={{ minWidth: '60px' }}>
-                                <div className="text-muted small">등장 횟수</div>
-                                <div className="fw-bold">{tag.count}회</div>
-                              </div>
-                            </div>
-                          </Card.Body>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className={`${mobileViewMode === 'table' ? 'd-flex' : 'd-none d-md-flex'} flex-column flex-grow-1`} style={{ minHeight: 0 }}>
-                  <div className="custom-table-wrapper mb-2" style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', opacity: isPending ? 0.7 : 1, display: 'flex', flexDirection: 'column' }}>
-                    {isPending && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}><Spinner animation="border" /></div>}
-                    <Table responsive="md" hover className="custom-table">
-                    <thead>
-                      <tr>
-                        <th style={{ fontSize: '0.85rem', width: '100px' }}><span>순위</span></th>
-                        <th style={{ fontSize: '0.85rem' }}>태그</th>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'전체 순위 - 순위 + 1'로 계산하여, 모든 순위에 동등한 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>선형 점수</th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'선형 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_linear')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>평균 선형 점수</th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / 순위'로 계산하여, 1위에 가까울수록 기하급수적으로 높은 가중치를 부여하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('score_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>역순위 점수</th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'역순위 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_inverse')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>평균 역순위 점수</th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'1 / ln(순위 + 1)'로 계산하여, 상위권에 완만한 가중치를 부여해 점수 격차를 줄인 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('score_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>로그 점수</th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>'로그 점수 / 등장 횟수'로 계산하여, 평균적인 값을 보여주는 방식입니다。</BootstrapTooltip>}><th onClick={() => requestSort('avg_log')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>평균 로그 점수</th></OverlayTrigger>
-                        <OverlayTrigger placement="top" overlay={<BootstrapTooltip>순위와 무관하게, 랭킹 내에 등장한 횟수를 그대로 집계하는 방식입니다.</BootstrapTooltip>}><th onClick={() => requestSort('count')} className="cursor-pointer sortable-header" style={{ fontSize: '0.85rem', width: '160px' }}>등장 횟수</th></OverlayTrigger>
-                      </tr>
-                    </thead>
-                    <tbody onMouseLeave={handleTableMouseLeave}>
-                      {processedTags.map((tag: Tag) => (
-                          <tr key={tag.tag} data-tag={tag.tag} onMouseEnter={handleMouseEnter} style={{ cursor: 'pointer' }}>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.Rank}</td>
-                            <td className="fw-bold" style={{ fontSize: '0.9rem' }}>{tag.tag}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.score_linear.toFixed(2)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_linear.toFixed(2)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.score_inverse.toFixed(4)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_inverse.toFixed(4)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.score_log.toFixed(4)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.avg_log.toFixed(4)}</td>
-                            <td style={{ fontSize: '0.9rem' }}>{tag.count}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </Table>
-                </div>
-
-                <div style={{ flexShrink: 0 }}>
-                  <Card>
-                  <Card.Header>
-                    <Row className="align-items-center g-2">
-                      <Col><h5 className={`mb-0 ${isMobile ? 'h6' : ''}`}>태그 포지셔닝 맵</h5></Col>
-                      {!isMobile && <Col xs="auto"><span className="text-muted" style={{ fontSize: '0.875rem' }}>*선형 점수 기준</span></Col>}
-                      <Col xs="auto" className="d-md-none">
-                        <ButtonGroup size="sm">
-                          {topNOptions.map(option => (<Button key={option} variant={topN === option ? 'primary' : 'outline-secondary'} onClick={() => setTopN(option)} style={{ fontSize: isMobile ? '0.75rem' : undefined, padding: isMobile ? '0.2rem 0.4rem' : undefined }}>{`Top ${option}`}</Button>))}
-                        </ButtonGroup>
-                      </Col>
-                    </Row>
-                  </Card.Header>
-                  <Card.Body>
-                    <ResponsiveContainer width="100%" height={chartHeight}>
-                        <ScatterChart margin={isMobile ? { top: 10, right: 10, bottom: -10, left: -20 } : { top: 20, right: 20, bottom: 20, left: 0 }}>
-                            <CartesianGrid />
-                            <XAxis type="number" dataKey="count" name="등장 횟수" unit="회" domain={xDomain} allowDecimals={false} tick={{ fontSize: isMobile ? 12 : undefined }} />
-                            <YAxis type="number" dataKey="avg_linear" name="평균 선형 점수" domain={yDomain} allowDecimals={false} tick={{ fontSize: isMobile ? 12 : undefined }} />
-                            <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip yAxisKey="avg_linear" yAxisName="평균 선형 점수" />} />
-                            <Scatter name="Tags" data={chartData} shape={<CustomScatterShape />} isAnimationActive={false}>
-                                {chartData.map((entry) => <Cell key={`cell-${entry.tag}`} fill={getColorByRank(entry.Rank)} />)}
-                            </Scatter>
-                        </ScatterChart>
-                    </ResponsiveContainer>
-                    {!isMobile && <ColorLegend />}
-                    </Card.Body>
-                  </Card>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <Alert variant="info" className="text-center mt-3">해당 날짜에 대한 태그 랭킹 데이터가 없습니다.</Alert>
-          )
-        )}
-        </div>{/* end page-main */}
-      </div>{/* end page-layout */}
     </div>
   );
-};
 
-export default ContestTagRankingsPage;
+  return (
+    <div className="page-shell contest-tags-page">
+      <ContestHeader year={year} date={dateParam ?? null} availableDates={dates} view="tags"
+        onDateChange={d => navigate(`/contests/${year}/tags/rankings/${d}`)}
+        onYearChange={y => navigate(`/contests/${y}/tags/rankings`)}
+        meta={tags.length ? `매일 오후 2시 · 태그 ${formatInt(tags.length)}개` : '매일 오후 2시'} />
+
+      <div className="rank-toolbar" ref={toolbarRef}>
+        <h2 className="rank-toolbar__title">
+          태그 순위
+          <span className="rank-toolbar__count">{search ? <>검색 결과 <b>{formatInt(rows.length)}</b>개 / {formatInt(tags.length)}개</> : <>{formatInt(tags.length)}개</>}</span>
+        </h2>
+        <div className="text-toggle" role="radiogroup" aria-label="점수 보기">
+          {(['sum', 'avg'] as Mode[]).map(m => (
+            <span key={m} className="text-toggle__item">
+              <button type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'is-on' : undefined} onClick={() => pickMode(m)}>
+                {m === 'sum' ? '합계' : '평균'}
+              </button>
+              {m === 'avg' ? <FootnoteRef id="avg" n={4} /> : null}
+            </span>
+          ))}
+        </div>
+        <form className="toolbar-searchform" role="search" onSubmit={submitSearch}>
+          <input className="toolbar-search" type="search" placeholder="태그 검색" aria-label="태그 검색"
+            value={searchInput} onChange={e => { setSearchInput(e.target.value); if (e.target.value === '' && search) setSearch(''); }} />
+          <button type="submit" className="toolbar-searchbtn" aria-label="검색"><SearchIcon size={15} aria-hidden="true" /></button>
+        </form>
+      </div>
+
+      {error ? <p className="empty-line">{error}</p>
+        : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
+        : (
+          <RankTable ariaLabel="공모전 태그 순위" rows={rows} rowKey={r => r.tag} columns={columns} rowHeight={48}
+            sort={sort} onSort={onSort} renderMobileRow={mobileRow} onRowHover={r => setHover(r?.tag ?? null)}
+            emptyText={tags.length === 0 ? '이 날짜의 태그 랭킹이 없습니다.' : '검색된 태그가 없습니다.'} />
+        )}
+
+      {!loading && !error && tags.length > 0 ? (
+        <>
+          <Footnotes notes={NOTES} />
+          <section className="contest-map">
+            <div className="contest-map__head">
+              <h2>태그 포지셔닝 맵</h2>
+              <div className="text-toggle" role="radiogroup" aria-label="지도에 보일 태그 수">
+                {RANGES.map(n => (
+                  <button key={n} type="button" role="radio" aria-checked={range === n} className={range === n ? 'is-on' : undefined} onClick={() => setRange(n)}>상위 {n}</button>
+                ))}
+              </div>
+            </div>
+            <p className="contest-map__axis">가로 등장 횟수(로그 눈금) · 세로 평균 선형 점수 · 선형 점수 순위가 높을수록 진하게</p>
+            <div className="contest-map__chart">
+              <ResponsiveContainer width="100%" height={360}>
+                <ScatterChart margin={{ top: 12, right: 16, bottom: 8, left: 0 }}>
+                  <CartesianGrid stroke="var(--np-border)" />
+                  <XAxis type="number" dataKey="count" name="등장 횟수" tick={{ fontSize: 12, fill: 'var(--np-text-secondary)' }} axisLine={{ stroke: 'var(--np-border)' }} tickLine={false}
+                    scale="log" domain={countRange} ticks={logTicks(countRange[0], countRange[1])} tickFormatter={v => formatInt(v)} />
+                  <YAxis type="number" dataKey="avg_linear" name="평균 선형 점수" tick={{ fontSize: 12, fill: 'var(--np-text-secondary)' }} axisLine={{ stroke: 'var(--np-border)' }} tickLine={false}
+                    domain={['auto', 'auto']} tickFormatter={v => formatInt(Math.round(v))} width={56} />
+                  <Tooltip cursor={false} isAnimationActive={false} content={({ active, payload }) => {
+                    const d = active && payload?.[0]?.payload as ContestTagRow | undefined;
+                    if (!d) return null;
+                    return (
+                      <div className="chart-tip">
+                        <b>{d.Rank}위 {d.tag}</b>
+                        <span>등장 {formatInt(d.count)}회 · 평균 선형 {formatInt(Math.round(d.avg_linear))}</span>
+                      </div>
+                    );
+                  }} />
+                  <Scatter data={mapRows} isAnimationActive={false}
+                    shape={(p: unknown) => {
+                      const { cx, cy, payload } = p as { cx: number; cy: number; payload: ContestTagRow };
+                      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return <g />;
+                      const on = hover === payload.tag;
+                      const alpha = 1 - ((payload.Rank - 1) / Math.max(1, range - 1)) * 0.72;
+                      return (
+                        <g>
+                          <circle cx={cx} cy={cy} r={on ? 8 : 6} fill="var(--np-accent)" fillOpacity={alpha}
+                            stroke={on ? 'var(--np-text-heading)' : 'var(--np-canvas)'} strokeWidth={on ? 2 : 1} />
+                          {on ? <text x={cx} y={cy - 12} textAnchor="middle" className="contest-map__label">{payload.tag}</text> : null}
+                        </g>
+                      );
+                    }}>
+                    {mapRows.map(r => <Cell key={r.tag} />)}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        </>
+      ) : null}
+    </div>
+  );
+}

@@ -31,12 +31,14 @@ interface RankTableProps<T> {
   ariaLabel: string;
   /** 이 폭(px) 미만이면 표 대신 renderMobileRow로 그린다. 열이 많은 표는 md(768)보다 넓게 잡는다. */
   compactBelow?: number;
+  /** 행에 마우스가 올라가거나(행) 표를 벗어날 때(null). 표와 짝인 차트를 강조할 때 쓴다. */
+  onRowHover?: (row: T | null) => void;
 }
 
 const ariaSort = (on: boolean, dir?: 'ascending' | 'descending') => (on ? dir : 'none') as 'ascending' | 'descending' | 'none';
 
 export default function RankTable<T>(props: RankTableProps<T>) {
-  const { rows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768 } = props;
+  const { rows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768, onRowHover } = props;
   const isMobile = useMediaQuery(`(max-width: ${compactBelow - 0.02}px)`);
   const listRef = useRef<HTMLDivElement>(null);
   // 창 스크롤 가상화는 목록이 문서 맨 위에서 얼마나 떨어져 있는지(scrollMargin)를 알아야 한다.
@@ -87,7 +89,8 @@ export default function RankTable<T>(props: RankTableProps<T>) {
           })}
         </div>
       ) : null}
-      <div ref={listRef} className="rank-table__body" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+      <div ref={listRef} className="rank-table__body" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
+        onMouseLeave={onRowHover ? () => onRowHover(null) : undefined}>
         {virtualizer.getVirtualItems().map(v => {
           const row = rows[v.index];
           const key = rowKey(row);
@@ -101,7 +104,8 @@ export default function RankTable<T>(props: RankTableProps<T>) {
                 <Fragment>
                   <div role="row" className={`rank-table__row${open ? ' is-open' : ''}${onToggleRow ? ' is-clickable' : ''}`}
                     style={{ gridTemplateColumns: template, minHeight: rowHeight }}
-                    onClick={() => onToggleRow?.(row)} aria-expanded={renderExpanded ? open : undefined}>
+                    onClick={() => onToggleRow?.(row)} aria-expanded={renderExpanded ? open : undefined}
+                    onMouseEnter={onRowHover ? () => onRowHover(row) : undefined}>
                     {columns.map(c => <div key={c.key} role="cell" className={`rank-table__td is-${c.align ?? 'left'}`}>{c.render(row)}</div>)}
                   </div>
                   {open && renderExpanded ? <div className="rank-table__expand">{renderExpanded(row)}</div> : null}
