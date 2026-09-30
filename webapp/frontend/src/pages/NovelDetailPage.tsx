@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useParams } from 'react-router-dom';
 import { Spinner, Alert, Modal } from 'react-bootstrap';
 import { useNovelData } from '../hooks/useNovelData';
-import NovelHeader, { NovelDetailSections } from '../components/novel/NovelHeader';
+import NovelHeader from '../components/novel/NovelHeader';
 import { describeCurrentRank, previousCalendarDay } from '../utils/currentRank';
 import { getNovelTrend } from '../services/api';
 import DateRangePicker from '../components/novel/DateRangePicker';
@@ -140,7 +140,7 @@ const NovelDetailPage = () => {
 
           <section className="detail-sec detail-chart-panel">
             <div className="detail-sec__head">
-              <h2 className="detail-sec__h">지표 변화</h2>
+              <h2 className="detail-sec__h">지표</h2>
               <div className="detail-sec__range">
                 {[7, 30, 90].map(n => (
                   <button key={n} type="button" className={rangeDays === n ? 'is-on' : ''} aria-pressed={rangeDays === n} onClick={() => pickRange(n)}>{n}일</button>
@@ -170,7 +170,6 @@ const NovelDetailPage = () => {
               </div>
             </div>
           </section>
-          {details ? <NovelDetailSections details={details} /> : null}
           <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false} dialogClassName="detail-chart-modal">
             <Modal.Header closeButton>
               <Modal.Title>{selectedMetric ? `${metricConfigs[selectedMetric]?.name || selectedMetric} 상세 보기` : ''}</Modal.Title>

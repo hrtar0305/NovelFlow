@@ -4,7 +4,7 @@ import { Modal } from 'react-bootstrap';
 import { format, parseISO, subDays } from 'date-fns';
 import { useContestNovelData } from '../hooks/useContestNovelData';
 import { getContestNovelTrend } from '../services/api';
-import NovelHeader, { NovelDetailSections } from '../components/novel/NovelHeader';
+import NovelHeader from '../components/novel/NovelHeader';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { describeContestRank } from '../utils/currentRank';
 import { formatMan, formatRatio } from '../utils/format';
@@ -84,6 +84,7 @@ const ContestNovelDetailPage = () => {
         details={details}
         current={current}
         backTo={{ to: `/contests/${year}`, label: `우주최강 공모전 ${year}` }}
+        tagHref={t => `/contests/${year}?tag=${encodeURIComponent(t)}`}
         byExtra={<span className="detail-head__contest">우주최강 공모전 {year}{award ? <> <b className={award === '본선' ? undefined : 'award-text'}>{award}</b></> : null}</span>}
         nums={[
           { label: '조회', value: formatMan(details.View) },
@@ -95,7 +96,7 @@ const ContestNovelDetailPage = () => {
 
       <section className="detail-sec detail-chart-panel">
         <div className="detail-sec__head">
-          <h2 className="detail-sec__h">지표 변화</h2>
+          <h2 className="detail-sec__h">지표</h2>
           <div className="detail-sec__range">
             {[7, 30, 90].map(n => (
               <button key={n} type="button" className={rangeDays === n ? 'is-on' : ''} aria-pressed={rangeDays === n} onClick={() => pickRange(n)}>{n}일</button>
@@ -118,8 +119,6 @@ const ContestNovelDetailPage = () => {
           </div>
         </div>
       </section>
-
-      <NovelDetailSections details={details} tagHref={t => `/contests/${year}?tag=${encodeURIComponent(t)}`} />
 
       <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered animation={false} dialogClassName="detail-chart-modal">
         <Modal.Header closeButton><Modal.Title>{selectedMetric ? `${metricConfigs[selectedMetric]?.name || selectedMetric} 크게 보기` : ''}</Modal.Title></Modal.Header>

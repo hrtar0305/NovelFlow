@@ -18,6 +18,7 @@ import boto3
 import decimal
 import json
 import math
+import re
 import time
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -165,6 +166,42 @@ def _derive_serial_status(item: dict) -> str | None:
     if any('b_comp' in (b.get('class') or []) for b in badges if isinstance(b, dict)):
         return '완결'
     return '연재중'
+
+# 배지 class → 표시 이름. 상태(완결)·등급(19/15)은 따로 내보내므로 여기서 뺀다.
+# 모르는 class 라도 텍스트가 있으면 그 텍스트를 그대로 쓴다(아는 값으로 좁히지 않는다).
+_BADGE_SKIP = {'b_comp', 'b_19', 'b_15'}
+_BADGE_LABEL = {'b_plus': 'PLUS', 'b_mono': '독점', 'b_challenge': '챌린지', 'b_free': '자유연재'}
+
+
+def _badge_labels(item: dict) -> list[str]:
+    """상세 머리에 보일 배지 이름들(PLUS · 독점 · 챌린지 …). 이미지뿐인 이벤트 배지(텍스트 없음)는 뺀다."""
+    out: list[str] = []
+    for b in item.get('Badges') or []:
+        if not isinstance(b, dict):
+            continue
+        classes = b.get('class') or []
+        if not classes or _BADGE_SKIP.intersection(classes):
+            continue   # class 없는 배지는 연재 상태(SerialStatus)다
+        label = next((_BADGE_LABEL[c] for c in classes if c in _BADGE_LABEL), None) or b.get('text')
+        if label and label not in out:
+            out.append(label)
+    return out
+
+
+def _age_rating(item: dict) -> str | None:
+    """이용 등급 표기. 19세는 정책 판정과 같은 신호(`is_adult`)를 쓰고, 15세는 배지로 본다."""
+    if item.get('is_adult'):
+        return '19세'
+    if any('b_15' in (b.get('class') or []) for b in item.get('Badges') or [] if isinstance(b, dict)):
+        return '15세'
+    return None
+
+
+def _life_pick_rank(item: dict) -> int | None:
+    """인생픽 칸 원문('9위' / '공개전', 크롤러 `LifePick`)에서 순위. 순위가 없으면 None."""
+    m = re.fullmatch(r'\s*([\d,]+)\s*위\s*', str(item.get('LifePick') or ''))
+    return int(m.group(1).replace(',', '')) if m else None
+
 
 def _compute_retention_rates(item: dict) -> dict:
     """DB 원본 수치에서 초반/최신 잔류율 계산 (단순 구간 비율).
@@ -586,6 +623,12 @@ class NovelDetails(BaseModel):
     TargetLatestEpView: Optional[int] = None
     TargetLatestEpNum: Optional[int] = None
     is_adult: bool = Field(False, description="성인 등급 여부. 크롤러가 상세 페이지 등급 배지로 판정한 값이며, 표지 표시 정책에 쓰인다")
+    # 상세 머리용 해석값(2026-09-30). 원문은 Badges · SerialStatus · SerialDays · LifePick 이고 판정은 여기서만 한다.
+    serial_status: Optional[str] = None
+    serial_days: Optional[str] = None
+    life_pick_rank: Optional[int] = None
+    badges: List[str] = Field(default_factory=list)
+    age_rating: Optional[str] = None
 
 class TagRankData(BaseModel):
     tag: str
@@ -803,7 +846,15 @@ def get_latest_novel_details(novel_id: str, response: Response):
             latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
             latest_item.update(_compute_retention_rates(latest_item))
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
-            return _apply_content_policy(latest_item)
+            latest_item = _apply_content_policy(latest_item)
+            latest_item.update({
+                'serial_status': _derive_serial_status(latest_item),
+                'serial_days': latest_item.get('SerialDays') or None,
+                'life_pick_rank': _life_pick_rank(latest_item),
+                'badges': _badge_labels(latest_item),
+                'age_rating': _age_rating(latest_item),
+            })
+            return latest_item
         else:
             raise HTTPException(status_code=404, detail="Novel not found")
     except ClientError as e:
