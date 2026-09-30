@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
 import { Search as SearchIcon } from 'react-bootstrap-icons';
 import { getContestAvailableDates, getContestDataByDate, getContestShowcase } from '../services/api';
@@ -41,12 +41,17 @@ const AwardText = ({ award }: { award?: string | null }) =>
 export default function ContestPage() {
   const { year = '2025', date: dateParam } = useParams<{ year: string; date?: string }>();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<ContestNovel[]>([]);
   const [showcase, setShowcase] = useState<ContestNovel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<RankingFilter>(EMPTY_FILTER);
+  // ?tag= 로 들어오면(공모전 작품 상세의 태그 링크) 그 태그를 '모두 포함'으로 건다.
+  const [filter, setFilter] = useState<RankingFilter>(() => {
+    const tag = params.get('tag');
+    return tag ? { ...EMPTY_FILTER, tags: [tag] } : EMPTY_FILTER;
+  });
   const [winnersOnly, setWinnersOnly] = useState(false);
   const [sort, setSort] = useState<ContestSort>(CONTEST_DEFAULT_SORT);
   const [drawer, setDrawer] = useState(false);
@@ -66,7 +71,8 @@ export default function ContestPage() {
   useEffect(() => {
     if (dates.size === 0) return;
     if (!dateParam || !isValid(parseISO(dateParam)) || !dates.has(dateParam)) {
-      navigate(`/contests/${year}/${[...dates].sort().at(-1)}`, { replace: true });
+      const tag = params.get('tag');
+      navigate(`/contests/${year}/${[...dates].sort().at(-1)}${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`, { replace: true });
       return;
     }
     let cancelled = false;
@@ -77,7 +83,7 @@ export default function ContestPage() {
       .catch(() => { if (!cancelled) { setRows([]); setError('공모전 랭킹을 불러오지 못했습니다.'); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [year, dateParam, dates, navigate]);
+  }, [year, dateParam, dates, navigate, params]);
 
   const update = useCallback((next: RankingFilter) => setFilter(next), []);
   const deferredFilter = useDeferredValue(filter);

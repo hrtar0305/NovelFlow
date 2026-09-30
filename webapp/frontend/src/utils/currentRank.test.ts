@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeCurrentRank } from './currentRank';
+import { describeContestRank, describeCurrentRank } from './currentRank';
 
 const series = [
   { Date: '2026-09-25', Ranking: 5 },
@@ -37,4 +37,16 @@ describe('describeCurrentRank', () => {
   it('정보가 없으면 unknown', () => {
     expect(describeCurrentRank({ detailDate: null, detailRank: null, latestDate: '2026-09-27', series: [] })).toEqual({ kind: 'unknown' });
   });
+});
+
+describe('describeContestRank', () => {
+  it('직전 수집일(달력 −1일이 아니라 실제 직전 기록)과 비교한다', () => {
+    const s = [{ Date: '2026-09-26', Ranking: 5 }, { Date: '2026-09-28', Ranking: 3 }];
+    expect(describeContestRank({ detailDate: '2026-09-28', detailRank: 3, series: s })).toEqual({ kind: 'ranked', rank: 3, change: 2 });
+  });
+  it('직전 기록이 없으면 변동을 비운다(공모전은 NEW가 없다)', () => {
+    expect(describeContestRank({ detailDate: '2026-09-28', detailRank: 3, series: [{ Date: '2026-09-28', Ranking: 3 }] }))
+      .toEqual({ kind: 'ranked', rank: 3, change: null });
+  });
+  it('순위가 없으면 unknown', () => expect(describeContestRank({ detailDate: null, detailRank: null, series: [] })).toEqual({ kind: 'unknown' }));
 });

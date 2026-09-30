@@ -28,3 +28,14 @@ export function describeCurrentRank({ detailDate, detailRank, latestDate, series
   if (!prev || isOutOfRank(prev.Ranking, prev.Date)) return { kind: 'ranked', rank: detailRank, change: 'New' };
   return { kind: 'ranked', rank: detailRank, change: (prev.Ranking as number) - detailRank };
 }
+
+/** 공모전 작품의 현재 순위와 변동. 공모전은 참여 작품 전체의 순위라 '순위권 밖'과 NEW가 없고,
+ *  전날은 달력 −1일이 아니라 실제 직전 수집일이다(DECISIONS 2026-07-01 — 통일하지 말 것). */
+export function describeContestRank({ detailDate, detailRank, series }: {
+  detailDate?: string | null; detailRank?: number | null;
+  series: Array<{ Date: string; Ranking: number | null }>;
+}): CurrentRank {
+  if (!detailDate || detailRank == null) return { kind: 'unknown' };
+  const prev = [...series].filter(p => p.Date < detailDate && p.Ranking != null).sort((a, b) => a.Date.localeCompare(b.Date)).at(-1);
+  return { kind: 'ranked', rank: detailRank, change: prev ? (prev.Ranking as number) - detailRank : null };
+}
