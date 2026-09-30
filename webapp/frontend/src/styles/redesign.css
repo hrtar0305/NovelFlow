@@ -273,3 +273,12 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .chart-tip b { color: var(--np-text-heading); }
 .rank-mrow--tag { grid-template-columns: minmax(34px, auto) minmax(0, 1fr); }
 .text-toggle__item { display: inline-flex; align-items: flex-start; }
+
+/* ── 공모전: 수상은 강조색 글자 하나(여러 색 칩 대신) ── */
+.award-text { font-size: 0.8125rem; font-weight: 700; color: var(--np-accent); white-space: nowrap; }
+.award-text--minor { font-weight: 600; color: var(--np-text-secondary); }
+.rank-title--muted { color: var(--np-text-faint); font-weight: 500; }
+.contest-award-poster .media-rank-card__rank.contest-award-chip {
+  display: inline-flex; align-items: center; height: 1.65rem; padding: 0 0.6rem; border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.14); background-color: rgba(10, 11, 14, 0.66); color: #ffffff; font-size: 0.75rem; font-weight: 800;
+}

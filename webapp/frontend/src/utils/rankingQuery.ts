@@ -49,7 +49,16 @@ export const normalizeNovels = (items: RankingNovel[]): RankingNovel[] => items.
   like_to_view_ratio: x.View && x.View > 0 ? (x.Like ?? 0) / x.View : (x.like_to_view_ratio ?? 0),
 }));
 
-export function applyRankingFilter(items: RankingNovel[], f: RankingFilter): { items: RankingNovel[]; error: string | null } {
+/** 필터가 읽는 필드만 가진 행. 일간(RankingNovel)과 공모전 행이 같은 필터를 쓴다. */
+export interface FilterableNovel {
+  Title?: string | null;
+  AuthorName?: string | null;
+  Eps?: number | null;
+  Tags?: string[];
+  serial_status?: string | null;
+}
+
+export function applyRankingFilter<T extends FilterableNovel>(items: T[], f: RankingFilter): { items: T[]; error: string | null } {
   let out = items;
 
   if (f.rule.trim()) {
@@ -61,7 +70,7 @@ export function applyRankingFilter(items: RankingNovel[], f: RankingFilter): { i
       return { items: [], error: `조건식 오류: ${e instanceof Error ? e.message : '잘못된 구문입니다'}` };
     }
   } else if (f.tags.length > 0) {
-    const has = (x: RankingNovel, t: string) => (x.Tags || []).includes(t);
+    const has = (x: T, t: string) => (x.Tags || []).includes(t);
     if (f.tagMode === 'include-and') out = out.filter(x => f.tags.every(t => has(x, t)));
     else if (f.tagMode === 'include-or') out = out.filter(x => f.tags.some(t => has(x, t)));
     else out = out.filter(x => !f.tags.some(t => has(x, t)));
@@ -72,9 +81,9 @@ export function applyRankingFilter(items: RankingNovel[], f: RankingFilter): { i
   if (statuses.length > 0) out = out.filter(x => x.serial_status != null && statuses.includes(x.serial_status));
 
   const q = f.search.trim().toLowerCase();
-  if (q) out = out.filter(x => x.Title.toLowerCase().includes(q) || x.AuthorName.toLowerCase().includes(q));
-  if (f.minEps !== null) { const min = f.minEps; out = out.filter(x => x.Eps >= min); }
-  if (f.maxEps !== null) { const max = f.maxEps; out = out.filter(x => x.Eps <= max); }
+  if (q) out = out.filter(x => (x.Title ?? '').toLowerCase().includes(q) || (x.AuthorName ?? '').toLowerCase().includes(q));
+  if (f.minEps !== null) { const min = f.minEps; out = out.filter(x => (x.Eps ?? 0) >= min); }
+  if (f.maxEps !== null) { const max = f.maxEps; out = out.filter(x => (x.Eps ?? 0) <= max); }
   return { items: out, error: null };
 }
 
@@ -105,7 +114,7 @@ export function nextSort(current: SortConfig, key: SortKey): SortConfig {
   return { key, direction: key === 'Ranking' ? 'ascending' : 'descending' };
 }
 
-export function tagCounts(items: RankingNovel[]): Array<{ tag: string; count: number }> {
+export function tagCounts(items: Array<{ Tags?: string[] }>): Array<{ tag: string; count: number }> {
   const m = new Map<string, number>();
   for (const x of items) for (const t of new Set(x.Tags || [])) m.set(t, (m.get(t) ?? 0) + 1);
   return [...m].map(([tag, count]) => ({ tag, count }))

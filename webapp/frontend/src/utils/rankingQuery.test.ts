@@ -45,6 +45,10 @@ describe('applyRankingFilter', () => {
     expect(applyRankingFilter(rows, { ...EMPTY_FILTER, search: '티어표' }).items.map(x => x.ID)).toEqual(['2']);
     expect(applyRankingFilter(rows, { ...EMPTY_FILTER, search: '쉼게' }).items.map(x => x.ID)).toEqual(['3']);
   });
+  it('제목·작가가 없는 행도 검색에서 오류 없이 빠진다', () => {
+    const odd = [...rows, { ...n({ ID: '9', Ranking: 9 }), Title: null, AuthorName: null } as unknown as RankingNovel];
+    expect(applyRankingFilter(odd, { ...EMPTY_FILTER, search: '티어표' }).items.map(x => x.ID)).toEqual(['2']);
+  });
   it('회차 범위', () => {
     const r = applyRankingFilter(rows, { ...EMPTY_FILTER, minEps: 50, maxEps: 200 });
     expect(r.items.map(x => x.ID)).toEqual(['1', '4']);

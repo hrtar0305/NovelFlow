@@ -24,6 +24,8 @@ interface FilterDrawerProps {
   statusStats?: Array<{ status: string; count: number }>;
   /** 그날 목록에 연재 상태 기록이 있는가(2026-09-05 이전은 없음). */
   statusAvailable?: boolean;
+  /** 초기화 때 페이지 고유 조건(extra)도 풀어야 하면 준다. */
+  onResetExtra?: () => void;
 }
 
 const toNum = (s: string): number | null => {
@@ -31,7 +33,7 @@ const toNum = (s: string): number | null => {
   return Number.isFinite(v) ? v : null;
 };
 
-export default function FilterDrawer({ open, onClose, filter, onChange, tagStats, resultCount, error, extra, statusStats, statusAvailable = true }: FilterDrawerProps) {
+export default function FilterDrawer({ open, onClose, filter, onChange, tagStats, resultCount, error, extra, statusStats, statusAvailable = true, onResetExtra }: FilterDrawerProps) {
   const [mode, setMode] = useState<Mode>(filter.rule ? 'rule' : filter.tagMode);
   const [ruleText, setRuleText] = useState(filter.rule);
   const [q, setQ] = useState('');
@@ -53,7 +55,7 @@ export default function FilterDrawer({ open, onClose, filter, onChange, tagStats
     if (m !== 'rule') onChange({ ...filter, tagMode: m, rule: '' });
   };
   const applyRule = () => onChange({ ...filter, rule: ruleText.trim(), tags: [] });
-  const reset = () => { setQ(''); setRuleText(''); setMode('include-and'); onChange(resetFilter(filter)); };
+  const reset = () => { setQ(''); setRuleText(''); setMode('include-and'); onChange(resetFilter(filter)); onResetExtra?.(); };
 
   return (
     <Offcanvas show={open} onHide={onClose} placement="end" className="filter-drawer" aria-labelledby="filter-drawer-title">
