@@ -19,6 +19,10 @@ export interface NovelHeaderDetails {
   serial_status?: string | null; serial_days?: string | null; life_pick_rank?: number | null; badges?: string[]; age_rating?: string | null;
 }
 
+/** 연재 상태 강조. 알약 배지 대신 글자 색·굵기로만 — 사이트 전체에서 배지 패턴을 걷어냈다(DECISIONS 2026-09-30).
+ *  연재중단·연재지연은 경고색, 완결은 진하게, 연재중과 모르는 상태는 굵게만. */
+const STATUS_TONE: Record<string, string> = { 연재중단: 'warn', 연재지연: 'warn', 완결: 'done' };
+
 const ok = (v?: number | null): v is number => typeof v === 'number' && v >= 0;
 
 /** 잔류율 옆에 흐리게 붙이는 근거: '1화 6,609 → 30화 2,223'. 값이 없으면 비운다. */
@@ -93,7 +97,13 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
               <BoxArrowUpRight size={14} aria-hidden="true" />
             </a>
           </p>
-          {facts.length ? <p className="detail-head__facts">{facts.map((f, i) => <span key={`${f}-${i}`}>{f}</span>)}</p> : null}
+          {facts.length ? (
+            <p className="detail-head__facts">
+              {facts.map((f, i) => (
+                <span key={`${f}-${i}`} className={i === 0 && details.serial_status ? `detail-head__status is-${STATUS_TONE[details.serial_status] ?? 'plain'}` : undefined}>{f}</span>
+              ))}
+            </p>
+          ) : null}
           <div className="detail-head__now">
             {current.kind === 'ranked' ? (
               <>
@@ -106,11 +116,17 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
           </div>
           <InlineNums items={popularity} />
           {ratios ? <InlineNums items={ratios} /> : null}
-          {details.Synopsis ? <Synopsis text={details.Synopsis} /> : null}
-          {details.Tags && details.Tags.length > 0 ? (
-            <TagLinks tags={details.Tags} limit={details.Tags.length} wrap hrefFor={tagHref ?? (t => `/novels/rankings?tag=${encodeURIComponent(t)}`)} />
-          ) : null}
         </div>
+        {/* 작품 소개·태그는 표지 아래부터 전체 폭으로 — 표지 옆 오른쪽 칸에 두면 표지 아래가 통째로 비었다. */}
+        {details.Synopsis || (details.Tags && details.Tags.length > 0) ? (
+          <section className="detail-intro" aria-labelledby="detail-intro-h">
+            <h2 id="detail-intro-h" className="detail-intro__h">작품 소개</h2>
+            {details.Synopsis ? <Synopsis text={details.Synopsis} /> : null}
+            {details.Tags && details.Tags.length > 0 ? (
+              <TagLinks tags={details.Tags} limit={details.Tags.length} wrap hrefFor={tagHref ?? (t => `/novels/rankings?tag=${encodeURIComponent(t)}`)} />
+            ) : null}
+          </section>
+        ) : null}
       </header>
     </>
   );

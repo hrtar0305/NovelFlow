@@ -29,7 +29,8 @@
 .tab-bar__count { margin-left: 0.2rem; font-size: 0.75rem; color: var(--np-text-faint); }
 .tab-bar__tools { margin-left: auto; display: flex; align-items: center; gap: 1rem; padding-bottom: 0.55rem; }
 
-.inline-nums { font-size: 0.9375rem; color: var(--np-text-secondary); }
+/* 이름은 본문색(보통 굵기), 값은 제목색·굵게 — 이름이 흐리면 어떤 값인지 한눈에 안 들어온다. */
+.inline-nums { font-size: 0.9375rem; color: var(--np-text-primary); }
 .inline-nums__item b { margin-left: 0.25rem; color: var(--np-text-heading); font-weight: 700; }
 .inline-nums__item + .inline-nums__item::before { content: ""; display: inline-block; width: 1px; height: 12px; background: var(--np-border-strong); margin: 0 0.875rem; vertical-align: -1px; }
 
@@ -139,8 +140,13 @@
 .detail-head__by > a:first-child, .detail-head__by > span:first-child { color: var(--np-text-heading); font-weight: 700; text-decoration: none; }
 .detail-head__extra::before { content: "·"; margin-right: 0.6rem; color: var(--np-text-faint); }
 .detail-head__ext { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; color: var(--np-text-secondary); }
+/* ↗ 아이콘은 네모가 왼쪽 아래에 쏠려 있어 박스 중심을 맞춰도 글자보다 낮아 보인다 — 시각 중심을 맞춘다. */
+.detail-head__ext svg { transform: translateY(-1.5px); }
 .detail-head__ext:hover, .detail-head__ext:focus-visible { color: var(--np-text-heading); background: var(--np-surface-alt); }
 .detail-head__facts { display: flex; flex-wrap: wrap; margin: 0.45rem 0 0; font-size: 0.875rem; color: var(--np-text-secondary); }
+.detail-head__status { font-weight: 700; color: var(--np-text-primary); }
+.detail-head__status.is-done { color: var(--np-text-heading); }
+.detail-head__status.is-warn { color: var(--np-warning); }
 .detail-head__facts span + span::before { content: "·"; margin: 0 0.45rem; color: var(--np-text-faint); }
 .detail-head__now { display: flex; align-items: baseline; gap: 0.75rem; margin: 1.3rem 0 0.9rem; min-height: 1rem; }
 /* '위'는 숫자 높이의 절반 가까이로 키우고 굵기를 맞춘다. 한글은 숫자보다 기준선 아래로 내려앉아 보여 살짝 올린다. */
@@ -149,11 +155,14 @@
 .detail-head__now .change-mark { font-size: 1.0625rem; font-weight: 700; }
 .detail-head .inline-nums { margin: 0 0 0.35rem; }
 .detail-head__basis { white-space: nowrap; margin-left: 0.4rem; font-size: 0.8125rem; font-weight: 500; color: var(--np-text-faint); }
-.detail-head__synopsis { max-width: 760px; margin-top: 1.1rem; }
+.detail-intro { grid-column: 1 / -1; margin-top: 0.4rem; padding-top: 1.4rem; border-top: 1px solid var(--np-border); }
+.detail-intro__h { margin: 0 0 0.6rem; font-size: 1rem; font-weight: 800; letter-spacing: -0.01em; color: var(--np-text-heading); }
+.detail-head__synopsis { max-width: 760px; }
 .detail-head__synopsis p { margin: 0; white-space: pre-line; font-size: 0.9375rem; line-height: 1.8; color: var(--np-text-primary); }
 .detail-head__synopsis p.is-clamped { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .detail-head__synopsis .link-button { margin-top: 0.2rem; font-size: 0.875rem; }
-.detail-head__body > .tag-links { margin-top: 0.9rem; font-size: 0.875rem; }
+.detail-intro > .tag-links { margin-top: 1rem; font-size: 0.9375rem; line-height: 1.7; }
+.detail-intro > .tag-links .tag-links__tag { margin-right: 0.7rem; }
 .detail-head__out { font-size: 1.0625rem; font-weight: 700; color: var(--np-text-secondary); }
 .detail-sec { padding: 1.9rem 0; border-bottom: 1px solid var(--np-border); }
 .detail-sec__h { margin: 0 0 1rem; color: var(--np-text-heading); font-size: 1.1875rem; font-weight: 800; letter-spacing: -0.02em; }
@@ -167,7 +176,7 @@
   .detail-head__cover { grid-row: span 3; }
   .detail-head__body { display: contents; }
   .detail-head__title { margin: 0; }
-  .detail-head__now, .detail-head .inline-nums, .detail-head__synopsis, .detail-head__body > .tag-links { grid-column: 1 / -1; }
+  .detail-head__now, .detail-head .inline-nums { grid-column: 1 / -1; }
   .detail-head__now { margin: 0.9rem 0 0.4rem; }
 }
 
@@ -407,8 +416,9 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .mx-sum i { font-style: normal; margin: 0 0.6rem; color: var(--np-border-strong); }
 .mx-stack { position: relative; touch-action: pan-y; }
 .mx-svg { display: block; overflow: visible; }
-.mx-row__h { display: flex; justify-content: space-between; align-items: baseline; margin: 0.9rem 0 0.2rem; font-size: 0.8125rem; font-weight: 700; color: var(--np-text-heading); }
-.mx-row__h:first-child { margin-top: 0; }
+/* 지표 한 줄 = 제목 + 차트 한 덩어리. 덩어리 사이를 선과 여백으로 갈라, 제목이 위 차트의 꼬리처럼 읽히지 않게 한다. */
+.mx-block + .mx-block { margin-top: 1.1rem; padding-top: 0.7rem; border-top: 1px solid var(--np-border); }
+.mx-row__h { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 0.3rem; font-size: 0.875rem; font-weight: 800; color: var(--np-text-heading); }
 .mx-row__total { font-weight: 500; color: var(--np-text-secondary); }
 .mx-row__total b { color: var(--np-text-heading); font-weight: 700; }
 .mx-hl { fill: var(--np-surface-raised); }
@@ -437,3 +447,11 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .mx-table td small { margin-left: 0.3rem; font-size: 0.75rem; color: var(--np-text-faint); }
 .mx-table__out { color: var(--np-text-faint); }
 .mx-more { margin-top: 0.6rem; font-size: 0.875rem; }
+/* 태그 하나는 '#'과 이름 사이에서 끊지 않는다. */
+.tag-links--wrap .tag-links__tag { white-space: nowrap; }
+@media (max-width: 767.98px) {
+  /* 좁은 화면의 머리 수치: 줄 맨 앞에 구분선이 오지 않게 칸 배열로. 근거가 붙는 잔류율은 한 줄을 다 쓴다. */
+  .detail-head .inline-nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 0.2rem 0.75rem; }
+  .detail-head .inline-nums__item::before { display: none !important; }
+  .detail-head .inline-nums__item:has(.detail-head__basis) { grid-column: 1 / -1; }
+}

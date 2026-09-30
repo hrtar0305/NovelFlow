@@ -232,10 +232,12 @@ export default function MetricsPanel({ points, kind }: Props) {
       <div ref={wrapRef} className="mx-stack" onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
         {width > 0 ? (
           <>
-            <div className="mx-row__h"><span>순위</span></div>
-            {rankSvg}
+            <div className="mx-block">
+              <div className="mx-row__h"><span>순위</span></div>
+              {rankSvg}
+            </div>
             {rows.map(r => (
-              <div key={r.key}>
+              <div key={r.key} className="mx-block">
                 <div className="mx-row__h"><span>{r.label}</span>{r.total != null ? <span className="mx-row__total">{r.kind === 'line' ? '마지막 날' : '기간'} <b>{r.total}</b></span> : null}</div>
                 {rowSvg(r)}
               </div>
