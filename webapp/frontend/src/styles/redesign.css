@@ -254,9 +254,9 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .contest-title { display: inline-flex; align-items: baseline; gap: 0.35rem; }
 .contest-title__year { appearance: none; border: 0; background: none; padding: 0 1.2rem 0 0; margin-right: -1.2rem; font: inherit; color: var(--np-text-heading); cursor: pointer; position: relative; z-index: 1; }
 .contest-title__chev { align-self: center; margin-left: 0.1rem; color: var(--np-text-secondary); pointer-events: none; }
-.contest-switch { display: flex; gap: 1.1rem; }
-.contest-switch a { padding-bottom: 3px; border-bottom: 2px solid transparent; font-size: 0.9375rem; font-weight: 600; color: var(--np-text-secondary); text-decoration: none; }
-.contest-switch a.is-on { color: var(--np-text-heading); border-bottom-color: var(--np-text-heading); }
+.view-switch { display: flex; gap: 1.1rem; }
+.view-switch a { padding-bottom: 3px; border-bottom: 2px solid transparent; font-size: 0.9375rem; font-weight: 600; color: var(--np-text-secondary); text-decoration: none; }
+.view-switch a.is-on { color: var(--np-text-heading); border-bottom-color: var(--np-text-heading); }
 
 /* ── 글자 전환(합계/평균, 상위 20/50/100 등): 알약 대신 밑줄 ── */
 .text-toggle { display: flex; gap: 0.85rem; }
@@ -284,3 +284,36 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 }
 .detail-head__contest { color: var(--np-text-secondary); }
 .detail-head__contest b { font-weight: 700; }
+
+/* ── 태그 랭킹(2026-09-30): 구역 필터 줄 · 구역 이름 · 지형 지도 ── */
+.zone-dot { display: inline-block; width: 8px; height: 8px; margin-right: 0.4rem; border-radius: 50%; background: currentColor; vertical-align: 1px; }
+.zone-name { font-size: 0.875rem; font-weight: 600; white-space: nowrap; color: var(--np-text-secondary); }
+.zone-name--none { color: var(--np-text-faint); font-weight: 400; }
+.zone-name--mainstream .zone-dot { background: var(--np-zone-mainstream); }
+.zone-name--gem .zone-dot { background: var(--np-zone-gem); }
+.zone-name--saturated .zone-dot { background: var(--np-zone-saturated); }
+.zone-name--cold .zone-dot { background: var(--np-zone-cold); }
+.zone-filter { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; padding: 0.7rem 0; border-bottom: 1px solid var(--np-border); }
+.zone-filter button { padding: 0 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; font-size: 0.875rem; font-weight: 600; color: var(--np-text-secondary); white-space: nowrap; }
+.zone-filter button.is-on { color: var(--np-text-heading); border-bottom-color: var(--np-text-heading); }
+.zone-filter__n { margin-left: 0.2rem; font-weight: 500; color: var(--np-text-faint); }
+.zone-filter button.is-on .zone-filter__n { color: var(--np-text-secondary); }
+.row-expand--tag { padding-left: 7.5rem; }
+@media (max-width: 991.98px) { .row-expand--tag { padding-left: 1.25rem; } }
+.tag-map { padding: 1.5rem 0 2.5rem; border-top: 1px solid var(--np-border); }
+.tag-map__head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.tag-map__head h2 { margin: 0; font-size: 1.1875rem; font-weight: 800; letter-spacing: -0.02em; color: var(--np-text-heading); }
+.tag-map__meta { font-size: 0.875rem; color: var(--np-text-secondary); }
+.tag-map__axis { margin: 0.4rem 0 0.8rem; font-size: 0.8125rem; color: var(--np-text-faint); }
+.tag-map__chart { height: clamp(460px, 46vw, 620px); }
+.tag-map__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-canvas); stroke-width: 3px; stroke-linejoin: round; }
+.tag-map__zone { font-size: 12px; font-weight: 800; }
+.tag-map__zone--mainstream { fill: var(--np-zone-mainstream-text); }
+.tag-map__zone--gem { fill: var(--np-zone-gem-text); }
+.tag-map__zone--saturated { fill: var(--np-zone-saturated-text); }
+.tag-map__zone--cold { fill: var(--np-zone-cold-text); }
+@media (max-width: 767.98px) {
+  .tag-map__chart { height: 360px; }
+  /* 좁은 화면에서 상시 라벨은 서로 겹친다 — 강조된 태그만 남긴다. */
+  .tag-map__label:not(.is-on) { display: none; }
+}

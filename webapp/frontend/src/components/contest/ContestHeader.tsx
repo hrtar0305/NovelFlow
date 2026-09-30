@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom';
 import PageTitle from '../ui/PageTitle';
 import DateNav from '../ui/DateNav';
+import ViewSwitch from '../ui/ViewSwitch';
 import { ChevronDown } from 'react-bootstrap-icons';
 import { CONTEST_YEARS } from '../../utils/contest';
 
@@ -31,10 +31,10 @@ export default function ContestHeader({ year, date, availableDates, onDateChange
       }
       nav={<DateNav value={date} availableDates={availableDates} onChange={onDateChange} />}
       aside={
-        <nav className="contest-switch" aria-label="공모전 보기">
-          <Link to={`/contests/${year}${suffix}`} className={view === 'novels' ? 'is-on' : undefined} aria-current={view === 'novels' ? 'page' : undefined}>작품</Link>
-          <Link to={`/contests/${year}/tags/rankings${suffix}`} className={view === 'tags' ? 'is-on' : undefined} aria-current={view === 'tags' ? 'page' : undefined}>태그</Link>
-        </nav>
+        <ViewSwitch label="공모전 보기" items={[
+          { to: `/contests/${year}${suffix}`, label: '작품', on: view === 'novels' },
+          { to: `/contests/${year}/tags/rankings${suffix}`, label: '태그', on: view === 'tags' },
+        ]} />
       }
       meta={meta}
     />
