@@ -13,6 +13,9 @@
 - **재확인 목록에서 번호를 지우지 않는다(2025 와 같은 의도).** 작가가 언제든 비공개로 돌렸다 풀 수 있다.
   대신 공개 일반작으로 확인된 번호는 NORMAL_RECHECK_DAYS 마다만 다시 본다(개막 직전 번호의 28%가 비공개라
   매일 전부 보면 한 달에 수천 개).
+- **공개 일반작도 재확인 목록에 넣는다(2025 에 없던 것).** 먼저 공개한 작품을 나중에 공모전에 참가시키는 경우가
+  있다 — 455833 은 개막일 20:40 에 일반작이었는데 22:24 엔 참가작이었고, 2025 방식(경고창 번호만 재확인)으로는
+  끝내 못 잡는다. 생긴 지 FRESH_DAYS 안의 번호는 매일, 그 뒤는 NORMAL_RECHECK_DAYS 마다 본다.
 - **작가의 다른 작품**(`/proc/novel_curation`, cmd=writer_other_novel)을 참가작을 처음 찾을 때 원본 JSON
   그대로 남긴다(작가당 1회). 기성 여부 판정은 나중에 한다(제안: 공모전 시작 번호 이전 작품이 있으면 기성).
 """
@@ -38,6 +41,7 @@ CONTEST_FIRST_ID = int(os.environ.get('CONTEST_FIRST_ID', '455325'))
 STOP_RUN = int(os.environ.get('STOP_RUN', '5'))
 WORKERS = int(os.environ.get('WORKERS', '4'))
 NORMAL_RECHECK_DAYS = int(os.environ.get('NORMAL_RECHECK_DAYS', '3'))
+FRESH_DAYS = int(os.environ.get('FRESH_DAYS', '7'))
 BUDGET_MS = int(os.environ.get('STOP_WHEN_REMAINING_MS', '90000'))
 CHUNK = 40
 
@@ -157,6 +161,8 @@ def handler(event, context):
                 new_contest.append(i)
             elif kind == 'retry':
                 recheck.setdefault(str(i), {'reason': info, 'first_seen': _now(), 'status': 'retry', 'last_checked': _now()})
+            else:  # 공개 일반작 — 나중에 공모전에 참가할 수 있다
+                recheck.setdefault(str(i), {'reason': 'normal', 'first_seen': _now(), 'status': 'normal', 'last_checked': _now(), 'last_run': execution_id})
         if stop_at:
             nid = stop_at - run + 1
             st.update(next_id=nid, last_checked_id=nid - 1, scan_done_at=_now(), scan_run_id=execution_id)
@@ -171,9 +177,14 @@ def handler(event, context):
     # ---- 2. 재확인(지우지 않는다; 공개 일반작은 주기만 늘린다) ----
     today = datetime.now(KST)
     # 같은 실행 안에서 다시 불려도(예산 반복) 이번 실행에서 본 번호는 다시 보지 않는다.
-    due = [k for k, v in recheck.items() if k not in contest and v.get('last_run') != execution_id and (
-        v.get('status') != 'normal'
-        or today - datetime.fromisoformat(v['last_checked']) >= timedelta(days=NORMAL_RECHECK_DAYS))]
+    def is_due(v):
+        if v.get('status') != 'normal':
+            return True
+        age = today - datetime.fromisoformat(v['first_seen'])
+        gap = timedelta(days=1 if age < timedelta(days=FRESH_DAYS) else NORMAL_RECHECK_DAYS)
+        return today - datetime.fromisoformat(v['last_checked']) >= gap - timedelta(hours=2)   # 매일 실행 시각의 오차 흡수
+
+    due = [k for k, v in recheck.items() if k not in contest and v.get('last_run') != execution_id and is_due(v)]
     rechecked = 0
     while done_scan and due and remaining() > BUDGET_MS:
         part, due = due[:CHUNK], due[CHUNK:]
