@@ -9,7 +9,9 @@
 - **상태를 S3 에 둔다.** 2025 는 SSM 이었는데 재확인 목록이 4KB 한도의 99.6%까지 찼다(백로그 #24).
 - **시간 예산.** 개막일에는 8시간에 번호가 1,550개 생겼다(한 번호 0.45초 → 하루치 22분, Lambda 15분 초과).
   남은 시간이 예산 아래로 내려가면 상태를 저장하고 `done: false` 로 끝낸다 — 상태 머신이 다시 부른다.
-- **끝 판정은 '잘못된 소설 번호' 연속 STOP_RUN 번**(백로그 #23 — 단일 이상 번호에 멈추지 않게).
+- **끝 판정은 '잘못된 소설 번호'가 처음 나오는 순간**(사용자 결정 — 최대한 빨리 멈추고 바로 수를 확인한다). 대신 멈춘 직후
+  노벨피아 표시 등록 수('총 N개 작품', 0회차까지 센 전체 — 같은 시각 실측 1,743 = 1,743)와 견주고, 모자라면 끝 번호부터
+  다시 훑는다(최대 MATCH_ROUNDS 번). 중간의 일시적 이상 번호에 멈춰도 이 확인이 잡는다.
 - **재확인 목록에서 번호를 지우지 않는다(2025 와 같은 의도).** 작가가 언제든 비공개로 돌렸다 풀 수 있다.
   대신 공개 일반작으로 확인된 번호는 NORMAL_RECHECK_DAYS 마다만 다시 본다(개막 직전 번호의 28%가 비공개라
   매일 전부 보면 한 달에 수천 개).
@@ -41,13 +43,12 @@ S3_BUCKET = os.environ['S3_BUCKET_NAME']
 YEAR = os.environ.get('CONTEST_YEAR', '2026')
 START_ID = int(os.environ.get('START_ID', '455000'))
 CONTEST_FIRST_ID = int(os.environ.get('CONTEST_FIRST_ID', '455325'))
-STOP_RUN = int(os.environ.get('STOP_RUN', '5'))
 WORKERS = int(os.environ.get('WORKERS', '4'))
 NORMAL_RECHECK_DAYS = int(os.environ.get('NORMAL_RECHECK_DAYS', '3'))
 FRESH_DAYS = int(os.environ.get('FRESH_DAYS', '7'))
 BUDGET_MS = int(os.environ.get('STOP_WHEN_REMAINING_MS', '90000'))
 CHUNK = 40
-LISTED_TOLERANCE = int(os.environ.get('LISTED_TOLERANCE', '5'))   # 훑는 몇 분 사이의 신규 등록
+MATCH_ROUNDS = int(os.environ.get('MATCH_ROUNDS', '5'))   # 노벨피아 표시 수와 맞을 때까지 다시 훑는 최대 횟수
 
 ID_LIST_KEY = f"contest_novel_ids_{YEAR}.json"      # 팬아웃이 읽는 목록(2025 와 같은 모양: 번호 배열)
 STATE_KEY = "state/progress.json"
@@ -174,38 +175,79 @@ def handler(event, context):
 
     new_contest = []
     done_scan = st.get('scan_done_at') is not None and st.get('scan_run_id') == execution_id
-    run = 0
-    nid = st['next_id']
-    # ---- 1. 새 번호 ----
-    while not done_scan and remaining() > BUDGET_MS:
-        ids = list(range(nid, nid + CHUNK))
-        stop_at = None
-        for i, (kind, info) in zip(ids, run_ids(ids)):
-            if kind == 'invalid':
-                run += 1
-                if run >= STOP_RUN:
-                    stop_at = i
-                    break
-                continue
-            run = 0
-            if kind == 'contest':
-                contest[str(i)] = {**info, 'found_at': _now()}
-                new_contest.append(i)
-            elif kind == 'retry':
-                recheck.setdefault(str(i), {'reason': info, 'first_seen': _now(), 'status': 'retry', 'last_checked': _now()})
-            else:  # 공개 일반작 — 개막일에 배지가 늦게 보인 사례가 있어 다시 본다(원인 미확인)
-                recheck.setdefault(str(i), {'reason': 'normal', 'first_seen': _now(), 'status': 'normal', 'last_checked': _now(),
-                                            'last_run': execution_id, 'seen_badges': (info or {}).get('badges')})
-        if stop_at:
-            nid = stop_at - run + 1
-            st.update(next_id=nid, last_checked_id=nid - 1, scan_done_at=_now(), scan_run_id=execution_id)
-            done_scan = True
-        else:
-            nid = ids[-1] + 1
-            st.update(next_id=nid, last_checked_id=nid - 1)
+
+    def save():
         _put(STATE_KEY, st)
         _put(CONTEST_META_KEY, contest)
         _put(RECHECK_KEY, recheck)
+
+    def record(i, kind, info):
+        if kind == 'contest':
+            contest[str(i)] = {**info, 'found_at': _now()}
+            new_contest.append(i)
+        elif kind == 'retry':
+            recheck.setdefault(str(i), {'reason': info, 'first_seen': _now(), 'status': 'retry', 'last_checked': _now()})
+        else:  # 공개 일반작 — 개막일에 배지가 늦게 보인 사례가 있어 다시 본다(원인 미확인)
+            recheck.setdefault(str(i), {'reason': 'normal', 'first_seen': _now(), 'status': 'normal', 'last_checked': _now(),
+                                        'last_run': execution_id, 'seen_badges': (info or {}).get('badges')})
+
+    def scan_to_frontier():
+        """다음 번호부터 '잘못된 소설 번호'가 **처음 나오는 순간** 멈춘다(사용자 결정 2026-10-01).
+
+        한 번에 WORKERS 개씩만 동시에 요청하고 번호 순서대로 판정하므로, 끝을 넘어 나가는 요청은 최대 WORKERS−1 개다.
+        중간의 일시적 이상 번호에 멈추더라도 뒤의 수량 확인이 모자람을 잡아 다시 훑게 한다. 끝까지 갔으면 True.
+        """
+        nid, n = st['next_id'], 0
+        while remaining() > BUDGET_MS:
+            ids = list(range(nid, nid + WORKERS))
+            for i, (kind, info) in zip(ids, run_ids(ids)):
+                if kind == 'invalid':
+                    st.update(next_id=i, last_checked_id=i - 1, scan_done_at=_now(), scan_run_id=execution_id)
+                    save()
+                    return True
+                record(i, kind, info)
+            nid = ids[-1] + 1
+            st.update(next_id=nid, last_checked_id=nid - 1)
+            n += 1
+            if n % 10 == 0:
+                save()
+        save()
+        return False
+
+    def recheck_fresh_normals():
+        """오늘 일반작으로 분류된 번호를 다시 본다(배지가 늦게 보이는 경우)."""
+        cutoff = datetime.now(KST) - timedelta(days=1)
+        ks = [k for k, v in recheck.items() if k not in contest and v.get('status') == 'normal'
+              and datetime.fromisoformat(v['first_seen']) >= cutoff]
+        for j in range(0, len(ks), CHUNK):
+            if remaining() <= BUDGET_MS:
+                break
+            part = ks[j:j + CHUNK]
+            for k, (kind, info) in zip(part, run_ids([int(x) for x in part])):
+                if kind == 'contest':
+                    v = recheck[k]
+                    contest[k] = {**info, 'found_at': _now(), 'via': 'recount', 'first_seen': v.get('first_seen'),
+                                  'was': 'normal', 'was_badges': v.get('seen_badges')}
+                    new_contest.append(int(k))
+                    v['status'] = 'contest'
+        save()
+
+    # ---- 1. 새 번호 → 노벨피아 표시 수와 견주고, 모자라면 다시(최대 MATCH_ROUNDS 번) ----
+    if not done_scan:
+        done_scan = scan_to_frontier()
+    listed, rounds = None, 0
+    while done_scan and rounds < MATCH_ROUNDS and remaining() > BUDGET_MS:
+        rounds += 1
+        listed = listed_total(sess[0])
+        if listed is None or len(contest) >= listed:
+            break
+        # 모자람: 확인하는 사이 등록된 작품 또는 배지가 늦게 보인 작품. 끝 번호부터 다시 훑고,
+        # 두 번째부터는 오늘 일반작으로 분류된 번호도 다시 본다.
+        _log(logging.INFO, execution_id, "Short of Novelpia count — rescanning.", round=rounds, ours=len(contest), listed=listed)
+        time.sleep(5)
+        scan_to_frontier()
+        if rounds >= 2:
+            recheck_fresh_normals()
 
     # ---- 2. 재확인(지우지 않는다; 공개 일반작은 주기만 늘린다) ----
     today = datetime.now(KST)
@@ -264,12 +306,10 @@ def handler(event, context):
 
     _put(ID_LIST_KEY, sorted(int(k) for k in contest))
     done = done_scan and not due
-    # 검증: 노벨피아 표시 수와 견준다. 훑는 사이에도 등록이 이어지므로 우리 쪽이 몇 편 적은 것은 시각 차이일 수 있다.
-    listed = listed_total(sess[0]) if done else None
-    if listed is not None and len(contest) < listed - LISTED_TOLERANCE:
-        _log(logging.WARNING, execution_id, "Collected fewer contest novels than Novelpia lists.",
-             ours=len(contest), listed=listed, short_by=listed - len(contest))
+    if listed is not None and len(contest) < listed:
+        _log(logging.WARNING, execution_id, "Collected fewer contest novels than Novelpia lists after retries.",
+             ours=len(contest), listed=listed, short_by=listed - len(contest), rounds=rounds)
     _log(logging.INFO, execution_id, "Contest ID collection pass finished.", done=done, last_checked_id=st['last_checked_id'],
          total_contest=len(contest), new_contest=len(new_contest), recheck_total=len(recheck),
-         rechecked=rechecked, recheck_left=len(due), authors_fetched=got, authors_pending=len(pending) - got, listed=listed)
+         rechecked=rechecked, recheck_left=len(due), authors_fetched=got, authors_pending=len(pending) - got, listed=listed, match_rounds=rounds)
     return {"done": done, "total_contest": len(contest), "listed_total": listed, "new_contest": len(new_contest), "last_checked_id": st['last_checked_id']}
