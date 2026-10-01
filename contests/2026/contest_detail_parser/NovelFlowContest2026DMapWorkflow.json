@@ -1,0 +1,101 @@
+{
+  "Comment": "2026 공모전 수집 — Distributed Map 판(SQS 큐·purge·완료 폴링 없음). 그림자 실행: {\"skip_discovery\": true, \"raw\": false, \"dry_run\": true, \"target_date\": \"YYYY-MM-DD\"}.",
+  "StartAt": "Defaults",
+  "TimeoutSeconds": 2700,
+  "States": {
+    "Defaults": {
+      "Type": "Pass",
+      "Parameters": {
+        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false}'), $$.Execution.Input, false)"
+      },
+      "Next": "SkipDiscovery?"
+    },
+    "SkipDiscovery?": {
+      "Type": "Choice",
+      "Comment": "그림자 실행은 운영 수집기 상태(S3)를 건드리지 않도록 건너뛴다.",
+      "Choices": [{ "Variable": "$.args.skip_discovery", "BooleanEquals": true, "Next": "ResolveDate" }],
+      "Default": "DiscoverIds"
+    },
+    "DiscoverIds": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-id-collector",
+      "Parameters": { "execution_id.$": "$$.Execution.Name" },
+      "ResultPath": "$.Discover",
+      "Retry": [{ "ErrorEquals": ["States.ALL"], "IntervalSeconds": 30, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Next": "IsDiscoveryDone?"
+    },
+    "IsDiscoveryDone?": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.Discover.done", "BooleanEquals": true, "Next": "ResolveDate" }],
+      "Default": "DiscoverIds"
+    },
+    "ResolveDate": {
+      "Type": "Task",
+      "Comment": "기록 날짜(실행 시작 − 12시간, 또는 target_date). 팬아웃 함수의 같은 규칙을 쓴다.",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-fanout",
+      "Parameters": {
+        "resolve_only": true,
+        "execution_id.$": "$$.Execution.Name",
+        "date.$": "$$.Execution.StartTime",
+        "target_date.$": "$.args.target_date"
+      },
+      "ResultPath": "$.Resolved",
+      "Next": "ParseMap"
+    },
+    "ParseMap": {
+      "Type": "Map",
+      "ItemReader": {
+        "Resource": "arn:aws:states:::s3:getObject",
+        "ReaderConfig": { "InputType": "JSON" },
+        "Parameters": { "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID", "Key": "contest_novel_ids_2026.json" }
+      },
+      "ItemBatcher": {
+        "MaxItemsPerBatch": 40,
+        "BatchInput": {
+          "execution_id.$": "$$.Execution.Name",
+          "date.$": "$.Resolved.date",
+          "raw.$": "$.args.raw"
+        }
+      },
+      "MaxConcurrency": 10,
+      "ToleratedFailurePercentage": 5,
+      "ItemProcessor": {
+        "ProcessorConfig": { "Mode": "DISTRIBUTED", "ExecutionType": "EXPRESS" },
+        "StartAt": "ParseBatch",
+        "States": {
+          "ParseBatch": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": { "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap", "Payload.$": "$" },
+            "OutputPath": "$.Payload",
+            "Retry": [{ "ErrorEquals": ["Lambda.TooManyRequestsException", "Lambda.ServiceException", "States.Timeout"], "IntervalSeconds": 10, "MaxAttempts": 2, "BackoffRate": 2 }],
+            "End": true
+          }
+        }
+      },
+      "ResultWriter": {
+        "Resource": "arn:aws:states:::s3:putObject",
+        "Parameters": { "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID", "Prefix": "dmap-results" }
+      },
+      "ResultPath": "$.Map",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Next": "Consolidate"
+    },
+    "Consolidate": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-consolidate-dmap",
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Name",
+        "date.$": "$.Resolved.date",
+        "manifest.$": "$.Map.ResultWriterDetails",
+        "dry_run.$": "$.args.dry_run"
+      },
+      "Retry": [{ "ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 60, "MaxAttempts": 2, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Next": "PipelineSuccess"
+    },
+    "PipelineFail": { "Type": "Fail" },
+    "PipelineSuccess": { "Type": "Succeed" }
+  }
+}

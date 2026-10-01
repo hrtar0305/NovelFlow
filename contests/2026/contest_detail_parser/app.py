@@ -54,6 +54,9 @@ def get_id_list_from_s3(event, context):
     """
     execution_id = event.get('execution_id', 'N/A')
     formatted_date = collection_date(event)
+    if event.get('resolve_only'):
+        # Distributed Map 경로: 날짜만 정하고 큐에는 보내지 않는다(Map 이 S3 목록을 직접 읽는다).
+        return {"date": formatted_date}
 
     try:
         logger.info(f"[{execution_id}] Attempting to read s3://{S3_BUCKET_NAME}/{S3_FILE_NAME}")

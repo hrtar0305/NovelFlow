@@ -325,3 +325,67 @@ def handler(event, context):
         'statusCode': 200,
         'processed_count': len(unique_items)
     }
+
+# --- Distributed Map 경로 -----------------------------------------------------------
+def _dmap_items(manifest, execution_id):
+    """ResultWriter 의 manifest → 자식 실행 출력들의 items. 실패한 자식이 있으면 그 수를 함께 돌려준다."""
+    s3 = boto3.client('s3')
+    man = json.loads(s3.get_object(Bucket=manifest['Bucket'], Key=manifest['Key'])['Body'].read())
+    prefix = man.get('DestinationBucket') or manifest['Bucket']
+    items, failed_ids, failed_children = [], [], 0
+    for kind, files in (man.get('ResultFiles') or {}).items():
+        for f in files:
+            rows = json.loads(s3.get_object(Bucket=prefix, Key=f['Key'])['Body'].read())
+            for row in rows:
+                if kind != 'SUCCEEDED':
+                    failed_children += 1
+                    continue
+                out = json.loads(row.get('Output') or '{}')
+                items += out.get('items') or []
+                failed_ids += out.get('failed') or []
+    _log(logging.INFO, execution_id, "Collected DMap results.", items=len(items), failed_ids=len(failed_ids), failed_children=failed_children)
+    return items, failed_ids, failed_children
+
+
+def _dedupe_prefer_real(items):
+    """같은 ID 가 둘이면(자식 Express 는 최소 1회 실행) 실데이터를 placeholder 보다 우선한다."""
+    best = {}
+    for it in items:
+        k = str(it.get('ID'))
+        if k not in best or (best[k].get('View', -1) < 0 <= it.get('View', -1)):
+            best[k] = it
+    return list(best.values())
+
+
+def handler_dmap(event, context):
+    """Distributed Map 결과를 적재한다. `dry_run` 이면 쓰지 않고 운영 테이블의 같은 날짜와 비교만 한다(그림자 실행)."""
+    execution_id = event.get('execution_id', 'N/A')
+    date = event['date']
+    items, failed_ids, failed_children = _dmap_items(event['manifest'], execution_id)
+    unique = _dedupe_prefer_real(items)
+    ids = json.loads(boto3.client('s3').get_object(Bucket=Config.STATE_BUCKET, Key='contest_novel_ids_2026.json')['Body'].read())
+    table = boto3.resource('dynamodb').Table(Config.DYNAMODB_TABLE_NAME)
+
+    if event.get('dry_run'):
+        prod, kw = {}, {'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(date)}
+        while True:
+            r = table.query(**kw)
+            for it in r['Items']:
+                prod[str(it['ID'])] = it
+            if 'LastEvaluatedKey' not in r:
+                break
+            kw['ExclusiveStartKey'] = r['LastEvaluatedKey']
+        mine = {str(i['ID']): i for i in unique}
+        diff_view = [k for k in mine if k in prod and abs(int(prod[k].get('View', 0)) - int(mine[k].get('View', 0))) > max(50, int(prod[k].get('View', 0)) * 0.05)]
+        report = {
+            'dry_run': True, 'date': date, 'expected': len(ids), 'collected': len(unique), 'failed_ids': len(failed_ids),
+            'failed_children': failed_children, 'prod_rows': len(prod),
+            'only_in_dmap': len(set(mine) - set(prod)), 'only_in_prod': len(set(prod) - set(mine)),
+            'view_far_apart': len(diff_view),   # 실행 시각이 달라 조금씩은 다르다 — 크게 다른 것만 센다
+        }
+        _log(logging.INFO, execution_id, "DMap dry-run comparison.", **report)
+        return report
+
+    _validate_data(execution_id, unique, len(ids))
+    _process_and_upload_data(table, execution_id, unique)
+    return {'statusCode': 200, 'processed_count': len(unique)}

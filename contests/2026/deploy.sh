@@ -149,6 +149,40 @@ orchestration() {
       \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\"]}}" >/dev/null
 }
 
+dmap() {
+  # Distributed Map 판(그림자 실행으로 운영과 비교한 뒤 교체한다). 운영 함수와 같은 코드·이미지, 입구만 다르다.
+  echo "== DMap 함수(파서·적재 입구만 다름)"
+  DIGEST=$(aws ecr describe-images --region $R --repository-name $ECR_REPO --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' --output text)
+  PENV="Variables={SQS_RESULT_QUEUE_URL=$RESULT_URL,RAW_HTML_BUCKET=$RAW_BUCKET,RAW_HTML_PREFIX=contest,CONTEST_YEAR=$Y}"
+  if exists aws lambda get-function --region $R --function-name ${F_PARSER}-dmap; then
+    aws lambda update-function-code --region $R --function-name ${F_PARSER}-dmap --image-uri "$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" >/dev/null
+    aws lambda wait function-updated --region $R --function-name ${F_PARSER}-dmap
+  else
+    aws lambda create-function --region $R --function-name ${F_PARSER}-dmap --package-type Image \
+      --code ImageUri="$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" --role $LAMBDA_ROLE \
+      --image-config 'Command=["parser.parse_dmap_batch"]' --timeout 600 --memory-size 512 --environment "$PENV" >/dev/null
+    aws lambda wait function-active --region $R --function-name ${F_PARSER}-dmap
+  fi
+  zip -qj "$BUILD/consolidate.zip" contest_detail_parser/consolidate_contest_data.py
+  upsert_zip ${F_CONSOLIDATE}-dmap "$BUILD/consolidate.zip" consolidate_contest_data.handler_dmap 600 512 \
+    "Variables={DYNAMODB_TABLE_NAME=$TABLE,SQS_RESULT_QUEUE_URL=$RESULT_URL,STATE_BUCKET=$BUCKET}"
+
+  echo "== 상태 머신 역할: 2026 버킷 읽기·쓰기(ItemReader·ResultWriter)"
+  aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name NovelFlowContest${Y}DMapS3 --policy-document "{
+    \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:ListMultipartUploadParts\",\"s3:AbortMultipartUpload\"],
+      \"Resource\":\"arn:aws:s3:::$BUCKET/*\"},{\"Effect\":\"Allow\",\"Action\":\"s3:ListBucket\",\"Resource\":\"arn:aws:s3:::$BUCKET\"}]}"
+
+  echo "== 상태 머신 ${SM_NAME%Workflow}DMapWorkflow"
+  DSM_ARN=arn:aws:states:$R:$ACC:stateMachine:${SM_NAME%Workflow}DMapWorkflow
+  DEF=$(sed "s/YOUR_AWS_REGION/$R/g; s/YOUR_AWS_ACCOUNT_ID/$ACC/g" contest_detail_parser/NovelFlowContest2026DMapWorkflow.json)
+  if exists aws stepfunctions describe-state-machine --region $R --state-machine-arn $DSM_ARN; then
+    aws stepfunctions update-state-machine --region $R --state-machine-arn $DSM_ARN --definition "$DEF" >/dev/null
+  else
+    aws stepfunctions create-state-machine --region $R --name ${SM_NAME%Workflow}DMapWorkflow --type STANDARD \
+      --role-arn arn:aws:iam::$ACC:role/$SFN_ROLE_NAME --definition "$DEF" >/dev/null
+  fi
+}
+
 schedule() {
   echo "== 스케줄러 역할에 2026 상태 머신 실행 권한(정책 새 버전)"
   OLD=$(aws iam list-policy-versions --policy-arn $SCHED_POLICY_ARN --query 'Versions[?!IsDefaultVersion].VersionId' --output text)
@@ -169,7 +203,8 @@ case "${1:-all}" in
   code) code ;;
   orchestration) orchestration ;;
   schedule) schedule ;;
+  dmap) dmap ;;
   all) infra; code; orchestration ;;   # 스케줄은 시험 실행이 통과한 뒤 따로 켠다
-  *) echo "usage: $0 [all|infra|code|orchestration|schedule]"; exit 1 ;;
+  *) echo "usage: $0 [all|infra|code|orchestration|schedule|dmap]"; exit 1 ;;
 esac
 echo "done: ${1:-all}"

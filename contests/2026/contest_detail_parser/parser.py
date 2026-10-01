@@ -235,3 +235,35 @@ def parse_contest_novel_details_batch(event, context):
     _log(logging.INFO, execution_id, "Batch processing complete.", success=success_count,
          placeholders=placeholder_count, failed=len(failures), total=len(records))
     return {"batchItemFailures": failures}
+
+
+def parse_dmap_batch(event, context):
+    """Distributed Map(ItemBatcher) 한 묶음 — SQS 대신 Step Functions 가 나눠 준다(2026-10 전환 준비).
+
+    입력: {"Items": [novel_id, ...], "BatchInput": {"execution_id", "date"(기록 날짜), "raw": 원본 적재 여부}}
+    출력: {"items": [...], "failed": [novel_id, ...]} — ResultWriter 가 S3 에 남기고 적재가 읽는다.
+    끝내 네트워크 오류인 작품은 failed 로 돌려준다(묶음 전체를 다시 돌리지 않는다). 적재의 수량 검증이 잡는다.
+    """
+    bi = event.get('BatchInput') or {}
+    execution_id, crawl_date = bi.get('execution_id', 'N/A'), bi.get('date')
+    ids = [str(x).strip() for x in event.get('Items') or []]
+    session = requests.Session()
+    session.headers.update({"User-Agent": Config.USER_AGENT})
+    results, failed, raw_batch = [], [], []
+    for novel_id in ids:
+        item = None
+        for attempt in range(Config.MAX_INTERNAL_RETRIES):
+            try:
+                item, pages, _ok = _parse_one(session, novel_id, crawl_date, execution_id)
+                raw_batch.append((novel_id, pages))
+                break
+            except requests.exceptions.RequestException as e:
+                _log(logging.WARNING, execution_id, f"Network error for {novel_id} (attempt {attempt + 1}): {e}", novel_id=novel_id)
+        if item is None:
+            failed.append(novel_id)
+        else:
+            results.append(item)
+    if bi.get('raw', True):
+        _upload_raw_batch(execution_id, raw_batch, crawl_date, context)
+    _log(logging.INFO, execution_id, "DMap batch complete.", total=len(ids), ok=len(results), failed=len(failed))
+    return {"items": results, "failed": failed}
