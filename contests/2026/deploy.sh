@@ -89,7 +89,7 @@ code() {
     "Variables={S3_BUCKET_NAME=$BUCKET,S3_FILE_NAME=contest_novel_ids_$Y.json,SQS_TASK_QUEUE_URL=$TASK_URL,SQS_RESULT_QUEUE_URL=$RESULT_URL}"
   upsert_zip $F_CHECK "$BUILD/check.zip" check_completion.handler 180 256 "Variables={SQS_RESULT_QUEUE_URL=$RESULT_URL}"
   upsert_zip $F_CONSOLIDATE "$BUILD/consolidate.zip" consolidate_contest_data.handler 600 512 \
-    "Variables={DYNAMODB_TABLE_NAME=$TABLE,SQS_RESULT_QUEUE_URL=$RESULT_URL}"
+    "Variables={DYNAMODB_TABLE_NAME=$TABLE,SQS_RESULT_QUEUE_URL=$RESULT_URL,STATE_BUCKET=$BUCKET}"
 
   PENV="Variables={SQS_RESULT_QUEUE_URL=$RESULT_URL,RAW_HTML_BUCKET=$RAW_BUCKET,RAW_HTML_PREFIX=contest,CONTEST_YEAR=$Y}"
   if exists aws lambda get-function --region $R --function-name $F_PARSER; then

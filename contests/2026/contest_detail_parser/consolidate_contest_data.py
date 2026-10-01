@@ -15,6 +15,9 @@ logger.setLevel(logging.INFO)
 class Config:
     """Houses all configuration variables for the consolidation script."""
     DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
+    # 작가 다른 작품 색인(ID 수집기가 유지). 비우면 붙이지 않는다.
+    STATE_BUCKET = os.environ.get('STATE_BUCKET')
+    AUTHOR_INDEX_KEY = 'state/author_works.json'
     SQS_RESULT_QUEUE_URL = os.environ.get('SQS_RESULT_QUEUE_URL')
     LOOP_TIMEOUT_SECONDS = 480  # Lambda 제한(600초)보다 짧게 — 루프가 먼저 끝나야 원인이 로그에 남는다
 
@@ -195,6 +198,32 @@ def _previous_views(dynamodb_table, date, execution_id):
     return prev, views
 
 
+def attach_author_works(items, index):
+    """작품 행에 작가의 다른 작품 번호를 원문 그대로 붙인다(기성 여부는 백엔드가 판정 — 적재 때 굳히지 않는다).
+
+    백엔드는 DynamoDB 읽기 권한만 있어 S3 색인을 직접 못 읽는다. 행마다 수십 바이트라 매일 붙여도 싸다.
+    색인에 없는 작가(아직 못 받음)는 속성을 싣지 않는다 — '다른 작품 없음'과 구별된다.
+    """
+    for item in items:
+        info = index.get(str(item.get('AuthorID')))
+        if info is None:
+            continue
+        item['AuthorOtherNovels'] = [n for n in info.get('novels', []) if str(n) != str(item.get('ID'))]
+        item['AuthorOtherMore'] = bool(info.get('more'))
+    return items
+
+
+def _load_author_index(execution_id):
+    if not Config.STATE_BUCKET:
+        return {}
+    try:
+        body = boto3.client('s3').get_object(Bucket=Config.STATE_BUCKET, Key=Config.AUTHOR_INDEX_KEY)['Body'].read()
+        return json.loads(body)
+    except Exception as e:  # noqa: BLE001 — 부가 정보라 적재를 막지 않는다
+        _log(logging.WARNING, execution_id, f"Author index unavailable: {e}")
+        return {}
+
+
 def _process_and_upload_data(dynamodb_table, execution_id, items):
     """Calculates rank, retention rate, and batch-writes items to DynamoDB."""
     if not items:
@@ -221,6 +250,7 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
     if prev_date:
         for item in processed_items:
             item['PrevDate'] = prev_date
+    attach_author_works(processed_items, _load_author_index(execution_id))
 
     _log(logging.INFO, execution_id, f"Writing {len(processed_items)} items to DynamoDB.")
     

@@ -50,6 +50,7 @@ STATE_KEY = "state/progress.json"
 RECHECK_KEY = "state/recheck_ids.json"
 CONTEST_META_KEY = "state/contest_ids.json"        # 번호 → 처음 찾은 시각·작가
 AUTHORS_DONE_KEY = "state/authors_fetched.json"    # 다른 작품을 받은 작가 번호들
+AUTHOR_INDEX_KEY = "state/author_works.json"       # 작가 → 다른 작품 번호들(적재가 작품 행에 붙인다)
 AUTHOR_KEY = "authors/{}.json"
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
@@ -126,6 +127,16 @@ def author_works(session, author_id, novel_no):
         if any(int(x.get('novel_no') or 0) < CONTEST_FIRST_ID for x in w.get('list') or []) or not w.get('is_next_page'):
             break
     return pages
+
+
+def summarize_author(pages):
+    """원본 페이지들 → {'novels': [번호...], 'more': 다음 쪽이 남았나}. 해석(기성 여부)은 하지 않는다."""
+    novels, more = set(), False
+    for p in pages:
+        w = (p.get('raw') or {}).get('writer_other_novel') or {}
+        novels |= {int(x['novel_no']) for x in w.get('list') or [] if x.get('novel_no')}
+        more = bool(w.get('is_next_page'))
+    return {'novels': sorted(novels), 'more': more}
 
 
 def handler(event, context):
@@ -206,6 +217,7 @@ def handler(event, context):
 
     # ---- 3. 작가 다른 작품(작가당 1회). 예산이 모자라 못 받은 작가는 다음 실행이 이어 받는다 ----
     fetched = set(_get(AUTHORS_DONE_KEY, []))
+    index = _get(AUTHOR_INDEX_KEY, {})
     pending = {}
     for k, meta in contest.items():
         aid = meta.get('author_id')
@@ -215,12 +227,16 @@ def handler(event, context):
     for aid, nno in pending.items():
         if remaining() < BUDGET_MS // 2:
             break
-        _put(AUTHOR_KEY.format(aid), {'author_id': aid, 'fetched_at': _now(), 'novel_no': nno, 'pages': author_works(sess[0], aid, nno)})
+        pages = author_works(sess[0], aid, nno)
+        _put(AUTHOR_KEY.format(aid), {'author_id': aid, 'fetched_at': _now(), 'novel_no': nno, 'pages': pages})
+        index[aid] = summarize_author(pages)
         fetched.add(aid)
         got += 1
         if got % 50 == 0:
             _put(AUTHORS_DONE_KEY, sorted(fetched))
+            _put(AUTHOR_INDEX_KEY, index)
     _put(AUTHORS_DONE_KEY, sorted(fetched))
+    _put(AUTHOR_INDEX_KEY, index)
 
     _put(ID_LIST_KEY, sorted(int(k) for k in contest))
     done = done_scan and not due
