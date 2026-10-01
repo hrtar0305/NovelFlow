@@ -1,5 +1,6 @@
 import json
 import boto3
+from boto3.dynamodb.conditions import Key
 import logging
 import os
 import time
@@ -147,6 +148,53 @@ def _calculate_and_store_tag_stats(dynamodb_table, execution_id, items):
     except Exception as e:
         _log(logging.ERROR, execution_id, f"Failed to store tag stats for {date}. Error: {e}")
 
+def daily_rank(items, prev_views):
+    """일간 순위(면접 D22 규칙). 대표 순위로 쓴다 — 누적 순위(`Rank`)는 공모전 중반부터 거의 움직이지 않는다.
+
+    - `ViewDelta` = 오늘 누적 조회 − 직전 수집일 누적 조회. **'누적 조회수 증가량'이지 인증 조회수가 아니다.**
+    - 직전 **유효** 측정값(-1 아님)이 없으면 계산하지 않는다(속성을 싣지 않음 → 화면 NEW). 신규 등록·부활(전날
+      placeholder)·늦게 찾은 작품을 모두 덮는다. 전날이 -1 인데 0 으로 치면 누적 전체가 하루치로 잡힌다.
+    - 정렬: 증가 큰 순 → 누적 조회 많은 순 → 번호 작은 순(동점이 수천 건이라 결정적이어야 순위선이 요동치지 않는다).
+    - 모수: 값이 있는 전체 참가작. 다른 작품이 사라지기만 해도 순위가 오를 수 있다(각주감).
+    `prev_views`: {ID: 직전 수집일 View}. 값을 바꾼 items 를 그대로 돌려준다.
+    """
+    ranked = []
+    for item in items:
+        cur, prev = item.get('View'), prev_views.get(str(item.get('ID')))
+        item.pop('ViewDelta', None)
+        item.pop('DailyRank', None)
+        if isinstance(cur, int) and cur >= 0 and prev is not None and prev >= 0:
+            item['ViewDelta'] = cur - prev
+            ranked.append(item)
+    ranked.sort(key=lambda x: (-x['ViewDelta'], -x['View'], int(x['ID'])))
+    for i, item in enumerate(ranked, 1):
+        item['DailyRank'] = i
+    return items
+
+
+def _previous_views(dynamodb_table, date, execution_id):
+    """실제 직전 수집일(달력 −1 아님 — DECISIONS 2026-07-01)과 그날의 {ID: View}."""
+    meta = dynamodb_table.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}).get('Item') or {}
+    earlier = sorted(d for d in (meta.get('dates') or set()) if d < date)
+    if not earlier:
+        _log(logging.INFO, execution_id, "No previous collection date — DailyRank is empty for this date.", date=date)
+        return None, {}
+    prev = earlier[-1]
+    views, kw = {}, {
+        'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(prev),
+        'ProjectionExpression': 'ID, #v', 'ExpressionAttributeNames': {'#v': 'View'},
+    }
+    while True:
+        r = dynamodb_table.query(**kw)
+        for it in r['Items']:
+            views[str(it['ID'])] = int(it['View'])
+        if 'LastEvaluatedKey' not in r:
+            break
+        kw['ExclusiveStartKey'] = r['LastEvaluatedKey']
+    _log(logging.INFO, execution_id, "Loaded previous collection.", prev_date=prev, items=len(views))
+    return prev, views
+
+
 def _process_and_upload_data(dynamodb_table, execution_id, items):
     """Calculates rank, retention rate, and batch-writes items to DynamoDB."""
     if not items:
@@ -166,6 +214,13 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
     for i, item in enumerate(sorted_items):
         item['Rank'] = i + 1
         processed_items.append(item)
+
+    # 3. 일간 순위(대표 순위) — 직전 수집일 대비 누적 조회 증가
+    prev_date, prev_views = _previous_views(dynamodb_table, processed_items[0]['Date'], execution_id)
+    daily_rank(processed_items, prev_views)
+    if prev_date:
+        for item in processed_items:
+            item['PrevDate'] = prev_date
 
     _log(logging.INFO, execution_id, f"Writing {len(processed_items)} items to DynamoDB.")
     
