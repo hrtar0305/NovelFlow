@@ -70,6 +70,14 @@ table = dynamodb.Table('NovelRanks')
 ddb_client = boto3.client('dynamodb', region_name='ap-northeast-2',
                           config=BotoConfig(max_pool_connections=32))
 contest_table = dynamodb.Table('ContestStats2025')
+# 연도 → 공모전 테이블. 2026 부터는 NovelFlow 이름(DECISIONS 2026-10-01). 없는 연도는 404.
+CONTEST_TABLES = {
+    2025: contest_table,
+    2026: dynamodb.Table(os.environ.get('CONTEST_TABLE_2026', 'NovelFlowContest2026')),
+}
+# 기성 작가 판정의 기준선: 그해 공모전 첫 참가작 번호. 이보다 작은 다른 작품이 있으면 기성이다.
+# 신인이 공모전에 두 작품을 함께 내도 기성이 되지 않게 '다른 작품이 있나'가 아니라 '그 전 작품이 있나'로 본다.
+CONTEST_FIRST_NOVEL_ID = {2026: 455325}
 NOVELPIA_COVER_URL_MARKER = "images.novelpia.com/imagebox/cover/"
 
 # 2025 공모전 수상작 ID 로드
@@ -95,6 +103,16 @@ AWARD_WINNERS_2025 = {
     "본선": load_ids_from_env('FINALIST_IDS_2025')
 }
 CONTEST_SHOWCASE_IDS_2025 = load_ordered_ids_from_env('CONTEST_SHOWCASE_IDS_2025')
+# 2026 수상작은 발표 후 같은 이름 규칙의 환경변수(…_IDS_2026)로 넣는다. 그 전에는 비어 있다.
+AWARD_WINNERS_2026 = {
+    "대상": load_ids_from_env('GRAND_PRIZE_IDS_2026'),
+    "최우수상": load_ids_from_env('TOP_EXCELLENCE_AWARD_IDS_2026'),
+    "탑툰상": load_ids_from_env('TOPTOON_AWARD_IDS_2026'),
+    "우수상": load_ids_from_env('WINNER_AWARD_IDS_2026'),
+    "특별상": load_ids_from_env('SPECIAL_AWARD_IDS_2026'),
+    "본선": load_ids_from_env('FINALIST_IDS_2026')
+}
+CONTEST_AWARDS = {2025: AWARD_WINNERS_2025, 2026: AWARD_WINNERS_2026}
 
 def get_default_contest_showcase_ids_2025():
     ordered_ids = []
@@ -507,23 +525,51 @@ def _enrich_novel_rank_items(items: list[dict], previous_items: list[dict]) -> l
         item['like_to_view_ratio'] = (item.get('Like', 0) or 0) / item['View'] if item.get('View') else 0
     return items
 
-def _get_contest_award(novel_id: str) -> str | None:
-    for award_name, ids_set in AWARD_WINNERS_2025.items():
+def _contest_table_for(year: int):
+    tbl = CONTEST_TABLES.get(year)
+    if tbl is None:
+        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    return tbl
+
+def _get_contest_award(novel_id: str, year: int = 2025) -> str | None:
+    for award_name, ids_set in CONTEST_AWARDS.get(year, {}).items():
         if novel_id in ids_set:
             return award_name
     return None
 
-def _get_latest_contest_date() -> str | None:
-    db_response = contest_table.get_item(
-        Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
-    )
-    item = db_response.get('Item')
-    if item and 'dates' in item and item['dates']:
-        return sorted(list(item['dates']), reverse=True)[0]
-    return None
+def _contest_veteran(item: dict, year: int) -> bool | None:
+    """기성 작가 여부. 원문은 적재가 붙인 `AuthorOtherNovels`(작가의 다른 작품 번호)·`AuthorOtherMore`.
 
-def _get_contest_available_dates_desc() -> list[str]:
-    db_response = contest_table.get_item(
+    공모전 첫 참가작 번호보다 작은 다른 작품이 하나라도 있으면 True. 없고 더 볼 쪽도 없으면 False.
+    색인에 아직 없는 작가이거나(속성 없음) 다음 쪽이 남았는데 못 찾았으면 None(모름)이다.
+    """
+    first = CONTEST_FIRST_NOVEL_ID.get(year)
+    novels = item.get('AuthorOtherNovels')
+    if first is None or novels is None:
+        return None
+    if any(int(n) < first for n in novels):
+        return True
+    return None if item.get('AuthorOtherMore') else False
+
+def _decorate_contest_item(item: dict, year: int, previous_item: dict | None = None) -> dict:
+    """2026 부터의 해석값을 붙인다(원문은 그대로 두고). 2025 행에는 원문이 없어 전부 None 이 된다."""
+    item['daily_rank'] = item.get('DailyRank')
+    prev_rank = (previous_item or {}).get('DailyRank')
+    item['daily_rank_change'] = (prev_rank - item['DailyRank']) if (prev_rank is not None and item.get('DailyRank') is not None) else (
+        'New' if item.get('DailyRank') is not None and previous_item is not None and prev_rank is None else None)
+    item['serial_status'] = _derive_serial_status(item)
+    item['is_veteran'] = _contest_veteran(item, year)
+    item['life_pick_rank'] = _life_pick_rank(item)
+    item['badges'] = _badge_labels(item)
+    item['serial_days'] = item.get('SerialDays') or None
+    return item
+
+def _get_latest_contest_date(tbl=None) -> str | None:
+    dates = _get_contest_available_dates_desc(tbl)
+    return dates[0] if dates else None
+
+def _get_contest_available_dates_desc(tbl=None) -> list[str]:
+    db_response = (tbl or contest_table).get_item(
         Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
     )
     item = db_response.get('Item')
@@ -531,8 +577,8 @@ def _get_contest_available_dates_desc() -> list[str]:
         return sorted(list(item['dates']), reverse=True)
     return []
 
-def _get_previous_contest_date(target_date: str) -> str | None:
-    available_dates = _get_contest_available_dates_desc()
+def _get_previous_contest_date(target_date: str, tbl=None) -> str | None:
+    available_dates = _get_contest_available_dates_desc(tbl)
     try:
         idx = available_dates.index(target_date)
         if idx + 1 < len(available_dates):
@@ -681,6 +727,15 @@ class ContestNovelData(BaseModel):
     award: Optional[str] = Field(None, description="수상 내역 (예: 대상, 최우수상, 본선 진출)")
     is_new: bool = Field(False, description="신규 진입 여부")
     is_adult: bool = Field(False, description="성인 등급 여부. 크롤러가 상세 페이지 등급 배지로 판정한 값이며, 표지 표시 정책에 쓰인다")
+    # --- 2026 부터(2025 는 None) ---
+    daily_rank: Optional[int] = Field(None, description="일간 순위: 직전 수집일 대비 누적 조회 증가 순위(적재 시 확정)")
+    daily_rank_change: Optional[Any] = Field(None, description="일간 순위 변동. 숫자 또는 'New'")
+    serial_status: Optional[str] = None
+    serial_days: Optional[str] = None
+    life_pick_rank: Optional[int] = None
+    badges: List[str] = Field(default_factory=list)
+    is_veteran: Optional[bool] = Field(None, description="기성 작가(공모전 시작 전 작품이 있음). 모르면 None")
+    age_rating: Optional[str] = None
 
 class NovelRankingShowcaseResponse(BaseModel):
     latest_date: str
@@ -1064,10 +1119,9 @@ def get_contest_latest_date(year: int, response: Response):
     """
     공모전 데이터가 존재하는 가장 최근 날짜를 조회합니다.
     """
-    if year != 2025:
-        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    tbl = _contest_table_for(year)
     try:
-        db_response = contest_table.get_item(
+        db_response = tbl.get_item(
             Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
         )
         item = db_response.get('Item')
@@ -1084,10 +1138,9 @@ def get_contest_available_dates(year: int, response: Response):
     """
     공모전 데이터가 존재하는 모든 날짜 목록을 조회합니다.
     """
-    if year != 2025:
-        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    tbl = _contest_table_for(year)
     try:
-        db_response = contest_table.get_item(
+        db_response = tbl.get_item(
             Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}
         )
         item = db_response.get('Item')
@@ -1100,10 +1153,12 @@ def get_contest_available_dates(year: int, response: Response):
 
 # 공모전 랭킹 리스트 뷰에서 실제 사용하는 필드만 조회 (Synopsis, 에피소드 조회수 등 제외)
 # 'Date', 'View', 'Like', 'Rank'는 DynamoDB 예약어이므로 ExpressionAttributeNames 사용
-_CONTEST_LIST_PROJ = 'ID, #dt, Title, AuthorName, AuthorID, #vw, #lk, Fav, Alr, Eps, Tags, ThumbnailURL, #rk'
+_CONTEST_LIST_PROJ = ('ID, #dt, Title, AuthorName, AuthorID, #vw, #lk, Fav, Alr, Eps, Tags, ThumbnailURL, #rk, '
+                      # 2026 부터 적재가 싣는 값(2025 행에는 없어 투영에서 그냥 빠진다)
+                      'ViewDelta, DailyRank, IsAdult, Badges, SerialStatus, SerialDays, AuthorOtherNovels, AuthorOtherMore')
 _CONTEST_LIST_NAMES = {'#dt': 'Date', '#vw': 'View', '#lk': 'Like', '#rk': 'Rank'}
 
-def _fetch_all_contest_items(target_date: str, projection: str | None = None, expr_names: dict | None = None) -> list:
+def _fetch_all_contest_items(target_date: str, projection: str | None = None, expr_names: dict | None = None, tbl=None) -> list:
     """지정 날짜의 전체 공모전 항목을 페이지네이션으로 조회합니다."""
     items = []
     query_args = {
@@ -1115,7 +1170,7 @@ def _fetch_all_contest_items(target_date: str, projection: str | None = None, ex
     if expr_names:
         query_args['ExpressionAttributeNames'] = expr_names
     while True:
-        resp = contest_table.query(**query_args)
+        resp = tbl.query(**query_args)
         items.extend(resp.get('Items', []))
         if 'LastEvaluatedKey' not in resp:
             break
@@ -1128,13 +1183,21 @@ def get_contest_showcase(year: int, response: Response):
     최신 공모전 snapshot에서 운영자가 지정한 showcase 작품만 반환합니다.
     날짜별 테이블 탐색과 분리된 영역이므로 항상 최신 데이터만 사용합니다.
     """
-    if year != 2025:
-        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    tbl = _contest_table_for(year)
 
     try:
-        latest_date = _get_latest_contest_date()
+        latest_date = _get_latest_contest_date(tbl)
         if not latest_date:
             raise HTTPException(status_code=404, detail="No latest date found for contest.")
+
+        if year != 2025:
+            # 수상작 발표 전: 쇼케이스는 그날 일간 순위 상위(없으면 누적 조회 상위)로 채운다.
+            items = _fetch_all_contest_items(latest_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl=tbl)
+            items = [i for i in items if (i.get('View') or 0) >= 0]
+            items.sort(key=lambda i: (i.get('DailyRank') is None, i.get('DailyRank') or 0, -(i.get('View') or 0)))
+            top = [_decorate_contest_item(i, year) for i in items[:11]]
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
+            return {"latest_date": latest_date, "items": _apply_content_policy_all(_apply_daily_thumbnail_fallback_to_contest_items(top))}
 
         configured_showcase_ids = get_contest_showcase_ids_2025()
 
@@ -1142,10 +1205,10 @@ def get_contest_showcase(year: int, response: Response):
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return {"latest_date": latest_date, "items": []}
 
-        previous_date = _get_previous_contest_date(latest_date)
+        previous_date = _get_previous_contest_date(latest_date, tbl)
         with ThreadPoolExecutor(max_workers=2) as executor:
-            future_latest = executor.submit(_fetch_all_contest_items, latest_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES)
-            future_previous = executor.submit(_fetch_all_contest_items, previous_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES) if previous_date else None
+            future_latest = executor.submit(_fetch_all_contest_items, latest_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl)
+            future_previous = executor.submit(_fetch_all_contest_items, previous_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl) if previous_date else None
             latest_items = future_latest.result()
             previous_items = future_previous.result() if future_previous else []
 
@@ -1157,7 +1220,7 @@ def get_contest_showcase(year: int, response: Response):
         seen_ids = set()
         def append_showcase_item(item: dict) -> None:
             previous_item = previous_item_by_id.get(item['ID'])
-            item['award'] = _get_contest_award(item['ID'])
+            item['award'] = _get_contest_award(item['ID'], year)
             item['view_change'] = (item.get('View', 0) or 0) - (previous_item.get('View', 0) or 0) if previous_item else (item.get('View', 0) or 0)
             item['rank_change'] = None
             item['is_new'] = False
@@ -1173,7 +1236,7 @@ def get_contest_showcase(year: int, response: Response):
 
         winner_candidates = [
             item for item in latest_items
-            if item['ID'] not in seen_ids and _get_contest_award(item['ID']) == '우수상'
+            if item['ID'] not in seen_ids and _get_contest_award(item['ID'], year) == '우수상'
         ]
         winner_candidates.sort(key=lambda item: item.get('View', 0) or 0, reverse=True)
         for item in winner_candidates:
@@ -1196,13 +1259,12 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
     """
     지정된 연도의 특정 날짜 공모전 소설 데이터를 조회합니다.
     """
-    if year != 2025:
-        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    tbl = _contest_table_for(year)
 
     # 전날 날짜 산출 (available_dates_list 조회)
     available_dates_list = []
     try:
-        dates_response = contest_table.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'})
+        dates_response = tbl.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'})
         dates_item = dates_response.get('Item')
         if dates_item and 'dates' in dates_item:
             available_dates_list = sorted(list(dates_item['dates']), reverse=True)
@@ -1220,8 +1282,8 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
     try:
         # 현재 날짜 + 전날 DynamoDB 쿼리 병렬 실행 (리스트 뷰에 필요한 필드만 투영)
         with ThreadPoolExecutor(max_workers=2) as executor:
-            future_current = executor.submit(_fetch_all_contest_items, date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES)
-            future_prev = executor.submit(_fetch_all_contest_items, previous_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES) if previous_date else None
+            future_current = executor.submit(_fetch_all_contest_items, date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl)
+            future_prev = executor.submit(_fetch_all_contest_items, previous_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl) if previous_date else None
             current_day_items = future_current.result()
             previous_day_items = future_prev.result() if future_prev else []
 
@@ -1232,12 +1294,10 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
 
         for item in current_day_items:
             previous_item = previous_day_map.get(item['ID'])
-            item['award'] = None
-            for award_name, ids_set in AWARD_WINNERS_2025.items():
-                if item['ID'] in ids_set:
-                    item['award'] = award_name
-                    break
-            item['view_change'] = _contest_item_view_change(item, previous_item)
+            item['award'] = _get_contest_award(item['ID'], year)
+            # 2026 은 적재가 저장한 조회 증가(직전 유효 측정값이 없으면 속성 없음 → 0, NEW 는 daily_rank 가 없음으로 드러난다)
+            item['view_change'] = item['ViewDelta'] if 'ViewDelta' in item else (0 if year != 2025 else _contest_item_view_change(item, previous_item))
+            _decorate_contest_item(item, year, previous_item)
             item['is_new'] = False
             if previous_item and previous_item.get('Rank') is not None:
                 previous_rank = previous_item['Rank']
@@ -1263,11 +1323,10 @@ def get_latest_contest_novel_details(year: int, novel_id: str, response: Respons
     특정 공모전 소설의 가장 최근 전체 데이터를 조회합니다.
     """
     _reject_if_blocked(novel_id)
-    if year != 2025:
-        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    tbl = _contest_table_for(year)
 
     try:
-        db_response = contest_table.query(
+        db_response = tbl.query(
             KeyConditionExpression=Key('ID').eq(novel_id),
             ScanIndexForward=False,
             Limit=1
@@ -1276,17 +1335,17 @@ def get_latest_contest_novel_details(year: int, novel_id: str, response: Respons
         if items:
             latest_item = json.loads(json.dumps(items[0], cls=DecimalEncoder))
             # 수상 내역 추가
-            latest_item['award'] = None
-            for award_name, ids_set in AWARD_WINNERS_2025.items():
-                if latest_item['ID'] in ids_set:
-                    latest_item['award'] = award_name
-                    break
+            latest_item['award'] = _get_contest_award(latest_item['ID'], year)
+            _decorate_contest_item(latest_item, year)
+            latest_item.update(_compute_retention_rates(latest_item))   # 2026: 회차 30 이상만 원재료가 있다
             # 프론트엔드에서 필요한 필드 추가
             latest_item['Rank'] = latest_item.get('Rank', 0)
             latest_item['view_change'] = 0
             latest_item['is_new'] = False
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
-            return _apply_content_policy(_apply_daily_thumbnail_fallback_to_contest_item(latest_item))
+            latest_item = _apply_content_policy(_apply_daily_thumbnail_fallback_to_contest_item(latest_item))
+            latest_item['age_rating'] = _age_rating(latest_item)   # is_adult 는 정책 함수가 붙인다
+            return latest_item
         else:
             raise HTTPException(status_code=404, detail="Contest novel not found")
     except ClientError as e:
@@ -1298,10 +1357,9 @@ def get_contest_novel_available_dates(year: int, novel_id: str, response: Respon
     특정 공모전 소설의 데이터가 존재하는 모든 날짜 목록을 조회합니다.
     """
     _reject_if_blocked(novel_id)
-    if year != 2025:
-        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    tbl = _contest_table_for(year)
     try:
-        db_response = contest_table.query(
+        db_response = tbl.query(
             KeyConditionExpression=Key('ID').eq(novel_id),
             ProjectionExpression='#d',
             ExpressionAttributeNames={'#d': 'Date'}
@@ -1322,15 +1380,14 @@ def get_contest_novel_trend(year: int, novel_id: str, start_date: str, end_date:
     데이터가 없는 날짜는 null 값으로 채워서 반환합니다.
     """
     _reject_if_blocked(novel_id)
-    if year != 2025:
-        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    tbl = _contest_table_for(year)
 
     try:
         start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
         end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
 
         # DynamoDB에서 해당 기간의 실제 데이터 조회
-        db_response = contest_table.query(
+        db_response = tbl.query(
             KeyConditionExpression=Key('ID').eq(novel_id) & Key('Date').between(start_date_dt.strftime('%Y-%m-%d'), end_date_dt.strftime('%Y-%m-%d'))
         )
         items = json.loads(json.dumps(db_response.get('Items', []), cls=DecimalEncoder))
@@ -1375,11 +1432,10 @@ def get_contest_tags_by_date(year: int, date: str, response: Response):
     """
     특정 날짜의 공모전 태그 랭킹 데이터를 조회합니다.
     """
-    if year != 2025:
-        raise HTTPException(status_code=404, detail=f"Contest data for year {year} not found.")
+    tbl = _contest_table_for(year)
 
     try:
-        db_response = contest_table.get_item(Key={'ID': f"TAG_STATS#{date}", 'Date': date})
+        db_response = tbl.get_item(Key={'ID': f"TAG_STATS#{date}", 'Date': date})
         item = db_response.get('Item')
         if not item:
             raise HTTPException(status_code=404, detail="No tag statistics found for the given date.")
