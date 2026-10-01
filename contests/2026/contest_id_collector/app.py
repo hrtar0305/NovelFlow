@@ -246,7 +246,7 @@ def handler(event, context):
         _log(logging.INFO, execution_id, "Short of Novelpia count — rescanning.", round=rounds, ours=len(contest), listed=listed)
         time.sleep(5)
         scan_to_frontier()
-        if rounds >= 2:
+        if rounds == 2:   # 한 번이면 된다 — 매 회차 하면 400여 개를 거듭 보느라 13분이 걸렸다(2026-10-01 실측)
             recheck_fresh_normals()
 
     # ---- 2. 재확인(지우지 않는다; 공개 일반작은 주기만 늘린다) ----
