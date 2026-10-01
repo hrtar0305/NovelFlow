@@ -224,6 +224,45 @@ def _load_author_index(execution_id):
         return {}
 
 
+def daily_tag_stats(items):
+    """2026 태그 점수 — **일간 순위 기준**(대표 순위와 통일, 사용자 결정 2026-10-02). 데일리의 2-track 과 같은 식이다.
+
+    - 인기 점수 = Σ 1/ln(DailyRank+1), 등장 = 일간 순위가 있는 작품 중 그 태그를 단 수, 상위 100 = DailyRank ≤ 100.
+    - 상위권 집중도는 백엔드가 계산한다 — 데일리는 모수가 500 이라 '나머지 400'이 고정이지만 공모전은 순위가 매겨진
+      작품 수가 날마다 달라 `RankedTotal` 을 함께 싣는다(나머지 = RankedTotal − 100).
+    - 등장 2회 미만 태그는 뺀다(데일리와 같은 노이즈 제거). 일간 순위가 없는 날(첫 수집일)은 None.
+    """
+    ranked = [i for i in items if isinstance(i.get('DailyRank'), int)]
+    if not ranked:
+        return None
+    counts, top100, power = {}, {}, {}
+    for it in ranked:
+        r = it['DailyRank']
+        w = 1 / math.log(r + 1)
+        for tag in it.get('Tags') or []:
+            counts[tag] = counts.get(tag, 0) + 1
+            power[tag] = power.get(tag, 0) + w
+            if r <= 100:
+                top100[tag] = top100.get(tag, 0) + 1
+    for t in [t for t, c in counts.items() if c < 2]:
+        counts.pop(t, None); top100.pop(t, None); power.pop(t, None)
+    return {'TagCounts': counts, 'TagCountsTop100': top100, 'TagWeightedScoresLogarithmic': power, 'RankedTotal': len(ranked)}
+
+
+def _store_daily_tag_stats(dynamodb_table, execution_id, items):
+    stats = daily_tag_stats(items)
+    if stats is None:
+        _log(logging.INFO, execution_id, "No DailyRank yet — skipping daily tag stats.")
+        return
+    date = items[0]['Date']
+    dynamodb_table.put_item(Item={
+        'ID': f'DAILY_TAG_STATS#{date}', 'Date': date, 'DataType': 'CONTEST_DAILY_TAG_STATS',
+        'TagCounts': stats['TagCounts'], 'TagCountsTop100': stats['TagCountsTop100'], 'RankedTotal': stats['RankedTotal'],
+        'TagWeightedScoresLogarithmic': {k: Decimal(str(v)) for k, v in stats['TagWeightedScoresLogarithmic'].items()},
+    })
+    _log(logging.INFO, execution_id, f"Stored daily tag stats for {date}.", tags=len(stats['TagCounts']), ranked=stats['RankedTotal'])
+
+
 def _process_and_upload_data(dynamodb_table, execution_id, items):
     """Calculates rank, retention rate, and batch-writes items to DynamoDB."""
     if not items:
@@ -260,7 +299,11 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
     _log(logging.INFO, execution_id, "Batch write to DynamoDB complete.")
     
     # --- Calculate and store tag statistics ---
-    _calculate_and_store_tag_stats(dynamodb_table, execution_id, processed_items)
+    _calculate_and_store_tag_stats(dynamodb_table, execution_id, processed_items)   # 2025 식 3-track(누적 순위) — 비교용으로 남긴다
+    try:
+        _store_daily_tag_stats(dynamodb_table, execution_id, processed_items)       # 2026 대표: 일간 순위 2-track
+    except Exception as e:  # noqa: BLE001 — 통계는 원본에서 다시 계산할 수 있어 적재를 막지 않는다
+        _log(logging.ERROR, execution_id, f"Failed to store daily tag stats: {e}")
 
     # --- Update the CONTEST_AVAILABLE_DATES item ---
     # This must happen only after the main data has been successfully written.
