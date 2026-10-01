@@ -7,6 +7,7 @@ import NovelHeader from '../components/novel/NovelHeader';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { describeContestRank } from '../utils/currentRank';
 import { formatMan, formatRatio } from '../utils/format';
+import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
 import MetricsPanel from '../components/novel/MetricsPanel';
 import { buildMetricPoints } from '../utils/metricSeries';
 
@@ -16,7 +17,8 @@ import { buildMetricPoints } from '../utils/metricSeries';
  * 전일 대비는 실제 직전 수집일 기준이다(DECISIONS 2026-07-01).
  */
 const ContestNovelDetailPage = () => {
-  const { year = '2025', novelId } = useParams<{ year: string; novelId: string }>();
+  const { year = LATEST_CONTEST_YEAR, novelId } = useParams<{ year: string; novelId: string }>();
+  const daily = contestConfig(year).headline === 'daily';
   const {
     startDate, endDate, setStartDate, setEndDate, trendData, dataStart, details, loading, error,
     minDate, maxDate, novelAvailableDatesSet, fetchTrendData,
@@ -31,10 +33,10 @@ const ContestNovelDetailPage = () => {
     let cancelled = false;
     const end = parseISO(detailDate);
     getContestNovelTrend(parseInt(year, 10), novelId, format(subDays(end, 10), 'yyyy-MM-dd'), detailDate)
-      .then(r => { if (!cancelled) setHead({ id: novelId, series: (r.data || []).map((d: { Date: string; Rank: number | null }) => ({ Date: d.Date, Ranking: d.Rank })) }); })
+      .then(r => { if (!cancelled) setHead({ id: novelId, series: (r.data || []).map((d: { Date: string; Rank: number | null; DailyRank?: number | null }) => ({ Date: d.Date, Ranking: daily ? (d.DailyRank ?? null) : d.Rank })) }); })
       .catch(() => { /* 변동만 비워 둔다 */ });
     return () => { cancelled = true; };
-  }, [year, novelId, detailDate]);
+  }, [year, novelId, detailDate, daily]);
   const current = useMemo(() => describeContestRank({
     detailDate, detailRank: (details as { Ranking?: number } | null)?.Ranking,
     series: head && head.id === novelId ? head.series : [],
@@ -76,7 +78,8 @@ const ContestNovelDetailPage = () => {
         current={current}
         backTo={{ to: `/contests/${year}`, label: `우주최강 공모전 ${year}` }}
         tagHref={t => `/contests/${year}?tag=${encodeURIComponent(t)}`}
-        byExtra={<span className="detail-head__contest">우주최강 공모전 {year}{award ? <> <b className={award === '본선' ? undefined : 'award-text'}>{award}</b></> : null}</span>}
+        byExtra={<span className="detail-head__contest">우주최강 공모전 {year}{award ? <> <b className={award === '본선' ? undefined : 'award-text'}>{award}</b></> : null}
+          {(details as { is_veteran?: boolean | null }).is_veteran === true ? ' · 기성 작가' : (details as { is_veteran?: boolean | null }).is_veteran === false ? ' · 신인 작가' : null}</span>}
         nums={[
           { label: '조회', value: formatMan(details.View) },
           { label: '추천', value: formatMan(details.Like) },

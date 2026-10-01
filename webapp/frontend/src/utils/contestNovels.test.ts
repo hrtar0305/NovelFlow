@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sortContestNovels, nextContestSort, CONTEST_DEFAULT_SORT, type ContestNovel } from './contestNovels';
+import { sortContestNovels, nextContestSort, CONTEST_DEFAULT_SORT, type ContestNovel, CONTEST_DAILY_SORT } from './contestNovels';
 
 const c = (ID: string, Rank: number, o: Partial<ContestNovel> = {}): ContestNovel =>
   ({ ID, Rank, Title: ID, AuthorName: 'a', View: 1000 - Rank, view_change: 10, like_to_view_ratio: 0.05, Eps: 10, Tags: [], Date: 'd', ...o });
@@ -29,5 +29,20 @@ describe('nextContestSort', () => {
   it('같은 열은 방향을 뒤집고 새 열은 내림차순부터', () => {
     expect(nextContestSort(CONTEST_DEFAULT_SORT, 'View')).toEqual({ key: 'View', direction: 'ascending' });
     expect(nextContestSort(CONTEST_DEFAULT_SORT, 'Eps')).toEqual({ key: 'Eps', direction: 'descending' });
+  });
+});
+
+describe('2026 일간 순위 정렬', () => {
+  const n = (ID: string, Rank: number, daily_rank: number | null, extra: Partial<ContestNovel> = {}): ContestNovel =>
+    ({ ID, Rank, daily_rank, Tags: [], Date: '2026-10-02', view_change: 0, like_to_view_ratio: 0, View: 10, ...extra });
+  it('일간 순위 오름차순, 없는 행은 끝에서 누적 순위순', () => {
+    const rows = [n('a', 1, null), n('b', 2, 2), n('c', 3, 1), n('d', 4, null)];
+    expect(sortContestNovels(rows, CONTEST_DAILY_SORT).map(r => r.ID)).toEqual(['c', 'b', 'a', 'd']);
+  });
+  it('첫날처럼 전부 없으면 누적 순위순', () => {
+    expect(sortContestNovels([n('x', 2, null), n('y', 1, null)], CONTEST_DAILY_SORT).map(r => r.ID)).toEqual(['y', 'x']);
+  });
+  it('일간 순위 열은 처음 누르면 1위부터', () => {
+    expect(nextContestSort({ key: 'View', direction: 'descending' }, 'daily_rank')).toEqual({ key: 'daily_rank', direction: 'ascending' });
   });
 });

@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { getLatestContestNovelDetails, getContestNovelTrend, getContestAvailableDates, getContestNovelAvailableDates } from '../services/api';
 import { format, subDays, parseISO, startOfDay } from 'date-fns';
+import { contestConfig } from '../utils/contest';
 
 interface ContestTrendData {
   Date: string;
   Rank: number | null;
+  DailyRank?: number | null;
   Title: string;
   View: number | null;
   Like: number | null;
@@ -38,6 +40,7 @@ interface ContestNovelDetails {
 }
 
 export const useContestNovelData = (year: string | undefined, novelId: string | undefined) => {
+  const daily = contestConfig(year ?? '').headline === 'daily';
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   
@@ -68,7 +71,8 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
       const collected = contestDatesRef.current;
       const mappedData = response.data.filter((d: ContestTrendData) => collected.size === 0 || collected.has(d.Date)).map((d: ContestTrendData) => ({
         ...d,
-        Ranking: d.Rank, // Rank를 Ranking으로 매핑
+        // 대표 순위: 2025 누적 순위, 2026~ 일간 순위(utils/contest.ts)
+        Ranking: daily ? (d.DailyRank ?? null) : d.Rank,
         Score: null,     // Score 속성 추가
       }));
       setTrendData(mappedData);
@@ -100,7 +104,7 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
 
         const detailsData = detailsRes.data;
         if (detailsData) {
-            detailsData.Ranking = detailsData.Rank;
+            detailsData.Ranking = daily ? (detailsData.daily_rank ?? undefined) : detailsData.Rank;
         }
         setDetails(detailsData);
 

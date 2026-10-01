@@ -17,11 +17,19 @@ export interface ContestNovel {
   rank_change?: number | 'New';
   award?: string | null;
   ThumbnailURL?: string | null;
+  /** 2026~: 일간 순위(직전 수집일 대비 누적 조회 증가 순, 적재 때 확정). 비교할 직전 기록이 없으면 null. */
+  daily_rank?: number | null;
+  daily_rank_change?: number | 'New' | null;
+  /** 2026~: 기성 작가(공모전 시작 전 작품이 있음). 모르면 null. */
+  is_veteran?: boolean | null;
+  serial_status?: string | null;
 }
 
-export type ContestSortKey = 'rank_change' | 'view_change' | 'View' | 'like_to_view_ratio' | 'Eps';
+export type ContestSortKey = 'daily_rank' | 'daily_rank_change' | 'rank_change' | 'view_change' | 'View' | 'like_to_view_ratio' | 'Eps';
 export interface ContestSort { key: ContestSortKey; direction: 'ascending' | 'descending'; }
 export const CONTEST_DEFAULT_SORT: ContestSort = { key: 'View', direction: 'descending' };
+/** 2026~ 기본: 일간 순위 1위부터. 첫날처럼 일간 순위가 없으면 값 없는 행끼리 누적 순위순으로 선다. */
+export const CONTEST_DAILY_SORT: ContestSort = { key: 'daily_rank', direction: 'ascending' };
 
 /** 삭제되거나 비공개가 된 작품은 View = -1 자리표시로 온다 — 모든 지표를 '값 없음'으로 본다. */
 export const isDeletedContestNovel = (x: ContestNovel) => x.View === -1;
@@ -29,6 +37,7 @@ export const isDeletedContestNovel = (x: ContestNovel) => x.View === -1;
 const valueOf = (x: ContestNovel, key: ContestSortKey): number | null => {
   if (isDeletedContestNovel(x)) return null;
   if (key === 'rank_change') return x.rank_change === 'New' ? Infinity : typeof x.rank_change === 'number' ? x.rank_change : null;
+  if (key === 'daily_rank_change') return x.daily_rank_change === 'New' ? Infinity : typeof x.daily_rank_change === 'number' ? x.daily_rank_change : null;
   const v = x[key];
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 };
@@ -49,7 +58,8 @@ export function sortContestNovels(items: ContestNovel[], s: ContestSort): Contes
 
 export function nextContestSort(current: ContestSort, key: ContestSortKey): ContestSort {
   if (current.key === key) return { key, direction: current.direction === 'ascending' ? 'descending' : 'ascending' };
-  return { key, direction: 'descending' };
+  // 순위는 1위부터, 나머지는 큰 값부터.
+  return { key, direction: key === 'daily_rank' ? 'ascending' : 'descending' };
 }
 
 /** 수상 표시 순서(쇼케이스 배치). 순서에 없는 작품(본선·수상 없음)은 그 뒤에 조회수 순으로 선다. */

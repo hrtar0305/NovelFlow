@@ -9,6 +9,7 @@ import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import { buildContestTagRows, type ContestTag, type ContestTagRow, type ContestTagSort, type ContestTagSortKey } from '../utils/contestTags';
 import { formatInt } from '../utils/format';
+import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
 
 /**
  * 공모전 태그 랭킹(2026-09-30 개편). 점수는 구 3-track(선형·역순위·로그)을 유지한다(DECISIONS 2026-04).
@@ -37,7 +38,8 @@ const logTicks = (min: number, max: number): number[] => {
 const fmt = (v: number, digits: number) => (digits === 0 ? formatInt(Math.round(v)) : v.toFixed(digits));
 
 export default function ContestTagRankingsPage() {
-  const { year = '2025', date: dateParam } = useParams<{ year: string; date?: string }>();
+  const { year = LATEST_CONTEST_YEAR, date: dateParam } = useParams<{ year: string; date?: string }>();
+  const cfg = contestConfig(year);
   const navigate = useNavigate();
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [tags, setTags] = useState<ContestTag[]>([]);
@@ -133,7 +135,7 @@ export default function ContestTagRankingsPage() {
       <ContestHeader year={year} date={dateParam ?? null} availableDates={dates} view="tags"
         onDateChange={d => navigate(`/contests/${year}/tags/rankings/${d}`)}
         onYearChange={y => navigate(`/contests/${y}/tags/rankings`)}
-        meta={tags.length ? `매일 오후 2시 · 태그 ${formatInt(tags.length)}개` : '매일 오후 2시'} />
+        meta={tags.length ? `${cfg.schedule} · 태그 ${formatInt(tags.length)}개` : cfg.schedule} />
 
       <div className="rank-toolbar" ref={toolbarRef}>
         <h2 className="rank-toolbar__title">

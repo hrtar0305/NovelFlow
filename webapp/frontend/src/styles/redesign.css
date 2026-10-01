@@ -482,3 +482,7 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .novel-expand__facts b { color: var(--np-text-heading); font-weight: 700; }
 .novel-expand__go { display: inline-block; margin-top: 0.5rem; font-weight: 700; color: var(--np-text-heading); text-decoration: none; border-bottom: 1.5px solid var(--np-text-heading); }
 @media (max-width: 1199.98px) { .novel-expand { grid-template-columns: 300px minmax(0, 1fr); } .novel-expand > :last-child { grid-column: 2; } }
+
+/* ── 2026 공모전: 일간 순위 없음 · 기성 표시 ── */
+.rank-num--none { color: var(--np-text-faint); font-weight: 600; }
+.rank-career { display: block; margin-top: 2px; font-size: 0.75rem; font-weight: 600; color: var(--np-text-secondary); }

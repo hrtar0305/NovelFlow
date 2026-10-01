@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import AppShell from './components/layout/AppShell';
 import './styles/index.css';
+import { LATEST_CONTEST_YEAR } from './utils/contest';
 
 const NovelRankingsPage = lazy(() => import('./pages/NovelRankingsPage'));
 const TagRankingsPage = lazy(() => import('./pages/TagRankingsPage'));
@@ -27,7 +28,7 @@ function App() {
       <Suspense fallback={routeFallback}>
         <Routes>
           <Route path='/' element={<Navigate to="/novels/rankings" replace />} />
-          <Route path='/contests' element={<Navigate to="/contests/2025" replace />} />
+          <Route path='/contests' element={<Navigate to={`/contests/${LATEST_CONTEST_YEAR}`} replace />} />
           <Route path='/novels/rankings/:date?' element={<NovelRankingsPage />} />
           <Route path='/tags/rankings/:date?' element={<TagRankingsPage />} />
           <Route path='/trends' element={<AnalysisDashboardPage />} />

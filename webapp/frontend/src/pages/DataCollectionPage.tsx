@@ -166,13 +166,13 @@ const DataCollectionPage = () => {
               <tr><th scope="col"><span className="visually-hidden">항목</span></th><th scope="col">일간 랭킹</th><th scope="col">공모전</th></tr>
             </thead>
             <tbody>
-              <tr><th scope="row">저장 시각</th><td>매일 밤 9시</td><td>매일 오후 2시</td></tr>
+              <tr><th scope="row">저장 시각</th><td>매일 밤 9시</td><td>2026: 매일 자정(그날 0~24시) · 2025: 매일 오후 2시</td></tr>
               <tr><th scope="row">대상</th><td>7일 조회순 전체 랭킹</td><td>공모전 참여 작품</td></tr>
               <tr><th scope="row">로그인</th><td>함</td><td>하지 않음</td></tr>
               <tr><th scope="row">작품 수</th><td>500편 (2025년 7월 20일까지 300편)</td><td>공모전 참여 전체 작품</td></tr>
-              <tr><th scope="row">순위</th><td>노벨피아 순위 그대로</td><td>누적 조회수 순으로 여기서 매김</td></tr>
+              <tr><th scope="row">순위</th><td>노벨피아 순위 그대로</td><td>2026: 전날보다 늘어난 누적 조회수 순(일간 순위) · 2025: 누적 조회수 순. 모두 여기서 매김</td></tr>
               <tr><th scope="row">비교하는 전날</th><td>달력 기준 하루 전</td><td>실제로 수집한 직전 날</td></tr>
-              <tr><th scope="row">수집 시작</th><td>2024년 12월 23일</td><td>2025년 10월 2일</td></tr>
+              <tr><th scope="row">수집 시작</th><td>2024년 12월 23일</td><td>2026: 2026년 10월 1일(개막일) · 2025: 2025년 10월 2일</td></tr>
             </tbody>
           </table>
         </div>
