@@ -13,9 +13,12 @@
 - **재확인 목록에서 번호를 지우지 않는다(2025 와 같은 의도).** 작가가 언제든 비공개로 돌렸다 풀 수 있다.
   대신 공개 일반작으로 확인된 번호는 NORMAL_RECHECK_DAYS 마다만 다시 본다(개막 직전 번호의 28%가 비공개라
   매일 전부 보면 한 달에 수천 개).
-- **공개 일반작도 재확인 목록에 넣는다(2025 에 없던 것).** 먼저 공개한 작품을 나중에 공모전에 참가시키는 경우가
-  있다 — 455833 은 개막일 20:40 에 일반작이었는데 22:24 엔 참가작이었고, 2025 방식(경고창 번호만 재확인)으로는
-  끝내 못 잡는다. 생긴 지 FRESH_DAYS 안의 번호는 매일, 그 뒤는 NORMAL_RECHECK_DAYS 마다 본다.
+- **공개 일반작도 재확인 목록에 넣는다(2025 에 없던 것).** 개막일 20:40 훑기에서 배지 없는 일반작으로 분류된
+  455833·456924 가 22:24 엔 배지가 있었다(노벨피아 표시 1,687편과의 차이 2편). **원인은 확인하지 못했다** — 일반작을
+  나중에 공모전으로 바꾸는 것은 불가능하다(사용자 확인), 같은 방식으로 40번 다시 받아도 재현되지 않았다. 등록 직후
+  배지가 늦게 붙는 구간이거나 그 순간 비정상 응답이었을 수 있다. 원인과 무관하게 잡히도록 생긴 지 FRESH_DAYS 안의
+  번호는 매일, 그 뒤는 NORMAL_RECHECK_DAYS 마다 다시 보고, 원인을 가릴 수 있게 분류 근거(배지 칸·제목 유무)를 남긴다.
+- **제목이 없는 페이지는 일반작이 아니라 '다시 볼 번호'다.** 경고창·배지가 없다는 것만으로는 정상 페이지인지 모른다.
 - **작가의 다른 작품**(`/proc/novel_curation`, cmd=writer_other_novel)을 참가작을 처음 찾을 때 원본 JSON
   그대로 남긴다(작가당 1회). 기성 여부 판정은 나중에 한다(제안: 공모전 시작 번호 이전 작품이 있으면 기성).
 """
@@ -95,6 +98,9 @@ def check(session, nid):
             if a:
                 t = a.get_text(strip=True)
                 return ('invalid', t) if '잘못된 소설 번호' in t else ('retry', t)
+            if not b.select_one('div.epnew-novel-title'):
+                # 경고창도 제목도 없다 — 정상 작품 페이지가 아니다(일반작으로 단정하지 않는다).
+                return 'retry', f'no title (status {r.status_code}, {len(r.text)} bytes)'
             if b.select_one('p.in-badge span.b_contest2'):
                 w = b.select_one('a.writer-name')
                 title = b.select_one('div.epnew-novel-title')
@@ -103,7 +109,9 @@ def check(session, nid):
                     'author': w.get_text(strip=True) if w else None,
                     'title': title.get_text(strip=True) if title else None,
                 }
-            return 'normal', None
+            # 분류 근거: 나중에 참가작으로 바뀌어 보이면 '처음 본 배지 칸'과 견줘 원인을 가린다.
+            holder = b.select_one('p.in-badge')
+            return 'normal', {'badges': [' '.join(c for c in (sp.get('class') or []) if c != 's_inv') for sp in holder.find_all('span')] if holder else None}
         except requests.RequestException as e:
             err = str(e)[:120]
             time.sleep(1.5 * (attempt + 1))
@@ -172,8 +180,9 @@ def handler(event, context):
                 new_contest.append(i)
             elif kind == 'retry':
                 recheck.setdefault(str(i), {'reason': info, 'first_seen': _now(), 'status': 'retry', 'last_checked': _now()})
-            else:  # 공개 일반작 — 나중에 공모전에 참가할 수 있다
-                recheck.setdefault(str(i), {'reason': 'normal', 'first_seen': _now(), 'status': 'normal', 'last_checked': _now(), 'last_run': execution_id})
+            else:  # 공개 일반작 — 개막일에 배지가 늦게 보인 사례가 있어 다시 본다(원인 미확인)
+                recheck.setdefault(str(i), {'reason': 'normal', 'first_seen': _now(), 'status': 'normal', 'last_checked': _now(),
+                                            'last_run': execution_id, 'seen_badges': (info or {}).get('badges')})
         if stop_at:
             nid = stop_at - run + 1
             st.update(next_id=nid, last_checked_id=nid - 1, scan_done_at=_now(), scan_run_id=execution_id)
@@ -204,7 +213,9 @@ def handler(event, context):
             v['last_checked'] = _now()
             v['last_run'] = execution_id
             if kind == 'contest':
-                contest[k] = {**info, 'found_at': _now(), 'via': 'recheck'}
+                # 처음 본 시각·당시 분류와 함께 남겨, 배지가 언제 생겼는지 가릴 수 있게 한다.
+                contest[k] = {**info, 'found_at': _now(), 'via': 'recheck', 'first_seen': v.get('first_seen'),
+                              'was': v.get('status'), 'was_badges': v.get('seen_badges')}
                 new_contest.append(int(k))
                 v['status'] = 'contest'
             elif kind == 'normal':
