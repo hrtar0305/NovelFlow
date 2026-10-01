@@ -47,6 +47,7 @@ NORMAL_RECHECK_DAYS = int(os.environ.get('NORMAL_RECHECK_DAYS', '3'))
 FRESH_DAYS = int(os.environ.get('FRESH_DAYS', '7'))
 BUDGET_MS = int(os.environ.get('STOP_WHEN_REMAINING_MS', '90000'))
 CHUNK = 40
+LISTED_TOLERANCE = int(os.environ.get('LISTED_TOLERANCE', '5'))   # 훑는 몇 분 사이의 신규 등록
 
 ID_LIST_KEY = f"contest_novel_ids_{YEAR}.json"      # 팬아웃이 읽는 목록(2025 와 같은 모양: 번호 배열)
 STATE_KEY = "state/progress.json"
@@ -135,6 +136,18 @@ def author_works(session, author_id, novel_no):
         if any(int(x.get('novel_no') or 0) < CONTEST_FIRST_ID for x in w.get('list') or []) or not w.get('is_next_page'):
             break
     return pages
+
+
+def listed_total(session):
+    """노벨피아가 표시하는 공모전 등록 작품 수('총 N개 작품'). 우리 수집 수와 같아야 한다(2026-10-01 같은 시각 실측
+    1,743 = 1,743). 목록 페이지 자체는 일부만 보여 주지만 이 숫자는 0회차 작품까지 센 전체 등록 수다. 못 읽으면 None."""
+    import re
+    try:
+        h = session.get('https://novelpia.com/contest_list', timeout=15).text
+        m = re.search(r'총\s*([\d,]+)\s*개 작품', h)
+        return int(m.group(1).replace(',', '')) if m else None
+    except requests.RequestException:
+        return None
 
 
 def summarize_author(pages):
@@ -251,7 +264,12 @@ def handler(event, context):
 
     _put(ID_LIST_KEY, sorted(int(k) for k in contest))
     done = done_scan and not due
+    # 검증: 노벨피아 표시 수와 견준다. 훑는 사이에도 등록이 이어지므로 우리 쪽이 몇 편 적은 것은 시각 차이일 수 있다.
+    listed = listed_total(sess[0]) if done else None
+    if listed is not None and len(contest) < listed - LISTED_TOLERANCE:
+        _log(logging.WARNING, execution_id, "Collected fewer contest novels than Novelpia lists.",
+             ours=len(contest), listed=listed, short_by=listed - len(contest))
     _log(logging.INFO, execution_id, "Contest ID collection pass finished.", done=done, last_checked_id=st['last_checked_id'],
          total_contest=len(contest), new_contest=len(new_contest), recheck_total=len(recheck),
-         rechecked=rechecked, recheck_left=len(due), authors_fetched=got, authors_pending=len(pending) - got)
-    return {"done": done, "total_contest": len(contest), "new_contest": len(new_contest), "last_checked_id": st['last_checked_id']}
+         rechecked=rechecked, recheck_left=len(due), authors_fetched=got, authors_pending=len(pending) - got, listed=listed)
+    return {"done": done, "total_contest": len(contest), "listed_total": listed, "new_contest": len(new_contest), "last_checked_id": st['last_checked_id']}
