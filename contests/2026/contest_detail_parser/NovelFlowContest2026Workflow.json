@@ -1,0 +1,96 @@
+{
+  "Comment": "2026 공모전 일간 수집. 00:00 KST 실행, 방금 끝난 날의 이름으로 기록한다(팬아웃 collection_date). 재실행은 입력에 {\"target_date\": \"YYYY-MM-DD\"}.",
+  "StartAt": "Defaults",
+  "TimeoutSeconds": 2700,
+  "States": {
+    "Defaults": {
+      "Type": "Pass",
+      "Comment": "target_date 가 없으면 빈 문자열(팬아웃이 실행 시각 − 12시간의 날짜를 쓴다).",
+      "Parameters": {
+        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\"}'), $$.Execution.Input, false)"
+      },
+      "Next": "DiscoverIds"
+    },
+    "DiscoverIds": {
+      "Type": "Task",
+      "Comment": "새 번호 훑기 + 재확인 + 작가 다른 작품. 개막 직후처럼 번호가 몰리면 시간 예산에서 멈추고 done=false.",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-id-collector",
+      "Parameters": { "execution_id.$": "$$.Execution.Name" },
+      "ResultPath": "$.Discover",
+      "Retry": [{ "ErrorEquals": ["States.ALL"], "IntervalSeconds": 30, "MaxAttempts": 2, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Next": "IsDiscoveryDone?"
+    },
+    "IsDiscoveryDone?": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.Discover.done", "BooleanEquals": true, "Next": "PurgeTaskQueue" }],
+      "Default": "DiscoverIds"
+    },
+    "PurgeTaskQueue": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:sqs:purgeQueue",
+      "Parameters": { "QueueUrl": "https://sqs.YOUR_AWS_REGION.amazonaws.com/YOUR_AWS_ACCOUNT_ID/novelflow-contest-2026-task" },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["States.ALL"], "IntervalSeconds": 65, "MaxAttempts": 2, "BackoffRate": 1 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Next": "PurgeResultQueue"
+    },
+    "PurgeResultQueue": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:sqs:purgeQueue",
+      "Parameters": { "QueueUrl": "https://sqs.YOUR_AWS_REGION.amazonaws.com/YOUR_AWS_ACCOUNT_ID/novelflow-contest-2026-result" },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["States.ALL"], "IntervalSeconds": 65, "MaxAttempts": 2, "BackoffRate": 1 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Next": "WaitForPurgeToFinish"
+    },
+    "WaitForPurgeToFinish": {
+      "Type": "Wait",
+      "Comment": "purge 는 최대 60초 동안 그 사이 보낸 메시지도 지울 수 있다(DECISIONS 2026-09-27). 줄이지 말 것.",
+      "Seconds": 65,
+      "Next": "FanOutTasksToSQS"
+    },
+    "FanOutTasksToSQS": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-fanout",
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Name",
+        "date.$": "$$.Execution.StartTime",
+        "target_date.$": "$.args.target_date"
+      },
+      "ResultPath": "$.FanOutResult",
+      "Retry": [{ "ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Next": "CheckIfDone"
+    },
+    "CheckIfDone": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-check-completion",
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Name",
+        "fanned_out_count.$": "$.FanOutResult.fanned_out_count"
+      },
+      "ResultPath": "$.CompletionCheck",
+      "Next": "IsParsingComplete?"
+    },
+    "IsParsingComplete?": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.CompletionCheck.is_done", "BooleanEquals": true, "Next": "ConsolidateContestData" }],
+      "Default": "WaitForNextCheck"
+    },
+    "WaitForNextCheck": { "Type": "Wait", "Seconds": 60, "Next": "CheckIfDone" },
+    "ConsolidateContestData": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-consolidate",
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Name",
+        "fanned_out_count.$": "$.FanOutResult.fanned_out_count"
+      },
+      "Retry": [{ "ErrorEquals": ["States.TaskFailed", "States.Timeout"], "IntervalSeconds": 90, "MaxAttempts": 3, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Next": "PipelineSuccess"
+    },
+    "PipelineFail": { "Type": "Fail" },
+    "PipelineSuccess": { "Type": "Succeed" }
+  }
+}
