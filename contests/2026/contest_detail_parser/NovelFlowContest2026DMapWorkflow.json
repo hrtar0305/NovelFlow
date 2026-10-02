@@ -1,34 +1,109 @@
 {
-  "Comment": "2026 공모전 수집 — Distributed Map 판(SQS 큐·purge·완료 폴링 없음). 그림자 실행: {\"skip_discovery\": true, \"raw\": false, \"dry_run\": true, \"target_date\": \"YYYY-MM-DD\"}.",
+  "Comment": "2026 공모전 수집 — Distributed Map 판. 실패를 가정한다: ID 수집 실패는 직전 목록으로 진행, 작품 실패는 묶음 안에 가두고 빠진 것만 다시 받으며(최대 2라운드), 남은 결손은 placeholder + 실패 장부(failures/{date}.json) + 경고 알림. 결손이 5%를 넘으면 쓰지 않고 실패. 그림자 실행: {\"skip_discovery\": true, \"raw\": false, \"dry_run\": true, \"target_date\": \"YYYY-MM-DD\"}. 재시도 경로 시험: 그림자 실행에 \"inject_fail_mod\": N 을 주면 첫 라운드에서 번호 % N == 0 인 작품을 네트워크 실패로 친다(dry_run 일 때만).",
   "StartAt": "Defaults",
   "TimeoutSeconds": 2700,
   "States": {
     "Defaults": {
       "Type": "Pass",
       "Parameters": {
-        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false}'), $$.Execution.Input, false)"
+        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false, \"inject_fail_mod\": 0}'), $$.Execution.Input, false)",
+        "Discover": {
+          "done": true,
+          "fallback": false,
+          "skipped": true,
+          "total_contest": null,
+          "listed_total": null
+        },
+        "DiscoverRounds": {
+          "n": 0
+        }
       },
       "Next": "SkipDiscovery?"
     },
     "SkipDiscovery?": {
       "Type": "Choice",
       "Comment": "그림자 실행은 운영 수집기 상태(S3)를 건드리지 않도록 건너뛴다.",
-      "Choices": [{ "Variable": "$.args.skip_discovery", "BooleanEquals": true, "Next": "ResolveDate" }],
+      "Choices": [
+        {
+          "Variable": "$.args.skip_discovery",
+          "BooleanEquals": true,
+          "Next": "ResolveDate"
+        }
+      ],
       "Default": "DiscoverIds"
     },
     "DiscoverIds": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-id-collector",
-      "Parameters": { "execution_id.$": "$$.Execution.Name" },
+      "Parameters": {
+        "execution_id.$": "$$.Execution.Name"
+      },
+      "ResultSelector": {
+        "done.$": "$.done",
+        "fallback": false,
+        "skipped": false,
+        "total_contest.$": "$.total_contest",
+        "listed_total.$": "$.listed_total"
+      },
       "ResultPath": "$.Discover",
-      "Retry": [{ "ErrorEquals": ["States.ALL"], "IntervalSeconds": 30, "MaxAttempts": 2, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.DiscoverError",
+          "Next": "DiscoveryFallback"
+        }
+      ],
       "Next": "IsDiscoveryDone?"
     },
     "IsDiscoveryDone?": {
       "Type": "Choice",
-      "Choices": [{ "Variable": "$.Discover.done", "BooleanEquals": true, "Next": "ResolveDate" }],
-      "Default": "DiscoverIds"
+      "Choices": [
+        {
+          "Variable": "$.Discover.done",
+          "BooleanEquals": true,
+          "Next": "ResolveDate"
+        },
+        {
+          "Variable": "$.DiscoverRounds.n",
+          "NumericGreaterThanEquals": 4,
+          "Next": "DiscoveryFallback"
+        }
+      ],
+      "Default": "CountDiscoverRound"
+    },
+    "CountDiscoverRound": {
+      "Type": "Pass",
+      "Comment": "시간 예산으로 끊긴 수집기를 다시 부른다. 무한히 돌지 않게 횟수를 센다(4번 넘으면 직전 목록으로 진행).",
+      "Parameters": {
+        "n.$": "States.MathAdd($.DiscoverRounds.n, 1)"
+      },
+      "ResultPath": "$.DiscoverRounds",
+      "Next": "DiscoverIds"
+    },
+    "DiscoveryFallback": {
+      "Type": "Pass",
+      "Comment": "ID 수집은 부가 단계다 — 실패해도 S3 에 남은 직전 목록(23:30 준비 실행 등)으로 그날 수집을 한다. 장부·알림에 남는다.",
+      "Result": {
+        "done": true,
+        "fallback": true,
+        "skipped": false,
+        "total_contest": null,
+        "listed_total": null
+      },
+      "ResultPath": "$.Discover",
+      "Next": "ResolveDate"
     },
     "ResolveDate": {
       "Type": "Task",
@@ -41,46 +116,179 @@
         "target_date.$": "$.args.target_date"
       },
       "ResultPath": "$.Resolved",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ],
+      "Next": "FirstRound"
+    },
+    "FirstRound": {
+      "Type": "Pass",
+      "Comment": "첫 라운드: 전체 목록, 40편 묶음, 동시 10.",
+      "Result": {
+        "round": 0,
+        "missing_key": "contest_novel_ids_2026.json",
+        "batch": 40,
+        "concurrency": 10
+      },
+      "ResultPath": "$.Work",
       "Next": "ParseMap"
     },
     "ParseMap": {
       "Type": "Map",
       "ItemReader": {
         "Resource": "arn:aws:states:::s3:getObject",
-        "ReaderConfig": { "InputType": "JSON" },
-        "Parameters": { "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID", "Key": "contest_novel_ids_2026.json" }
+        "ReaderConfig": {
+          "InputType": "JSON"
+        },
+        "Parameters": {
+          "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
+          "Key.$": "$.Work.missing_key"
+        }
       },
       "ItemBatcher": {
-        "MaxItemsPerBatch": 40,
+        "MaxItemsPerBatchPath": "$.Work.batch",
         "BatchInput": {
           "execution_id.$": "$$.Execution.Name",
           "date.$": "$.Resolved.date",
-          "raw.$": "$.args.raw"
+          "raw.$": "$.args.raw",
+          "round.$": "$.Work.round",
+          "dry_run.$": "$.args.dry_run",
+          "inject_fail_mod.$": "$.args.inject_fail_mod"
         }
       },
-      "MaxConcurrency": 10,
-      "ToleratedFailurePercentage": 5,
+      "MaxConcurrencyPath": "$.Work.concurrency",
+      "ToleratedFailurePercentage": 100,
       "ItemProcessor": {
-        "ProcessorConfig": { "Mode": "DISTRIBUTED", "ExecutionType": "EXPRESS" },
+        "ProcessorConfig": {
+          "Mode": "DISTRIBUTED",
+          "ExecutionType": "EXPRESS"
+        },
         "StartAt": "ParseBatch",
         "States": {
           "ParseBatch": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
-            "Parameters": { "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap", "Payload.$": "$" },
+            "Parameters": {
+              "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap",
+              "Payload.$": "$"
+            },
             "OutputPath": "$.Payload",
-            "Retry": [{ "ErrorEquals": ["Lambda.TooManyRequestsException", "Lambda.ServiceException", "States.Timeout"], "IntervalSeconds": 10, "MaxAttempts": 2, "BackoffRate": 2 }],
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.TooManyRequestsException",
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.Unknown",
+                  "States.Timeout"
+                ],
+                "IntervalSeconds": 10,
+                "MaxAttempts": 2,
+                "BackoffRate": 2
+              },
+              {
+                "ErrorEquals": [
+                  "States.TaskFailed"
+                ],
+                "IntervalSeconds": 10,
+                "MaxAttempts": 1
+              }
+            ],
             "End": true
           }
         }
       },
       "ResultWriter": {
         "Resource": "arn:aws:states:::s3:putObject",
-        "Parameters": { "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID", "Prefix": "dmap-results" }
+        "Parameters": {
+          "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
+          "Prefix": "dmap-results"
+        }
+      },
+      "ResultSelector": {
+        "manifest.$": "$.ResultWriterDetails"
       },
       "ResultPath": "$.Map",
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
-      "Next": "Consolidate"
+      "Comment": "실패한 묶음이 있어도 Map 은 끝까지 간다(허용 100%) — 무엇이 빠졌는지는 Reconcile 이 기대 목록과 견줘 정한다.",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ],
+      "Next": "Reconcile"
+    },
+    "Reconcile": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-consolidate-dmap",
+      "Parameters": {
+        "action": "reconcile",
+        "execution_id.$": "$$.Execution.Name",
+        "date.$": "$.Resolved.date",
+        "round.$": "$.Work.round",
+        "manifest.$": "$.Map.manifest"
+      },
+      "ResultPath": "$.Rec",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ],
+      "Next": "RetryMissing?"
+    },
+    "RetryMissing?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Rec.retry",
+          "BooleanEquals": true,
+          "Next": "WaitBeforeRetry"
+        }
+      ],
+      "Default": "Consolidate"
+    },
+    "WaitBeforeRetry": {
+      "Type": "Wait",
+      "SecondsPath": "$.Rec.wait_seconds",
+      "Next": "NextRound"
+    },
+    "NextRound": {
+      "Type": "Pass",
+      "Comment": "빠진 작품만, 작게(10편) 천천히(동시 3) 다시 받는다.",
+      "InputPath": "$.Rec",
+      "ResultPath": "$.Work",
+      "Next": "ParseMap"
     },
     "Consolidate": {
       "Type": "Task",
@@ -88,14 +296,76 @@
       "Parameters": {
         "execution_id.$": "$$.Execution.Name",
         "date.$": "$.Resolved.date",
-        "manifest.$": "$.Map.ResultWriterDetails",
-        "dry_run.$": "$.args.dry_run"
+        "dry_run.$": "$.args.dry_run",
+        "discover.$": "$.Discover"
       },
-      "Retry": [{ "ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 60, "MaxAttempts": 2, "BackoffRate": 1.5 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PipelineFail" }],
+      "ResultPath": "$.Result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "TooManyMissing"
+          ],
+          "MaxAttempts": 0
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ],
+      "Next": "Degraded?"
+    },
+    "Degraded?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Result.degraded",
+          "BooleanEquals": true,
+          "Next": "NotifyDegraded"
+        }
+      ],
+      "Default": "PipelineSuccess"
+    },
+    "NotifyDegraded": {
+      "Type": "Task",
+      "Comment": "적재는 했지만 결손이 있다 — 실패 알림(멘션)과 구분해 멘션 없이 알린다. 알림 실패가 수집을 실패로 만들지 않는다.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
+        "InvocationType": "Event",
+        "Payload": {
+          "content.$": "$.Result.notice",
+          "mention": false
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": null,
+          "Next": "PipelineSuccess"
+        }
+      ],
       "Next": "PipelineSuccess"
     },
-    "PipelineFail": { "Type": "Fail" },
-    "PipelineSuccess": { "Type": "Succeed" }
+    "PipelineFail": {
+      "Type": "Fail"
+    },
+    "PipelineSuccess": {
+      "Type": "Succeed"
+    }
   }
 }
