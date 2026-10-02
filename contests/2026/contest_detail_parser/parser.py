@@ -114,11 +114,12 @@ def _upload_raw_batch(execution_id, raw_batch, crawl_date, context):
         return True
     try:
         payloads = []
-        for novel_id, pages in raw_batch:
-            body, _ = raw_store.build_json_payload(
-                novel_id, crawl_date, pages,
-                meta={"pipeline": "contest", "year": Config.CONTEST_YEAR},
-            )
+        for entry in raw_batch:
+            novel_id, pages = entry[0], entry[1]
+            meta = {"pipeline": "contest", "year": Config.CONTEST_YEAR}
+            if len(entry) > 2 and entry[2]:
+                meta["crawled_at"] = entry[2]   # 같은 작품이 두 묶음에 들어가면(Express 최소 1회) 이른 쪽을 고를 기준
+            body, _ = raw_store.build_json_payload(novel_id, crawl_date, pages, meta=meta)
             payloads.append(body)
 
         blob = raw_store.bundle(payloads)
@@ -273,7 +274,7 @@ def parse_dmap_batch(event, context):
         for attempt in range(Config.MAX_INTERNAL_RETRIES):
             try:
                 item, pages, _ok = _parse_one(session, novel_id, crawl_date, execution_id)
-                raw_batch.append((novel_id, pages))
+                raw_batch.append((novel_id, pages, item.get("CrawledAt")))
                 break
             except requests.exceptions.RequestException as e:
                 last_error = f"{type(e).__name__}: {str(e)[:160]}"
