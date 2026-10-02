@@ -23,9 +23,13 @@ export interface ContestNovel {
   /** 2026~: 기성 작가(공모전 시작 전 작품이 있음). 모르면 null. */
   is_veteran?: boolean | null;
   serial_status?: string | null;
+  /** 2026~: 잔류율(회차 30 이상만, 백엔드 `_compute_retention_rates`). 없으면 null → '–'. */
+  EarlyRetentionRate?: number | null;
+  RecentRetentionRate?: number | null;
 }
 
-export type ContestSortKey = 'daily_rank' | 'daily_rank_change' | 'rank_change' | 'view_change' | 'View' | 'like_to_view_ratio' | 'Eps';
+export type ContestSortKey = 'daily_rank' | 'daily_rank_change' | 'rank_change' | 'view_change' | 'View' | 'like_to_view_ratio' | 'Eps'
+  | 'EarlyRetentionRate' | 'RecentRetentionRate';
 export interface ContestSort { key: ContestSortKey; direction: 'ascending' | 'descending'; }
 export const CONTEST_DEFAULT_SORT: ContestSort = { key: 'View', direction: 'descending' };
 /** 2026~ 기본: 일간 순위 1위부터. 첫날처럼 일간 순위가 없으면 값 없는 행끼리 누적 순위순으로 선다. */

@@ -285,8 +285,18 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 
 /* ── 공모전 공통 머리 ── */
 .contest-title { display: inline-flex; align-items: baseline; gap: 0.35rem; }
-.contest-title__year { appearance: none; border: 0; background: none; padding: 0 1.2rem 0 0; margin-right: -1.2rem; font: inherit; color: var(--np-text-heading); cursor: pointer; position: relative; z-index: 1; }
-.contest-title__chev { align-self: center; margin-left: 0.1rem; color: var(--np-text-secondary); pointer-events: none; }
+/* 연도 고르기 — 제목 글자 그대로, 펼친 목록은 테마 면(surface-raised) 위에 작게 */
+.year-menu { position: relative; display: inline-block; }
+.year-menu__btn { display: inline-flex; align-items: center; gap: 0.3rem; border: 0; background: none; padding: 0; font: inherit; color: var(--np-text-heading); cursor: pointer; }
+.year-menu__btn:focus-visible { outline: 2px solid var(--np-accent); outline-offset: 3px; border-radius: var(--np-radius-sm); }
+.year-menu__chev { color: var(--np-text-secondary); transition: transform 0.15s ease; }
+.year-menu__chev.is-open { transform: rotate(180deg); }
+.year-menu__list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 100%; margin: 0; padding: 0.25rem 0; list-style: none;
+  background: var(--np-surface-raised); border: 1px solid var(--np-border-strong); border-radius: var(--np-radius-md); box-shadow: var(--np-shadow-md); }
+.year-menu__opt { padding: 0.4rem 0.9rem; font-size: 1rem; font-weight: 600; color: var(--np-text-primary); cursor: pointer; white-space: nowrap; }
+.year-menu__opt.is-active { background: var(--np-surface-alt); }
+.year-menu__opt.is-current { color: var(--np-accent); }
+
 .view-switch { display: flex; gap: 1.1rem; }
 .view-switch a { padding-bottom: 3px; border-bottom: 2px solid transparent; font-size: 0.9375rem; font-weight: 600; color: var(--np-text-secondary); text-decoration: none; }
 .view-switch a.is-on { color: var(--np-text-heading); border-bottom-color: var(--np-text-heading); }
@@ -493,4 +503,6 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 
 /* ── 2026 공모전: 일간 순위 없음 · 기성 표시 ── */
 .rank-num--none { color: var(--np-text-faint); font-weight: 600; }
-.rank-career { display: block; margin-top: 2px; font-size: 0.75rem; font-weight: 600; color: var(--np-text-secondary); }
+.career { font-size: 0.8125rem; color: var(--np-text-secondary); }
+.career--veteran { font-weight: 700; color: var(--np-text-heading); }
+.career--none { color: var(--np-text-faint); }

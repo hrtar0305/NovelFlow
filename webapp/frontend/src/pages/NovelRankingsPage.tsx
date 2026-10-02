@@ -9,7 +9,7 @@ import TagLinks from '../components/ui/TagLinks';
 import ChangeMark from '../components/ui/ChangeMark';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import NovelCover from '../components/NovelCover';
-import Showcase from '../components/ranking/Showcase';
+import Showcase, { type ShowcaseItem } from '../components/ranking/Showcase';
 import FilterDrawer from '../components/ranking/FilterDrawer';
 import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
@@ -27,6 +27,10 @@ const NOTES = [
   { id: 'early', content: <>초반 잔류 = 30화 조회수 ÷ 1화 조회수</> },
   { id: 'recent', content: <>최신 잔류 = 최신화 조회수 ÷ 30화 전 조회수</> },
 ];
+
+const toShowcase = (n: RankingNovel, stat: ReactNode, jump: number | null = null): ShowcaseItem => ({
+  id: n.ID, href: `/novels/${n.ID}`, title: n.Title, cover: n.ThumbnailURL, author: n.AuthorName, rank: n.Ranking, stat, jump,
+});
 
 export default function NovelRankingsPage() {
   const { date: dateParam } = useParams();
@@ -147,7 +151,9 @@ export default function NovelRankingsPage() {
         nav={<DateNav value={dateParam ?? null} availableDates={dates} onChange={d => navigate(`/novels/rankings/${d}`)} />}
         meta={`노벨피아 7일 조회순 상위 ${rows.length || 500}작품`} />
 
-      <Showcase top={showcase.top} movers={showcase.movers} showcaseDate={showcase.date} tableDate={dateParam ?? null} />
+      <Showcase top={showcase.top.map(n => toShowcase(n, <>점수 {formatInt(n.Score)}</>))}
+        movers={showcase.movers.map(n => toShowcase(n, null, typeof n.rank_change === 'number' ? n.rank_change : null))}
+        showcaseDate={showcase.date} tableDate={dateParam ?? null} />
 
       {/* 급상승·신규 진입 탭은 두지 않는다 — 변동 열 내림차순이 곧 NEW → 상승 폭 순이다. */}
       <div className="rank-toolbar" ref={toolbarRef}>

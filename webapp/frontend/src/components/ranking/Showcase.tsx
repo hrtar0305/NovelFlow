@@ -1,23 +1,41 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import NovelCover from '../NovelCover';
-import type { RankingNovel } from '../../utils/rankingQuery';
-import { formatDateDot, formatInt } from '../../utils/format';
+import { formatDateDot } from '../../utils/format';
 
 const COUNT = 5; // 모자이크는 1위(세로 2칸) + 2~5위(2×2) 정확히 5칸
 
-interface ShowcaseProps { top: RankingNovel[]; movers: RankingNovel[]; showcaseDate?: string; tableDate: string | null; }
+/** 쇼케이스 한 칸. 일간 랭킹과 공모전(일간 순위)이 같은 배치를 쓰므로 페이지가 이 모양으로 바꿔 넘긴다. */
+export interface ShowcaseItem {
+  id: string;
+  href: string;
+  title: string;
+  cover?: string | null;
+  author?: string | null;
+  rank: number;
+  /** 상위 칸의 오른쪽 수치(예: '점수 525,800', '+10,595'). */
+  stat: ReactNode;
+  /** 급상승 칸: 오른 계단 수. null 이면 NEW. */
+  jump?: number | null;
+}
 
-function Poster({ novel, chip, meta, cls }: { novel: RankingNovel; chip: ReactNode; meta: ReactNode; cls: string }) {
+interface ShowcaseProps {
+  top: ShowcaseItem[];
+  movers: ShowcaseItem[];
+  showcaseDate?: string;
+  tableDate: string | null;
+}
+
+function Poster({ item, chip, meta, cls }: { item: ShowcaseItem; chip: ReactNode; meta: ReactNode; cls: string }) {
   return (
-    <Link to={`/novels/${novel.ID}`} className={`media-rank-card media-rank-card--poster media-rank-card--link ${cls}`} aria-label={`${novel.Title} 상세 보기`}>
+    <Link to={item.href} className={`media-rank-card media-rank-card--poster media-rank-card--link ${cls}`} aria-label={`${item.title} 상세 보기`}>
       {/* 칩은 표지 안에 둔다 — 띠(overlay)가 position: relative라 그 안에 두면 제목 옆으로 내려온다. */}
       <div className="media-rank-card__cover">
-        <NovelCover url={novel.ThumbnailURL} title={novel.Title} imageClassName="media-rank-card__cover-image" />
+        <NovelCover url={item.cover} title={item.title} imageClassName="media-rank-card__cover-image" />
         <div className="media-rank-card__rank">{chip}</div>
       </div>
       <div className="media-rank-card__overlay">
-        <div className="media-rank-card__title">{novel.Title}</div>
+        <div className="media-rank-card__title">{item.title}</div>
         <div className="media-rank-card__meta">{meta}</div>
       </div>
     </Link>
@@ -26,11 +44,12 @@ function Poster({ novel, chip, meta, cls }: { novel: RankingNovel; chip: ReactNo
 
 export default function Showcase({ top, movers, showcaseDate, tableDate }: ShowcaseProps) {
   if (top.length === 0 && movers.length === 0) return null;
-  // 쇼케이스는 늘 최신 수집일이다. 과거 날짜의 표를 볼 때만 기준일을 붙인다.
+  // 쇼케이스가 표와 다른 날짜일 때(일간 랭킹은 늘 최신 수집일)만 기준일을 붙인다.
   const stamp = showcaseDate && tableDate && showcaseDate !== tableDate ? `${formatDateDot(showcaseDate).slice(5)} 기준` : null;
   return (
     <div className="showcase-section">
-      <div className="ranking-showcase-split">
+      {/* 급상승이 없는 날(공모전 일간 순위가 처음 생긴 날)은 상위 묶음이 폭을 다 쓴다. */}
+      <div className={`ranking-showcase-split${movers.length === 0 || top.length === 0 ? ' ranking-showcase-split--single' : ''}`}>
         {top.length > 0 ? (
           <section className="ranking-showcase-group ranking-showcase-group--top">
             <div className="ranking-showcase-group__header">
@@ -39,8 +58,8 @@ export default function Showcase({ top, movers, showcaseDate, tableDate }: Showc
             </div>
             <div className="ranking-showcase-top-grid">
               {top.slice(0, COUNT).map((n, i) => (
-                <Poster key={`top-${n.ID}`} novel={n} chip={n.Ranking} cls={`media-rank-card--split media-rank-card--rank-${i + 1}`}
-                  meta={<><span className="mini-kpi">{n.AuthorName}</span><span className="mini-kpi">점수 {formatInt(n.Score)}</span></>} />
+                <Poster key={`top-${n.id}`} item={n} chip={n.rank} cls={`media-rank-card--split media-rank-card--rank-${i + 1}`}
+                  meta={<>{n.author ? <span className="mini-kpi">{n.author}</span> : null}<span className="mini-kpi">{n.stat}</span></>} />
               ))}
             </div>
           </section>
@@ -53,13 +72,13 @@ export default function Showcase({ top, movers, showcaseDate, tableDate }: Showc
             </div>
             <div className="ranking-showcase-rising-grid">
               {movers.slice(0, COUNT).map((n, i) => {
-                const jump = typeof n.rank_change === 'number' ? n.rank_change : null;
+                const jump = n.jump ?? null;
                 return (
-                  <Poster key={`mover-${n.ID}`} novel={n} chip={jump != null ? `▲${jump}` : 'NEW'}
+                  <Poster key={`mover-${n.id}`} item={n} chip={jump != null ? `▲${jump}` : 'NEW'}
                     cls={`media-rank-card--split media-rank-card--mover media-rank-card--mover-${i + 1}`}
                     meta={jump != null
-                      ? <span className="rank-move"><span className="rank-move__from">{n.Ranking + jump}위</span><i className="mv-arrow" aria-hidden="true" /><span className="rank-move__to">{n.Ranking}위</span></span>
-                      : <span className="rank-move__to">{n.Ranking}위</span>} />
+                      ? <span className="rank-move"><span className="rank-move__from">{n.rank + jump}위</span><i className="mv-arrow" aria-hidden="true" /><span className="rank-move__to">{n.rank}위</span></span>
+                      : <span className="rank-move__to">{n.rank}위</span>} />
                 );
               })}
             </div>

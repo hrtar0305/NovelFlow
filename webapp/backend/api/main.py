@@ -1163,7 +1163,9 @@ def get_contest_available_dates(year: int, response: Response):
 # 'Date', 'View', 'Like', 'Rank'는 DynamoDB 예약어이므로 ExpressionAttributeNames 사용
 _CONTEST_LIST_PROJ = ('ID, #dt, Title, AuthorName, AuthorID, #vw, #lk, Fav, Alr, Eps, Tags, ThumbnailURL, #rk, '
                       # 2026 부터 적재가 싣는 값(2025 행에는 없어 투영에서 그냥 빠진다)
-                      'ViewDelta, DailyRank, IsAdult, Badges, SerialStatus, SerialDays, AuthorOtherNovels, AuthorOtherMore')
+                      'ViewDelta, DailyRank, IsAdult, Badges, SerialStatus, SerialDays, AuthorOtherNovels, AuthorOtherMore, '
+                      # 잔류율 원재료(회차 30 이상만 있다 — 표의 초반/최신 잔류 열)
+                      'FirstEpView, Ep30View, RecentBaseView, TargetLatestEpView')
 _CONTEST_LIST_NAMES = {'#dt': 'Date', '#vw': 'View', '#lk': 'Like', '#rk': 'Rank'}
 
 def _fetch_all_contest_items(target_date: str, projection: str | None = None, expr_names: dict | None = None, tbl=None) -> list:
@@ -1310,6 +1312,8 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
             # 2026 은 적재가 저장한 조회 증가(직전 유효 측정값이 없으면 속성 없음 → 0. 직전 수집 뒤 신작은 ViewDelta = View 로 순위가 있다)
             item['view_change'] = item['ViewDelta'] if 'ViewDelta' in item else (0 if year != 2025 else _contest_item_view_change(item, previous_item))
             _decorate_contest_item(item, year, previous_item, prev_ranked)
+            if year != 2025:
+                item.update(_compute_retention_rates(item))   # 원재료가 없으면(회차 30 미만) 둘 다 None → 화면 '–'
             item['is_new'] = False
             if previous_item and previous_item.get('Rank') is not None:
                 previous_rank = previous_item['Rank']

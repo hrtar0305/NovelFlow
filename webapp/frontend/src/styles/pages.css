@@ -29,6 +29,10 @@
   align-items: stretch;
 }
 
+.ranking-showcase-split--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .ranking-showcase-group {
   display: grid;
   grid-template-rows: auto 1fr;

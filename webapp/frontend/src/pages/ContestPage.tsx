@@ -9,6 +9,7 @@ import ChangeMark from '../components/ui/ChangeMark';
 import TagLinks from '../components/ui/TagLinks';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import FilterDrawer from '../components/ranking/FilterDrawer';
+import Showcase, { type ShowcaseItem } from '../components/ranking/Showcase';
 import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import { EMPTY_FILTER, activeFilterCount, applyRankingFilter, tagCounts, toggleTag, type RankingFilter } from '../utils/rankingQuery';
@@ -25,7 +26,8 @@ import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
  * 필터 서랍의 '수상작만'으로 본다. 수상은 여러 색 칩 대신 강조색 글자 하나.
  *
  * 2026 부터는 대표 순위가 일간 순위다(적재 때 확정한 DailyRank, `utils/contest.ts`). 수상작 발표 전에는
- * 수상 열·'수상작만'을 숨기고, 기성/신인 필터를 둔다. 쇼케이스는 일간 순위 상위다.
+ * 수상 열·'수상작만'을 숨기고, 기성/신인 열·필터와 잔류율 두 열을 둔다. 쇼케이스는 일간 랭킹과 같은 배치(상위 5 +
+ * 급상승 5) — 2025 의 시상대 배치는 수상작을 놓기 위한 것이라 일간 순위에는 맞지 않는다(사용자 검토 2026-10-03).
  */
 
 const NOTES = [
@@ -33,9 +35,20 @@ const NOTES = [
   { id: 'cview', content: <>조회수 = 직전 수집일보다 누적 조회수가 늘어난 양입니다. 그날 하루의 조회수가 아닙니다.</> },
 ];
 const DAILY_NOTES = [
-  { id: 'crank', content: <>일간 순위 = 직전 수집일보다 누적 조회수가 늘어난 양의 순위입니다(같으면 누적 조회수 순). 비교할 직전 기록이 없는 작품(첫 수집·새로 등록·다시 공개)은 순위가 없습니다. 노벨피아 공식 순위가 아닙니다.</> },
-  { id: 'cview', content: <>조회 증가 = 직전 수집일 자정보다 누적 조회수가 늘어난 양입니다. 매일 자정에 모읍니다.</> },
+  { id: 'crank', content: <>순위 = 일간 조회 순위입니다(같으면 누적 조회수 순). 직전 수집 뒤 새로 등록된 작품은 누적 조회수 전체가 그날 조회이고, 직전 값을 알 수 없는 작품(잠시 비공개였던 작품 등)은 그날 순위에서 뺍니다. 노벨피아 공식 순위가 아닙니다.</> },
+  { id: 'cview', content: <>일간 조회 = 직전 수집일 자정보다 누적 조회수가 늘어난 양입니다.</> },
+  { id: 'early', content: <>초반 잔류 = 30화 조회수 ÷ 1화 조회수</> },
+  { id: 'recent', content: <>최신 잔류 = 최신화 조회수 ÷ 30화 전 조회수. 최신화는 수집일에 올라온 회차를 뺀 가장 최근 회차입니다.</> },
 ];
+
+const toShowcase = (year: string, n: ContestNovel, stat: ReactNode, jump: number | null = null): ShowcaseItem => ({
+  id: n.ID, href: `/contests/${year}/novels/${n.ID}`, title: n.Title || '(제목 없음)', cover: n.ThumbnailURL,
+  author: n.AuthorName, rank: n.daily_rank ?? 0, stat, jump,
+});
+
+/** 기성/신인 — 작가 칸 아래 작은 글씨로 두면 눈에 띄지 않아 열로 뺐다. 판정 못 한 작가는 '–'. */
+const CareerText = ({ v }: { v?: boolean | null }) => (v == null ? <span className="career career--none">–</span>
+  : <span className={`career${v ? ' career--veteran' : ''}`}>{v ? '기성' : '신인'}</span>);
 type Career = 'all' | 'veteran' | 'rookie';
 
 const mapRows = (items: ContestNovel[]) => items.map(n => ({
@@ -118,10 +131,22 @@ export default function ContestPage() {
   const onTag = useCallback((t: string) => update(toggleTag(filter, t)), [filter, update]);
   const isPending = deferredFilter !== filter || deferredWinners !== winnersOnly || deferredCareer !== career;
 
-  // 2026 은 백엔드가 이미 일간 순위 순으로 준다(수상작 발표 전).
-  const showcaseItems = useMemo(() => (daily && !showcase.some(n => n.award) ? showcase.slice(0, 11) : [...showcase]
+  // 수상작 쇼케이스(시상대 배치) — 수상작이 있을 때만. 2026 수상 발표 전에는 아래 일간 쇼케이스를 쓴다.
+  const awardShowcase = !daily || showcase.some(n => n.award);
+  const showcaseItems = useMemo(() => (awardShowcase ? [...showcase]
     .sort((a, b) => ((AWARD_ORDER[a.award ?? ''] ?? 99) - (AWARD_ORDER[b.award ?? ''] ?? 99)) || ((b.View ?? -1) - (a.View ?? -1)))
-    .slice(0, 11)), [showcase, daily]);
+    .slice(0, 11) : []), [showcase, awardShowcase]);
+  // 일간 쇼케이스: 보고 있는 날짜의 표에서 바로 고른다(표와 날짜가 어긋나지 않는다). 급상승 = 순위가 오른 폭 순.
+  const dailyShowcase = useMemo(() => {
+    if (awardShowcase) return { top: [], movers: [] };
+    const ranked = rows.filter(n => n.daily_rank != null).sort((a, b) => a.daily_rank! - b.daily_rank!);
+    const movers = ranked.filter(n => typeof n.daily_rank_change === 'number' && n.daily_rank_change > 0)
+      .sort((a, b) => (b.daily_rank_change as number) - (a.daily_rank_change as number) || a.daily_rank! - b.daily_rank!);
+    return {
+      top: ranked.slice(0, 5).map(n => toShowcase(year, n, <>+{formatInt(n.view_change)}</>)),
+      movers: movers.slice(0, 5).map(n => toShowcase(year, n, null, n.daily_rank_change as number)),
+    };
+  }, [rows, awardShowcase, year]);
 
   const count = activeFilterCount(filter) + (winnersOnly ? 1 : 0) + (career !== 'all' ? 1 : 0);
   const filtered = count > 0 || filter.search.trim() !== '';
@@ -144,7 +169,7 @@ export default function ContestPage() {
       : <span className={`rank-num${r <= 3 ? ' is-top' : ''}`}>{r}</span>;
   };
   const columns: RankColumn<ContestNovel>[] = [
-    { key: 'rank', header: daily ? '일간 순위' : '순위', aside: <FootnoteRef id="crank" n={1} />, width: daily ? '72px' : '56px',
+    { key: 'rank', header: '순위', aside: <FootnoteRef id="crank" n={1} />, width: '56px',
       sortKey: daily ? 'daily_rank' : undefined, render: n => <RankNum n={n} /> },
     { key: 'chg', header: '변동', width: '44px', sortKey: daily ? 'daily_rank_change' : 'rank_change', render: n => <ChangeMark value={headChange(n)} /> },
     ...(hasAwards || !daily ? [{ key: 'award', header: '수상', width: '64px', render: (n: ContestNovel) => <AwardText award={n.award} /> }] : []),
@@ -160,18 +185,26 @@ export default function ContestPage() {
     { key: 'author', header: '작가', width: '92px',
       render: n => (isDeletedContestNovel(n) ? dash
         : n.AuthorID && n.AuthorID !== '0'
-          ? <><Link to={`/authors/${n.AuthorID}`} className="rank-author" title={n.AuthorName ?? undefined} onClick={e => e.stopPropagation()}>{n.AuthorName || '(작자 미상)'}</Link>{n.is_veteran ? <span className="rank-career">기성</span> : null}</>
+          ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" title={n.AuthorName ?? undefined} onClick={e => e.stopPropagation()}>{n.AuthorName || '(작자 미상)'}</Link>
           : <span className="rank-author" title={n.AuthorName ?? undefined}>{n.AuthorName || '(작자 미상)'}</span>) },
-    { key: 'vchg', header: daily ? '조회 증가' : '조회수', aside: <FootnoteRef id="cview" n={2} />, width: '84px', sortKey: 'view_change',
+    ...(daily ? [{ key: 'career', header: '구분', width: '44px', render: (n: ContestNovel) => <CareerText v={n.is_veteran} /> }] : []),
+    { key: 'vchg', header: '일간 조회', aside: <FootnoteRef id="cview" n={2} />, width: '84px', sortKey: 'view_change',
       // 2026: 비교할 직전 기록이 없으면(일간 순위 없음) 0 이 아니라 '알 수 없음'이다.
       render: n => (isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : strongIf(['view_change'], formatInt(n.view_change))) },
-    { key: 'view', header: '누적 조회수', width: '100px', sortKey: 'View',
+    { key: 'view', header: '누적 조회', width: '84px', sortKey: 'View',
       render: n => (isDeletedContestNovel(n) ? dash : strongIf(['View'], formatInt(n.View))) },
     { key: 'ratio', header: '추천비', width: '64px', sortKey: 'like_to_view_ratio',
       render: n => (isDeletedContestNovel(n) ? dash : strongIf(['like_to_view_ratio'], formatRatio(n.like_to_view_ratio, 2))) },
     { key: 'eps', header: '회차', width: '52px', sortKey: 'Eps',
       render: n => (isDeletedContestNovel(n) ? dash : strongIf(['Eps'], formatInt(n.Eps))) },
-    { key: 'tags', header: '태그', width: 'minmax(0,1.2fr)', render: n => <TagLinks tags={n.Tags} limit={n.Tags.length} wrap highlighted={hit} onSelect={onTag} /> },
+    ...(daily ? [
+      { key: 'early', header: '초반 잔류', aside: <FootnoteRef id="early" n={3} />, width: '72px', sortKey: 'EarlyRetentionRate',
+        render: (n: ContestNovel) => strongIf(['EarlyRetentionRate'], formatRatio(n.EarlyRetentionRate ?? null, 0)) },
+      { key: 'recent', header: '최신 잔류', aside: <FootnoteRef id="recent" n={4} />, width: '72px', sortKey: 'RecentRetentionRate',
+        render: (n: ContestNovel) => strongIf(['RecentRetentionRate'], formatRatio(n.RecentRetentionRate ?? null, 0)) },
+    ] as RankColumn<ContestNovel>[] : []),
+    // 2026 은 열이 셋(구분·잔류 둘) 늘어 태그 폭을 줄여 제목이 덜 잘리게 한다.
+    { key: 'tags', header: '태그', width: daily ? 'minmax(0,0.85fr)' : 'minmax(0,1.2fr)', render: n => <TagLinks tags={n.Tags} limit={n.Tags.length} wrap highlighted={hit} onSelect={onTag} /> },
   ];
 
   const mobileRow = (n: ContestNovel) => (
@@ -182,8 +215,8 @@ export default function ContestPage() {
         {isDeletedContestNovel(n)
           ? <span className="rank-title rank-title--wrap rank-title--muted">삭제된 작품 ({n.ID})</span>
           : <Link to={`/contests/${year}/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title || '(제목 없음)'}</Link>}
-        <p>{n.award ? <><AwardText award={n.award} /> · </> : null}{n.AuthorName || '(작자 미상)'}{n.is_veteran ? ' · 기성' : ''} · {formatInt(n.Eps)}화</p>
-        <p>{daily ? '조회 증가' : '조회수'} <b>{isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : formatInt(n.view_change)}</b> · 누적 <b>{isDeletedContestNovel(n) ? dash : formatInt(n.View)}</b> · 추천비 <b>{formatRatio(n.like_to_view_ratio, 2)}</b></p>
+        <p>{n.award ? <><AwardText award={n.award} /> · </> : null}{n.AuthorName || '(작자 미상)'}{daily && n.is_veteran != null ? (n.is_veteran ? ' · 기성' : ' · 신인') : ''} · {formatInt(n.Eps)}화</p>
+        <p>일간 조회 <b>{isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : formatInt(n.view_change)}</b> · 누적 <b>{isDeletedContestNovel(n) ? dash : formatInt(n.View)}</b> · 추천비 <b>{formatRatio(n.like_to_view_ratio, 2)}</b>{daily ? <> · 초반 <b>{formatRatio(n.EarlyRetentionRate ?? null, 0)}</b> · 최신 <b>{formatRatio(n.RecentRetentionRate ?? null, 0)}</b></> : null}</p>
         <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} limit={n.Tags.length} wrap />
       </div>
     </div>
@@ -195,8 +228,10 @@ export default function ContestPage() {
         onDateChange={d => navigate(`/contests/${year}/${d}`)} onYearChange={y => navigate(`/contests/${y}`)}
         meta={rows.length ? `${cfg.schedule} · 참여 작품 ${formatInt(rows.length)}편` : cfg.schedule} />
 
+      {!awardShowcase ? <Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} tableDate={dateParam ?? null} /> : null}
+
       {showcaseItems.length > 0 ? (
-        <section className="contest-award-showcase showcase-section" aria-label={daily && !hasAwards ? '일간 순위 상위' : '수상작'}>
+        <section className="contest-award-showcase showcase-section" aria-label="수상작">
           <div className="contest-award-showcase__grid">
             {showcaseItems.map((n, i) => (
               <Link key={`${n.ID}-award`} to={`/contests/${year}/novels/${n.ID}`}
@@ -204,14 +239,13 @@ export default function ContestPage() {
                 aria-label={`${n.Title || '공모전 작품'} 상세 보기`}>
                 <div className="media-rank-card__cover">
                   <NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="media-rank-card__cover-image" />
-                  {n.award ? <div className="media-rank-card__rank contest-award-chip">{n.award}</div>
-                    : daily && n.daily_rank != null ? <div className="media-rank-card__rank contest-award-chip">{n.daily_rank}위</div> : null}
+                  {n.award ? <div className="media-rank-card__rank contest-award-chip">{n.award}</div> : null}
                 </div>
                 <div className="media-rank-card__overlay">
                   <div className="media-rank-card__title">{n.Title || '(제목 없음)'}</div>
                   <div className="media-rank-card__meta">
                     <span className="mini-kpi">{n.AuthorName || '(작자 미상)'}</span>
-                    <span className="mini-kpi">{daily && n.daily_rank != null ? `+${formatInt(n.view_change)}` : `조회 ${formatInt(n.View)}`}</span>
+                    <span className="mini-kpi">조회 {formatInt(n.View)}</span>
                   </div>
                 </div>
               </Link>
