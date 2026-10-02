@@ -220,6 +220,17 @@ export const getContestNovelTrend = (year: number, novelId: string, startDate: s
   );
 };
 
+/** 2026~ 공모전 태그 랭킹(일간 순위 기준, 데일리 태그와 같은 꼴). 일간 순위가 없는 날은 404. */
+const _contestDailyTagCache: ApiCache = {};
+export const getContestDailyTagRankingsByDate = (year: number, date: string) => {
+  return getCachedRequest(
+    _contestDailyTagCache,
+    `${year}:${date}`,
+    ONE_DAY_MS,
+    () => axios.get(`${API_BASE_URL}/api/contests/${year}/ranks/daily-tags/${date}`),
+  );
+};
+
 const _contestTagRankingCache: ApiCache = {};
 export const getContestTagRankingsByDate = (year: number, date: string) => {
   return getCachedRequest(

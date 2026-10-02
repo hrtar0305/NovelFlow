@@ -993,18 +993,19 @@ def get_novel_available_dates(novel_id: str, response: Response):
     except Exception:
         raise _server_error("Unhandled error while handling request")
 
-def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5) -> Optional[float]:
+def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5, rest_total: int = 400) -> Optional[float]:
     """
-    Local Lift = top100_rate / bottom400_rate
-    상위 100개와 하위 400개를 상호 배타적으로 비교하여 순위 관통력을 측정합니다.
-    min_count 미만 태그는 노이즈로 간주하여 None 반환.
+    Local Lift = top100_rate / rest_rate
+    상위 100개와 나머지(데일리는 늘 400개)를 상호 배타적으로 비교하여 순위 관통력을 측정합니다.
+    min_count 미만 태그는 노이즈로 간주하여 None 반환. 공모전 일간 순위는 순위가 매겨진 작품 수가 날마다 달라
+    `rest_total = RankedTotal − 100` 을 넘긴다(100 이하면 나머지가 없어 None).
     """
-    if count_total < min_count:
+    if count_total < min_count or rest_total <= 0:
         return None
-    count_bottom400 = count_total - count_top100
+    count_bottom = count_total - count_top100
     top100_rate = count_top100 / 100.0
-    bottom400_rate = max(count_bottom400, 1) / 400.0  # 최소 1로 스무딩 (상한: count_top100 * 4)
-    return top100_rate / bottom400_rate
+    rest_rate = max(count_bottom, 1) / float(rest_total)  # 최소 1로 스무딩
+    return top100_rate / rest_rate
 
 
 @app.get("/api/ranks/tags/{date}", response_model=List[TagRankData])
@@ -1466,6 +1467,54 @@ def get_contest_tags_by_date(year: int, date: str, response: Response):
         return sorted_data
     except ClientError as e:
         raise _server_error("DynamoDB query failed")
+
+def _contest_daily_tag_ranking(tbl, date: str) -> Optional[list]:
+    """`DAILY_TAG_STATS#{date}` → 데일리 태그 랭킹과 같은 꼴(인기 점수 순 + 상위권 집중도). 항목이 없으면 None."""
+    item = tbl.get_item(Key={'ID': f"DAILY_TAG_STATS#{date}", 'Date': date}).get('Item')
+    if not item:
+        return None
+    ranked_total = int(item.get('RankedTotal', 0) or 0)
+    scores = item.get('TagWeightedScoresLogarithmic', {}) or {}
+    counts = item.get('TagCounts', {}) or {}
+    top = item.get('TagCountsTop100', {}) or {}
+    rows = [{'tag': t, 'power_score': float(v), 'count': int(counts.get(t, 0)),
+             'local_lift': _compute_local_lift(int(top.get(t, 0)), int(counts.get(t, 0)), rest_total=ranked_total - 100)}
+            for t, v in scores.items()]
+    rows.sort(key=lambda x: (-x['power_score'], x['tag']))
+    for i, r in enumerate(rows, 1):
+        r['Rank'] = i
+    return rows
+
+
+@app.get("/api/contests/{year}/ranks/daily-tags/{date}", response_model=List[TagRankData])
+def get_contest_daily_tags_by_date(year: int, date: str, response: Response):
+    """공모전 태그 랭킹 — **일간 순위 기준**(2026~, 대표 순위와 같은 기준 — DECISIONS 2026-10-02).
+
+    데일리 태그 랭킹과 같은 2-track(인기 점수 Σ1/ln(일간 순위+1), 상위권 집중도). 변동은 실제 직전 수집일 대비
+    (공모전 규칙 — 달력 −1 아님). 일간 순위가 없는 날(수집 첫날)은 404.
+    """
+    tbl = _contest_table_for(year)
+    try:
+        rows = _contest_daily_tag_ranking(tbl, date)
+        if rows is None:
+            raise HTTPException(status_code=404, detail="No daily tag statistics found for the given date.")
+        prev_date = _get_previous_contest_date(date, tbl)
+        prev = _contest_daily_tag_ranking(tbl, prev_date) if prev_date else None
+        prev_rank = {r['tag']: r['Rank'] for r in prev} if prev else {}
+        for r in rows:
+            if not prev_rank:
+                r['rank_change'] = None
+            elif r['tag'] not in prev_rank:
+                r['rank_change'] = 'New'
+            else:
+                r['rank_change'] = prev_rank[r['tag']] - r['Rank']
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
+        return rows
+    except HTTPException:
+        raise
+    except ClientError:
+        raise _server_error("DynamoDB query failed")
+
 
 @app.get("/api/trends/tags/series/{start_date}/{end_date}")
 def get_tag_series(start_date: str, end_date: str, response: Response):

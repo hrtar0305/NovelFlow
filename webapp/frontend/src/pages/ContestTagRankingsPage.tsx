@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { Search as SearchIcon } from 'react-bootstrap-icons';
-import { getContestAvailableDates, getContestTagRankingsByDate } from '../services/api';
+import { getContestAvailableDates, getContestDailyTagRankingsByDate, getContestTagRankingsByDate } from '../services/api';
+import DailyTagBoard from '../components/tag/DailyTagBoard';
+import type { DailyTag } from '../utils/tagZones';
 import ContestHeader from '../components/contest/ContestHeader';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
@@ -12,7 +14,9 @@ import { formatInt } from '../utils/format';
 import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
 
 /**
- * 공모전 태그 랭킹(2026-09-30 개편). 점수는 구 3-track(선형·역순위·로그)을 유지한다(DECISIONS 2026-04).
+ * 공모전 태그 랭킹(2026-09-30 개편). 연도마다 대표 순위를 따른다.
+ * - 2026~(일간 순위가 대표): 데일리 태그 랭킹과 같은 2-track 판(`DailyTagBoard`) — 점수가 일간 순위 기준(DECISIONS 2026-10-02).
+ * - 2025(누적 순위가 대표): 구 3-track(선형·역순위·로그)을 유지한다(DECISIONS 2026-04). 아래 설명은 이 판의 것.
  * 열 7개를 '합계 / 평균' 전환으로 6열에 담고, 산식은 머리글 옆 주석 번호 → 표 아래 주석.
  * 포지셔닝 맵은 한 색의 진하기(진할수록 상위)로 칠하고, 행 호버 → 점 강조를 상태로 한다.
  */
@@ -38,6 +42,65 @@ const logTicks = (min: number, max: number): number[] => {
 const fmt = (v: number, digits: number) => (digits === 0 ? formatInt(Math.round(v)) : v.toFixed(digits));
 
 export default function ContestTagRankingsPage() {
+  const { year = LATEST_CONTEST_YEAR } = useParams<{ year: string }>();
+  // 연도가 바뀌면 판을 새로 만든다(두 판의 상태가 섞이지 않게).
+  return contestConfig(year).headline === 'daily' ? <DailyContestTags key={year} /> : <CumulativeContestTags key={year} />;
+}
+
+/** 2026~: 일간 순위 기준 태그 점수. 일간 순위가 없는 날(수집 첫날)은 빈 상태. */
+function DailyContestTags() {
+  const { year = LATEST_CONTEST_YEAR, date: dateParam } = useParams<{ year: string; date?: string }>();
+  const cfg = contestConfig(year);
+  const navigate = useNavigate();
+  const [dates, setDates] = useState<Set<string>>(new Set());
+  const [tags, setTags] = useState<DailyTag[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getContestAvailableDates(parseInt(year, 10))
+      .then(r => setDates(new Set<string>(r.data.available_dates || [])))
+      .catch(() => { setError('조회 가능한 날짜를 불러오지 못했습니다.'); setLoading(false); });
+  }, [year]);
+
+  useEffect(() => {
+    if (dates.size === 0) return;
+    if (!dateParam || !isValid(parseISO(dateParam)) || !dates.has(dateParam)) {
+      navigate(`/contests/${year}/tags/rankings/${[...dates].sort().at(-1)}`, { replace: true });
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    getContestDailyTagRankingsByDate(parseInt(year, 10), dateParam)
+      .then(r => { if (!cancelled) setTags(Array.isArray(r.data) ? r.data : []); })
+      .catch(e => {
+        if (cancelled) return;
+        setTags([]);
+        // 404 = 그날은 일간 순위가 없다(수집 첫날) — 오류가 아니라 빈 상태다.
+        if (e?.response?.status !== 404) setError('태그 랭킹을 불러오지 못했습니다.');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [year, dateParam, dates, navigate]);
+
+  return (
+    <div className="page-shell contest-tags-page">
+      <ContestHeader year={year} date={dateParam ?? null} availableDates={dates} view="tags"
+        onDateChange={d => navigate(`/contests/${year}/tags/rankings/${d}`)}
+        onYearChange={y => navigate(`/contests/${y}/tags/rankings`)}
+        meta={tags.length ? `${cfg.schedule} · 일간 순위 작품에 달린 태그 ${formatInt(tags.length)}개 · 인기 점수 순` : `${cfg.schedule} · 인기 점수 순`} />
+      <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
+        rankBasis="일간 순위" topLabel="일간 순위 100위 안" restLabel="일간 순위가 매겨진 나머지 작품"
+        ariaLabel="공모전 태그 순위"
+        emptyText="이 날짜는 일간 순위가 없어 태그 순위도 없습니다. 일간 순위는 직전 수집일과 비교할 수 있는 다음 날부터 생깁니다."
+        noMapText="상위권 집중도를 계산할 만큼 태그가 모이지 않아 지도를 그리지 않습니다." />
+    </div>
+  );
+}
+
+/** 2025: 누적 순위 기준 구 3-track. */
+function CumulativeContestTags() {
   const { year = LATEST_CONTEST_YEAR, date: dateParam } = useParams<{ year: string; date?: string }>();
   const cfg = contestConfig(year);
   const navigate = useNavigate();
