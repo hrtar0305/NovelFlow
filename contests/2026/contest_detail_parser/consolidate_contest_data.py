@@ -426,6 +426,17 @@ def handler_dmap(event, context):
             'only_in_dmap': len(set(mine) - set(prod)), 'only_in_prod': len(set(prod) - set(mine)),
             'view_far_apart': len(diff_view),   # 실행 시각이 달라 조금씩은 다르다 — 크게 다른 것만 센다
         }
+        # 필드 구성 — 운영 행에는 적재가 붙이는 필드(순위·작가 등)가 더 있으니, 파서가 내는 필드만 견준다.
+        added_by_consolidate = {'Rank', 'DailyRank', 'ViewDelta', 'PrevDate', 'AuthorOtherNovels', 'AuthorOtherMore'}
+        missing, extra = {}, {}
+        for k in set(mine) & set(prod):
+            pk, mk = set(prod[k]) - added_by_consolidate, set(mine[k])
+            for f in pk - mk:
+                missing[f] = missing.get(f, 0) + 1
+            for f in mk - pk:
+                extra[f] = extra.get(f, 0) + 1
+        report['fields_missing_in_dmap'] = dict(sorted(missing.items(), key=lambda x: -x[1])[:10])
+        report['fields_extra_in_dmap'] = dict(sorted(extra.items(), key=lambda x: -x[1])[:10])
         _log(logging.INFO, execution_id, "DMap dry-run comparison.", **report)
         return report
 

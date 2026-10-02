@@ -6,9 +6,10 @@
 원천으로 쓰지 않는다. 참가는 새 작품 등록이므로 번호 훑기로 빠짐없이 잡힌다.
 
 실행은 두 가지다(사용자 결정 2026-10-02 — 자정 수집이 24시간 주기에 최대한 가깝도록 자정 경로를 짧게 둔다).
-- `mode: "prep"` (23:30, 스케줄러가 직접 부른다): 그때까지의 새 번호 + 재확인 전부(비공개·일반작) + 작가 다른 작품.
+- `mode: "prep"` (23:30, 스케줄러가 직접 부른다): 그때까지의 새 번호 + 재확인 전부(비공개·일반작) + 새 작가의 다른 작품.
 - `mode: "midnight"` (00:00, 상태 머신 첫 단계 — 기본값): 끝 번호부터 첫 '잘못된 소설 번호'까지 + 노벨피아 표시 수와
-  견주기(모자라면 끝 번호만 다시, 최대 MATCH_ROUNDS_MIDNIGHT 번). 재확인·작가 받기는 하지 않는다 — 끝 번호를 다시 훑어도
+  견주기(모자라면 끝 번호만 다시, 최대 MATCH_ROUNDS_MIDNIGHT 번) + 새 작가의 다른 작품(최대 MIDNIGHT_AUTHOR_SECONDS 초,
+  실패해도 목록은 이미 써 둔다). 재확인은 하지 않는다 — 끝 번호를 다시 훑어도
   안 메워지는 차이(배지가 늦게 보인 작품 등)는 경고만 남기고 다음 준비 실행이 메운다.
 
 2025 와 다른 점
@@ -55,13 +56,14 @@ FRESH_DAYS = int(os.environ.get('FRESH_DAYS', '7'))
 BUDGET_MS = int(os.environ.get('STOP_WHEN_REMAINING_MS', '90000'))
 CHUNK = 40
 MATCH_ROUNDS_MIDNIGHT = int(os.environ.get('MATCH_ROUNDS_MIDNIGHT', '3'))   # 자정: 노벨피아 표시 수와 맞을 때까지 다시 훑는 최대 횟수
+MIDNIGHT_AUTHOR_SECONDS = int(os.environ.get('MIDNIGHT_AUTHOR_SECONDS', '20'))  # 자정: 작가 받기에 쓸 최대 시간(밀린 몫은 준비 실행)
 
 ID_LIST_KEY = f"contest_novel_ids_{YEAR}.json"      # 팬아웃이 읽는 목록(2025 와 같은 모양: 번호 배열)
 STATE_KEY = "state/progress.json"
 RECHECK_KEY = "state/recheck_ids.json"
 CONTEST_META_KEY = "state/contest_ids.json"        # 번호 → 처음 찾은 시각·작가
-AUTHORS_DONE_KEY = "state/authors_fetched.json"    # 다른 작품을 받은 작가 번호들
-AUTHOR_INDEX_KEY = "state/author_works.json"       # 작가 → 다른 작품 번호들(적재가 작품 행에 붙인다)
+AUTHOR_INDEX_KEY = "state/author_works.json"       # 작가 → 다른 작품 번호들(적재가 작품 행에 붙인다). 받은 작가의 유일한 기록
+# (예전의 state/authors_fetched.json 은 쓰지 않는다 — 두 파일이 어긋나면 작가가 색인에서 영구히 빠졌다)
 AUTHOR_KEY = "authors/{}.json"
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
@@ -135,14 +137,33 @@ def author_works(session, author_id, novel_no):
                 'mem_no': author_id, 'novel_no': novel_no, 'page': page, 'cmd': 'writer_other_novel'},
                 headers={'X-Requested-With': 'XMLHttpRequest', 'Referer': f'https://novelpia.com/novel/{novel_no}'}, timeout=15)
             d = r.json()
-        except Exception as e:  # noqa: BLE001 — 부가 정보라 실패해도 수집을 막지 않는다
+            pages.append({'page': page, 'raw': d})
+            if not (isinstance(d, dict) and isinstance(d.get('writer_other_novel'), dict)):
+                # '다른 작품 없음'의 실제 응답도 {'writer_other_novel': {'list': [], ...}} 다 — 다른 모양은 모르는 응답이다.
+                raise ValueError('unexpected response shape')
+            w = _writer_block(d)
+            if any(n < CONTEST_FIRST_ID for n in _novel_nos(w)) or not w.get('is_next_page'):
+                break
+        except Exception as e:  # noqa: BLE001 — 부가 정보라 실패해도 수집을 막지 않는다(그 작가는 다음에 다시 받는다)
             pages.append({'page': page, 'error': str(e)[:120]})
             break
-        pages.append({'page': page, 'raw': d})
-        w = d.get('writer_other_novel') or {}
-        if any(int(x.get('novel_no') or 0) < CONTEST_FIRST_ID for x in w.get('list') or []) or not w.get('is_next_page'):
-            break
     return pages
+
+
+def _writer_block(d):
+    w = d.get('writer_other_novel') if isinstance(d, dict) else None
+    return w if isinstance(w, dict) else {}
+
+
+def _novel_nos(w):
+    """작품 번호들 — 숫자가 아닌 값은 건너뛴다(응답 모양이 바뀌어도 수집을 막지 않게)."""
+    out = []
+    for x in w.get('list') or []:
+        try:
+            out.append(int(x['novel_no']))
+        except (TypeError, KeyError, ValueError):
+            pass
+    return out
 
 
 def listed_total(session):
@@ -158,11 +179,16 @@ def listed_total(session):
 
 
 def summarize_author(pages):
-    """원본 페이지들 → {'novels': [번호...], 'more': 다음 쪽이 남았나}. 해석(기성 여부)은 하지 않는다."""
+    """원본 페이지들 → {'novels': [번호...], 'more': 다음 쪽이 남았나}. 해석(기성 여부)은 하지 않는다.
+
+    받다가 오류가 난 쪽이 있으면 None — '다른 작품 없음'(신인)으로 잘못 굳지 않게 색인에 넣지 않고 다음에 다시 받는다.
+    """
+    if any('error' in p for p in pages):
+        return None
     novels, more = set(), False
     for p in pages:
-        w = (p.get('raw') or {}).get('writer_other_novel') or {}
-        novels |= {int(x['novel_no']) for x in w.get('list') or [] if x.get('novel_no')}
+        w = _writer_block(p.get('raw'))
+        novels |= set(_novel_nos(w))
         more = bool(w.get('is_next_page'))
     return {'novels': sorted(novels), 'more': more}
 
@@ -221,6 +247,44 @@ def handler(event, context):
         save()
         return False
 
+    def fetch_authors(seconds=None):
+        """색인에 없는 작가의 다른 작품(작가당 1회) — 받은 작가는 다시 받지 않으므로 늘 '증가분'이다.
+
+        - 받을 작가 = 색인에 없는 작가. 기록이 색인 하나라, 실행이 겹쳐 한쪽 쓰기가 덮여도 빠진 작가는 다음 실행이 다시
+          받는다(스스로 복구). 오류가 난 작가도 색인에 넣지 않아 다음에 다시 받는다.
+        - 자정에는 `seconds` 로 시간을 묶는다 — 평소엔 그 30분 사이 새 작가 몇 명이지만, 준비 실행이 실패한 날의 밀린 몫이
+          자정 수집을 늦추면 안 된다. 최근 참가작의 작가부터 받는다. WORKERS 명씩 동시에.
+        """
+        index = _get(AUTHOR_INDEX_KEY, {})
+        pending = {}
+        for k, meta in sorted(contest.items(), key=lambda kv: -int(kv[0])):
+            aid = meta.get('author_id')
+            if aid and aid not in index and aid not in pending:
+                pending[aid] = int(k)
+        if not pending:
+            return 0, 0, 0
+        deadline = time.monotonic() + seconds if seconds else None
+        todo, got, failed, batches = list(pending.items()), 0, 0, 0
+
+        def flush():
+            _put(AUTHOR_INDEX_KEY, index)
+
+        while todo and remaining() > BUDGET_MS // 2 and (deadline is None or time.monotonic() < deadline):
+            part, todo = todo[:WORKERS], todo[WORKERS:]
+            for (aid, nno), pages in zip(part, pool.map(lambda t: author_works(sess[t[0]], t[1][0], t[1][1]), enumerate(part))):
+                _put(AUTHOR_KEY.format(aid), {'author_id': aid, 'fetched_at': _now(), 'novel_no': nno, 'pages': pages})
+                summary = summarize_author(pages)
+                if summary is None:
+                    failed += 1
+                    continue
+                index[aid] = summary
+                got += 1
+            batches += 1
+            if batches % 12 == 0:
+                flush()
+        flush()
+        return got, failed, len(todo)
+
     # ---- 1. 새 번호. 자정이면 노벨피아 표시 수와 견주고, 모자라면 끝 번호만 다시 훑는다 ----
     if not done_scan:
         done_scan = scan_to_frontier()
@@ -234,13 +298,21 @@ def handler(event, context):
         time.sleep(3)
         scan_to_frontier()
     if not prep:
-        # 자정 경로는 여기서 끝낸다 — 재확인·작가 받기는 23:30 준비 실행이 맡는다.
+        # 자정 경로는 여기서 끝낸다 — 재확인은 23:30 준비 실행이 맡는다. 목록을 **먼저** 쓴다: 작가 받기는 부가 정보라
+        # 거기서 무엇이 터져도 그날 스냅샷을 막으면 안 된다.
         _put(ID_LIST_KEY, sorted(int(k) for k in contest))
+        got = failed = authors_left = None
+        if done_scan:
+            try:
+                got, failed, authors_left = fetch_authors(MIDNIGHT_AUTHOR_SECONDS)
+            except Exception as e:  # noqa: BLE001
+                _log(logging.ERROR, execution_id, f"Author fetch failed at midnight (prep run will retry): {e}")
         if listed is not None and len(contest) < listed:
             _log(logging.WARNING, execution_id, "Collected fewer contest novels than Novelpia lists (prep run will recheck).",
                  ours=len(contest), listed=listed, short_by=listed - len(contest), rounds=rounds)
         _log(logging.INFO, execution_id, "Midnight ID pass finished.", done=done_scan, last_checked_id=st['last_checked_id'],
-             total_contest=len(contest), new_contest=len(new_contest), listed=listed, match_rounds=rounds)
+             total_contest=len(contest), new_contest=len(new_contest), listed=listed, match_rounds=rounds,
+             authors_fetched=got, authors_failed=failed, authors_left=authors_left)
         return {"done": done_scan, "total_contest": len(contest), "listed_total": listed,
                 "new_contest": len(new_contest), "last_checked_id": st['last_checked_id']}
 
@@ -276,33 +348,13 @@ def handler(event, context):
         _put(RECHECK_KEY, recheck)
         _put(CONTEST_META_KEY, contest)
 
-    # ---- 3. 작가 다른 작품(작가당 1회). 예산이 모자라 못 받은 작가는 다음 실행이 이어 받는다 ----
-    fetched = set(_get(AUTHORS_DONE_KEY, []))
-    index = _get(AUTHOR_INDEX_KEY, {})
-    pending = {}
-    for k, meta in contest.items():
-        aid = meta.get('author_id')
-        if aid and aid not in fetched and aid not in pending:
-            pending[aid] = int(k)
-    got = 0
-    for aid, nno in pending.items():
-        if remaining() < BUDGET_MS // 2:
-            break
-        pages = author_works(sess[0], aid, nno)
-        _put(AUTHOR_KEY.format(aid), {'author_id': aid, 'fetched_at': _now(), 'novel_no': nno, 'pages': pages})
-        index[aid] = summarize_author(pages)
-        fetched.add(aid)
-        got += 1
-        if got % 50 == 0:
-            _put(AUTHORS_DONE_KEY, sorted(fetched))
-            _put(AUTHOR_INDEX_KEY, index)
-    _put(AUTHORS_DONE_KEY, sorted(fetched))
-    _put(AUTHOR_INDEX_KEY, index)
+    # ---- 3. 작가 다른 작품(증가분) ----
+    got, failed, authors_left = fetch_authors()
 
     _put(ID_LIST_KEY, sorted(int(k) for k in contest))
     done = done_scan and not due
     listed = listed_total(sess[0])   # 준비 실행은 기록만(자정 실행이 맞춘다)
     _log(logging.INFO, execution_id, "Contest ID collection pass finished.", done=done, last_checked_id=st['last_checked_id'],
          total_contest=len(contest), new_contest=len(new_contest), recheck_total=len(recheck),
-         rechecked=rechecked, recheck_left=len(due), authors_fetched=got, authors_pending=len(pending) - got, listed=listed, match_rounds=rounds)
+         rechecked=rechecked, recheck_left=len(due), authors_fetched=got, authors_failed=failed, authors_left=authors_left, listed=listed, match_rounds=rounds)
     return {"done": done, "total_contest": len(contest), "listed_total": listed, "new_contest": len(new_contest), "last_checked_id": st['last_checked_id']}

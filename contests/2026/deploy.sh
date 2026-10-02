@@ -85,6 +85,9 @@ code() {
 
   upsert_zip $F_COLLECTOR "$BUILD/collector.zip" app.handler 900 256 \
     "Variables={S3_BUCKET_NAME=$BUCKET,CONTEST_YEAR=$Y,START_ID=455000,CONTEST_FIRST_ID=455325}"
+  # 23:30 준비 실행은 스케줄러의 비동기 호출이다. Lambda 기본 재시도(2번)가 시간 초과 뒤 자정 실행과 겹치면 같은 상태
+  # 파일을 둘이 쓰므로 재시도를 끈다 — 실패한 준비 실행은 다음 날 다시 돈다(자정 수집은 무관).
+  aws lambda put-function-event-invoke-config --region $R --function-name $F_COLLECTOR --maximum-retry-attempts 0 >/dev/null
   upsert_zip $F_FANOUT "$BUILD/fanout.zip" app.get_id_list_from_s3 120 256 \
     "Variables={S3_BUCKET_NAME=$BUCKET,S3_FILE_NAME=contest_novel_ids_$Y.json,SQS_TASK_QUEUE_URL=$TASK_URL,SQS_RESULT_QUEUE_URL=$RESULT_URL}"
   upsert_zip $F_CHECK "$BUILD/check.zip" check_completion.handler 180 256 "Variables={SQS_RESULT_QUEUE_URL=$RESULT_URL}"
