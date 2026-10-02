@@ -142,12 +142,12 @@ const DataCollectionPage = () => {
           <Term term="순위 변동">하루 전 목록의 같은 작품과 비교합니다. 하루 전 목록에 없으면 NEW입니다. 신작, 다시 들어온 작품, 전날 수집이 빠진 날의 작품이 모두 NEW로 보입니다.</Term>
           <Term term="추천비">추천 수 ÷ 누적 조회수입니다.</Term>
           <Term term="초반 잔류">
-            30화 조회수 ÷ 1화 조회수입니다. 회차가 30개에 못 미치면 계산하지 않고 –로 둡니다.
+            30화 조회수 ÷ 1화 조회수입니다. 프롤로그가 있으면 프롤로그를 1화로 칩니다. 회차가 30개에 못 미치면 계산하지 않고 –로 둡니다.
             흔히 쓰는 연독률과는 다른 값입니다.
           </Term>
           <Term term="최신 잔류">
             최신화 조회수 ÷ 30화 전 회차의 조회수입니다. 최신화는 그날 올라온 회차를 빼고, 올린 날짜가 표시된 회차 중
-            가장 최근 것입니다. 흔히 쓰는 연독률과는 다른 값입니다.
+            가장 최근 것입니다. 갓 올라온 회차는 조회수가 덜 쌓였기 때문입니다. 흔히 쓰는 연독률과는 다른 값입니다.
           </Term>
           <Term term="연재 상태">그날 작품 페이지에 붙어 있던 배지입니다. 연재중, 완결, 연재지연, 연재중단으로 나뉩니다. 2026년 9월 5일 랭킹부터 기록돼 있습니다.</Term>
           <Term term="인기 점수">태그 랭킹의 점수입니다. 그 태그가 달린 작품마다 1/ln(순위+1)을 더한 값이라, 상위 작품일수록 크게 반영됩니다.</Term>
@@ -161,18 +161,20 @@ const DataCollectionPage = () => {
       <section className="doc-sec">
         <h2>공모전은 기준이 다릅니다</h2>
         <div className="doc-table-wrap">
-          <table className="doc-table">
+          <table className="doc-table doc-table--compare">
             <thead>
               <tr><th scope="col"><span className="visually-hidden">항목</span></th><th scope="col">일간 랭킹</th><th scope="col">공모전</th></tr>
             </thead>
             <tbody>
-              <tr><th scope="row">저장 시각</th><td>매일 밤 9시</td><td>2026: 매일 자정(그날 0~24시) · 2025: 매일 오후 2시</td></tr>
-              <tr><th scope="row">대상</th><td>7일 조회순 전체 랭킹</td><td>공모전 참여 작품</td></tr>
-              <tr><th scope="row">로그인</th><td>함</td><td>하지 않음</td></tr>
-              <tr><th scope="row">작품 수</th><td>500편 (2025년 7월 20일까지 300편)</td><td>공모전 참여 전체 작품</td></tr>
-              <tr><th scope="row">순위</th><td>노벨피아 순위 그대로</td><td>2026: 전날보다 늘어난 누적 조회수 순(일간 순위) · 2025: 누적 조회수 순. 모두 여기서 매김</td></tr>
-              <tr><th scope="row">비교하는 전날</th><td>달력 기준 하루 전</td><td>실제로 수집한 직전 날</td></tr>
-              <tr><th scope="row">수집 시작</th><td>2024년 12월 23일</td><td>2026: 2026년 10월 1일(개막일) · 2025: 2025년 10월 2일</td></tr>
+              <tr><th scope="row">저장 시각</th><td data-label="일간 랭킹">매일 밤 9시</td><td data-label="공모전">2026: 매일 자정(그날 0~24시) · 2025: 매일 오후 2시</td></tr>
+              <tr><th scope="row">대상</th><td data-label="일간 랭킹">7일 조회순 전체 랭킹</td><td data-label="공모전">공모전 참여 작품</td></tr>
+              <tr><th scope="row">로그인</th><td data-label="일간 랭킹">함</td><td data-label="공모전">하지 않음</td></tr>
+              <tr><th scope="row">작품 수</th><td data-label="일간 랭킹">500편 (2025년 7월 20일까지 300편)</td><td data-label="공모전">공모전 참여 전체 작품</td></tr>
+              <tr><th scope="row">순위</th><td data-label="일간 랭킹">노벨피아 순위 그대로</td><td data-label="공모전">2026: 전날보다 늘어난 누적 조회수 순(일간 순위). 전날 이후 등록된 작품은 누적 조회수 전체가 그날 증가분이고, 전날 값을 알 수 없는 작품(잠시 비공개였던 작품 등)은 그날 순위에서 뺍니다 · 2025: 누적 조회수 순. 모두 여기서 매김</td></tr>
+              <tr><th scope="row">태그 점수</th><td data-label="일간 랭킹">순위 기준 인기 점수 · 상위권 집중도</td><td data-label="공모전">2026: 일간 순위 기준으로 일간 랭킹과 같은 방식(상위권 집중도의 나머지는 그날 순위가 매겨진 작품 전체) · 2025: 누적 순위 기준 선형·역순위·로그 점수</td></tr>
+              <tr><th scope="row">잔류율 회차</th><td data-label="일간 랭킹">그날 올라온 회차를 뺌</td><td data-label="공모전">2026: 자정에 모으므로 전날 올라온 회차까지 뺌(최신화가 늘 하루 넘게 지난 회차)</td></tr>
+              <tr><th scope="row">비교하는 전날</th><td data-label="일간 랭킹">달력 기준 하루 전</td><td data-label="공모전">실제로 수집한 직전 날</td></tr>
+              <tr><th scope="row">수집 시작</th><td data-label="일간 랭킹">2024년 12월 23일</td><td data-label="공모전">2026: 2026년 10월 1일(개막일) · 2025: 2025년 10월 2일</td></tr>
             </tbody>
           </table>
         </div>

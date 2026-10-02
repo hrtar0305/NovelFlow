@@ -240,7 +240,9 @@
 .doc-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
 .doc-table th, .doc-table td { padding: 0.65rem 0.75rem 0.65rem 0; border-top: 1px solid var(--np-border); text-align: left; vertical-align: top; }
 .doc-table thead th { border-top: 0; font-size: 0.8125rem; font-weight: 600; color: var(--np-text-secondary); }
-.doc-table tbody th { width: 7.5rem; font-weight: 700; color: var(--np-text-heading); }
+.doc-table tbody th { width: 7.5rem; font-weight: 700; color: var(--np-text-heading); white-space: nowrap; }
+/* 좁은 폭에서 한글이 글자 단위로 꺾이지 않게(머리말 '로그/인' 같은 줄바꿈) */
+.doc-table th, .doc-table td { word-break: keep-all; overflow-wrap: anywhere; }
 .doc-table td { color: var(--np-text-primary); }
 .doc-list { margin: 0; padding-left: 1.1rem; }
 .doc-list li { margin: 0 0 0.55rem; padding-left: 0.2rem; font-size: 0.9375rem; line-height: 1.75; color: var(--np-text-primary); }
@@ -250,6 +252,12 @@
   .doc-terms dt { padding-bottom: 0.15rem; }
   .doc-terms dd { border-top: 0; padding-top: 0.15rem; }
   .doc-table tbody th { width: auto; }
+  /* 비교표는 좁은 폭에서 세 열이 글자 단위로 꺾이므로 항목마다 쌓는다: 항목 이름 → '일간 랭킹: …' → '공모전: …' */
+  .doc-table--compare thead { display: none; }
+  .doc-table--compare tbody tr { display: block; padding: 0.65rem 0; border-top: 1px solid var(--np-border); }
+  .doc-table--compare tbody th, .doc-table--compare tbody td { display: block; padding: 0.1rem 0; border-top: 0; white-space: normal; }
+  .doc-table--compare tbody th { margin-bottom: 0.2rem; }
+  .doc-table--compare tbody td::before { content: attr(data-label) " · "; font-size: 0.8125rem; font-weight: 600; color: var(--np-text-secondary); }
 }
 .app-footer__inner p { margin: 0 0 0.3rem; }
 .app-footer__links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
