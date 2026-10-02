@@ -555,8 +555,10 @@ def _decorate_contest_item(item: dict, year: int, previous_item: dict | None = N
     """2026 부터의 해석값을 붙인다(원문은 그대로 두고). 2025 행에는 원문이 없어 전부 None 이 된다."""
     item['daily_rank'] = item.get('DailyRank')
     prev_rank = (previous_item or {}).get('DailyRank')
+    # 'New' = 오늘 처음 순위에 들었다. 직전 수집 뒤 새로 등록된 작품(IsNew — 적재가 판정)과 어제는 기준값이 없어
+    # 순위 밖이었던 작품 둘 다다. 기준값이 없어 오늘도 순위 밖인 작품은 None.
     item['daily_rank_change'] = (prev_rank - item['DailyRank']) if (prev_rank is not None and item.get('DailyRank') is not None) else (
-        'New' if item.get('DailyRank') is not None and previous_item is not None and prev_rank is None else None)
+        'New' if item.get('DailyRank') is not None and prev_rank is None else None)
     item['serial_status'] = _derive_serial_status(item)
     item['is_veteran'] = _contest_veteran(item, year)
     item['life_pick_rank'] = _life_pick_rank(item)
@@ -1295,7 +1297,7 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
         for item in current_day_items:
             previous_item = previous_day_map.get(item['ID'])
             item['award'] = _get_contest_award(item['ID'], year)
-            # 2026 은 적재가 저장한 조회 증가(직전 유효 측정값이 없으면 속성 없음 → 0, NEW 는 daily_rank 가 없음으로 드러난다)
+            # 2026 은 적재가 저장한 조회 증가(직전 유효 측정값이 없으면 속성 없음 → 0. 직전 수집 뒤 신작은 ViewDelta = View 로 순위가 있다)
             item['view_change'] = item['ViewDelta'] if 'ViewDelta' in item else (0 if year != 2025 else _contest_item_view_change(item, previous_item))
             _decorate_contest_item(item, year, previous_item)
             item['is_new'] = False
