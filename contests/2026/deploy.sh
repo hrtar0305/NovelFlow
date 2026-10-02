@@ -30,6 +30,9 @@ F_CONSOLIDATE=novelflow-contest-$Y-consolidate
 TASK_URL=https://sqs.$R.amazonaws.com/$ACC/$TASK_Q
 RESULT_URL=https://sqs.$R.amazonaws.com/$ACC/$RESULT_Q
 SM_ARN=arn:aws:states:$R:$ACC:stateMachine:$SM_NAME
+DSM_ARN=arn:aws:states:$R:$ACC:stateMachine:${SM_NAME%Workflow}DMapWorkflow
+# 자정 스케줄이 부르는 판: dmap(기본, 2026-10-02 전환) | sqs(되돌릴 때 — `PIPELINE=sqs bash deploy.sh schedule`)
+PIPELINE=${PIPELINE:-dmap}
 BUILD=$(mktemp -d)
 trap 'rm -rf "$BUILD"' EXIT
 exists() { "$@" >/dev/null 2>&1; }
@@ -127,6 +130,15 @@ upsert_zip() {  # name zip handler timeout memory env
   aws lambda wait function-updated --region $R --function-name $1 2>/dev/null || aws lambda wait function-active --region $R --function-name $1
 }
 
+failure_rule() {
+  echo "== 실패 알림 규칙에 2026 상태 머신 두 판 추가"
+  aws events put-rule --region $R --name novelflow-pipeline-failure --event-pattern "{
+    \"source\":[\"aws.states\"],\"detail-type\":[\"Step Functions Execution Status Change\"],
+    \"detail\":{\"status\":[\"FAILED\",\"TIMED_OUT\",\"ABORTED\"],\"stateMachineArn\":[
+      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendCrawlerWorkflow\",
+      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\",\"$DSM_ARN\"]}}" >/dev/null
+}
+
 orchestration() {
   echo "== 상태 머신 역할: 2026 큐 purge 권한 추가"
   aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name PurgePipelineQueues --policy-document "{
@@ -144,12 +156,7 @@ orchestration() {
       --role-arn arn:aws:iam::$ACC:role/$SFN_ROLE_NAME --definition "$DEF" >/dev/null
   fi
 
-  echo "== 실패 알림 규칙에 2026 상태 머신 추가"
-  aws events put-rule --region $R --name novelflow-pipeline-failure --event-pattern "{
-    \"source\":[\"aws.states\"],\"detail-type\":[\"Step Functions Execution Status Change\"],
-    \"detail\":{\"status\":[\"FAILED\",\"TIMED_OUT\",\"ABORTED\"],\"stateMachineArn\":[
-      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendCrawlerWorkflow\",
-      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\"]}}" >/dev/null
+  failure_rule
 }
 
 dmap() {
@@ -176,7 +183,6 @@ dmap() {
       \"Resource\":\"arn:aws:s3:::$BUCKET/*\"},{\"Effect\":\"Allow\",\"Action\":\"s3:ListBucket\",\"Resource\":\"arn:aws:s3:::$BUCKET\"}]}"
 
   echo "== 상태 머신 ${SM_NAME%Workflow}DMapWorkflow"
-  DSM_ARN=arn:aws:states:$R:$ACC:stateMachine:${SM_NAME%Workflow}DMapWorkflow
   DEF=$(sed "s/YOUR_AWS_REGION/$R/g; s/YOUR_AWS_ACCOUNT_ID/$ACC/g" contest_detail_parser/NovelFlowContest2026DMapWorkflow.json)
   if exists aws stepfunctions describe-state-machine --region $R --state-machine-arn $DSM_ARN; then
     aws stepfunctions update-state-machine --region $R --state-machine-arn $DSM_ARN --definition "$DEF" >/dev/null
@@ -184,6 +190,7 @@ dmap() {
     aws stepfunctions create-state-machine --region $R --name ${SM_NAME%Workflow}DMapWorkflow --type STANDARD \
       --role-arn arn:aws:iam::$ACC:role/$SFN_ROLE_NAME --definition "$DEF" >/dev/null
   fi
+  failure_rule
 }
 
 schedule() {
@@ -192,12 +199,14 @@ schedule() {
   for v in $OLD; do aws iam delete-policy-version --policy-arn $SCHED_POLICY_ARN --version-id $v; done
   aws iam create-policy-version --policy-arn $SCHED_POLICY_ARN --set-as-default --policy-document "{
     \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"states:StartExecution\"],\"Resource\":[
-      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\"]},
+      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\",\"$DSM_ARN\"]},
       {\"Effect\":\"Allow\",\"Action\":[\"lambda:InvokeFunction\"],\"Resource\":[\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\"]}]}" >/dev/null
 
-  echo "== 스케줄 $SCHED_NAME (매일 00:00 KST)"
+  # SQS 판은 지우지 않고 남겨 둔다 — 문제가 생기면 스케줄 대상만 되돌린다.
+  TARGET_ARN=$([ "$PIPELINE" = sqs ] && echo $SM_ARN || echo $DSM_ARN)
+  echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → ${TARGET_ARN##*:})"
   ARGS=(--region $R --name $SCHED_NAME --schedule-expression "cron(0 0 * * ? *)" --schedule-expression-timezone Asia/Seoul
-        --flexible-time-window Mode=OFF --target "Arn=$SM_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME")
+        --flexible-time-window Mode=OFF --target "Arn=$TARGET_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME")
   if exists aws scheduler get-schedule --region $R --name $SCHED_NAME; then aws scheduler update-schedule "${ARGS[@]}" >/dev/null
   else aws scheduler create-schedule "${ARGS[@]}" >/dev/null; fi
 
