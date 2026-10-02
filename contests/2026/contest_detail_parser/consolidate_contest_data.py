@@ -151,12 +151,41 @@ def _calculate_and_store_tag_stats(dynamodb_table, execution_id, items):
     except Exception as e:
         _log(logging.ERROR, execution_id, f"Failed to store tag stats for {date}. Error: {e}")
 
-def daily_rank(items, prev_views):
+def new_since(prev_date, items, prev_views, contest_meta):
+    """직전 수집 **뒤에 새로 등록된** 참가작 번호들 — 이들의 누적 조회는 곧 그 하루(등록~자정)의 조회다.
+
+    셋 다 맞아야 한다(하나라도 모르면 신작으로 치지 않는다 — 오염보다 누락이 낫다):
+    - 직전 수집일에 행이 아예 없다(placeholder 라도 있었으면 '부활'이라 기준값을 모른다),
+    - 수집기가 새 번호 훑기로 찾았다(`via: recheck` 이면 등록은 더 일렀을 수 있다 — 배지가 늦게 보였거나 비공개였다),
+    - 처음 찾은 시각이 직전 수집(그 날짜 다음 날 00:00 KST) 무렵 이후다(직전 수집 사이에 빠진 날이 있으면 며칠 치가 섞인다).
+    """
+    if not prev_date:
+        return set()
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    cutoff = datetime.fromisoformat(prev_date).replace(tzinfo=ZoneInfo('Asia/Seoul')) + timedelta(days=1, hours=-2)
+    out = set()
+    for it in items:
+        k = str(it.get('ID'))
+        meta = contest_meta.get(k)
+        if k in prev_views or not meta or meta.get('via') == 'recheck' or not meta.get('found_at'):
+            continue
+        try:
+            if datetime.fromisoformat(meta['found_at']) >= cutoff:
+                out.add(k)
+        except ValueError:
+            continue
+    return out
+
+
+def daily_rank(items, prev_views, new_ids=frozenset()):
     """일간 순위(면접 D22 규칙). 대표 순위로 쓴다 — 누적 순위(`Rank`)는 공모전 중반부터 거의 움직이지 않는다.
 
     - `ViewDelta` = 오늘 누적 조회 − 직전 수집일 누적 조회. **'누적 조회수 증가량'이지 인증 조회수가 아니다.**
-    - 직전 **유효** 측정값(-1 아님)이 없으면 계산하지 않는다(속성을 싣지 않음 → 화면 NEW). 신규 등록·부활(전날
-      placeholder)·늦게 찾은 작품을 모두 덮는다. 전날이 -1 인데 0 으로 치면 누적 전체가 하루치로 잡힌다.
+    - 직전 **유효** 측정값(-1 아님)이 없으면 계산하지 않는다 — 순위·증가량을 싣지 않고 다음 날의 기준값으로만 쓴다.
+      부활(전날 placeholder)·늦게 찾은 작품이 여기 든다. 전날이 -1 인데 0 으로 치면 누적 전체가 하루치로 잡힌다.
+    - **예외: 직전 수집 뒤 새로 등록된 작품(`new_ids`)은 누적 조회가 곧 그날 조회라 `ViewDelta = View` 로 순위에 넣고
+      `IsNew` 를 단다**(사용자 결정 2026-10-02). 판정은 `new_since`.
     - 정렬: 증가 큰 순 → 누적 조회 많은 순 → 번호 작은 순(동점이 수천 건이라 결정적이어야 순위선이 요동치지 않는다).
     - 모수: 값이 있는 전체 참가작. 다른 작품이 사라지기만 해도 순위가 오를 수 있다(각주감).
     `prev_views`: {ID: 직전 수집일 View}. 값을 바꾼 items 를 그대로 돌려준다.
@@ -166,8 +195,14 @@ def daily_rank(items, prev_views):
         cur, prev = item.get('View'), prev_views.get(str(item.get('ID')))
         item.pop('ViewDelta', None)
         item.pop('DailyRank', None)
-        if isinstance(cur, int) and cur >= 0 and prev is not None and prev >= 0:
+        item.pop('IsNew', None)
+        if not (isinstance(cur, int) and cur >= 0):
+            continue
+        if prev is not None and prev >= 0:
             item['ViewDelta'] = cur - prev
+            ranked.append(item)
+        elif prev is None and str(item.get('ID')) in new_ids:
+            item['ViewDelta'], item['IsNew'] = cur, True
             ranked.append(item)
     ranked.sort(key=lambda x: (-x['ViewDelta'], -x['View'], int(x['ID'])))
     for i, item in enumerate(ranked, 1):
@@ -211,6 +246,17 @@ def attach_author_works(items, index):
         item['AuthorOtherNovels'] = [n for n in info.get('novels', []) if str(n) != str(item.get('ID'))]
         item['AuthorOtherMore'] = bool(info.get('more'))
     return items
+
+
+def _load_contest_meta(execution_id):
+    """수집기의 참가작 상태(번호 → 처음 찾은 시각·경로). 못 읽으면 빈 dict — 신작 판정만 빠지고 적재는 계속한다."""
+    if not Config.STATE_BUCKET:
+        return {}
+    try:
+        return json.loads(boto3.client('s3').get_object(Bucket=Config.STATE_BUCKET, Key='state/contest_ids.json')['Body'].read())
+    except Exception as e:  # noqa: BLE001
+        _log(logging.WARNING, execution_id, f"Could not load contest meta (new-novel ranking skipped): {e}")
+        return {}
 
 
 def _load_author_index(execution_id):
@@ -285,7 +331,10 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
 
     # 3. 일간 순위(대표 순위) — 직전 수집일 대비 누적 조회 증가
     prev_date, prev_views = _previous_views(dynamodb_table, processed_items[0]['Date'], execution_id)
-    daily_rank(processed_items, prev_views)
+    new_ids = new_since(prev_date, processed_items, prev_views, _load_contest_meta(execution_id))
+    daily_rank(processed_items, prev_views, new_ids)
+    _log(logging.INFO, execution_id, "Daily rank computed.", prev_date=prev_date, new_novels=len(new_ids),
+         ranked=sum(1 for i in processed_items if 'DailyRank' in i))
     if prev_date:
         for item in processed_items:
             item['PrevDate'] = prev_date
