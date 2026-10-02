@@ -305,7 +305,7 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .rank-title--muted { color: var(--np-text-faint); font-weight: 500; }
 .contest-award-poster .media-rank-card__rank.contest-award-chip {
   display: inline-flex; align-items: center; height: 1.65rem; padding: 0 0.6rem; border-radius: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.14); background-color: rgba(10, 11, 14, 0.66); color: #ffffff; font-size: 0.75rem; font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.14); background-color: rgba(10, 11, 14, 0.66); color: var(--np-on-image); font-size: 0.75rem; font-weight: 800;
 }
 .detail-head__contest { color: var(--np-text-secondary); }
 .detail-head__contest b { font-weight: 700; }

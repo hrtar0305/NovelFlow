@@ -178,7 +178,7 @@
 /* 표지 자리. 이미지가 없거나 로딩 전이면 이 면이 그대로 보인다.
    두 테마 모두 어두운 면이어야 위에 얹힌 흰 글자가 읽힌다. */
 .novel-rankings-page .media-rank-card--poster .media-rank-card__cover {
-  background: #22242b;
+  background: var(--np-image-placeholder);
 }
 
 .novel-rankings-page .media-rank-card--poster .media-rank-card__cover-image {
@@ -197,7 +197,7 @@
 .novel-rankings-page .ranking-showcase-top-grid .media-rank-card__rank {
   background: rgba(10, 11, 14, 0.66);
   border-color: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  color: var(--np-on-image);
   font-size: 0.8125rem !important;
 }
 
@@ -205,9 +205,9 @@
   min-width: 0;
   height: 1.65rem;
   padding: 0 0.55rem;
-  background: #d42a44;
+  background: var(--np-chip-up);
   border-color: transparent;
-  color: #ffffff;
+  color: var(--np-on-image);
   font-size: 0.8125rem !important;
   letter-spacing: 0;
   backdrop-filter: none;
@@ -240,7 +240,7 @@
 }
 
 .novel-rankings-page .media-rank-card--poster .mini-kpi:last-child {
-  color: #f7f8fb !important;
+  color: var(--np-on-image) !important;
   flex: 0 0 auto;
 }
 
@@ -833,7 +833,7 @@
 .media-rank-card--poster .novel-cover-mask__reveal:focus-visible {
   border-color: rgba(255, 255, 255, 0.42);
   background: rgba(10, 11, 14, 0.88);
-  color: #f2f5ff;
+  color: var(--np-on-image);
 }
 
 /* 어디서 어디로 갔는지. 도착 순위가 결과이므로 그쪽을 밝게 둔다. */
@@ -877,7 +877,7 @@
 }
 
 .rank-move__to {
-  color: #ffffff;
+  color: var(--np-on-image);
   font-weight: 800;
   font-size: 1.06em;
 }

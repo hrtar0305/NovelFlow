@@ -22,6 +22,12 @@
   --np-surface-overlay: rgba(18, 20, 24, 0.96);
   --np-cover-bg: #2a2d34;
 
+  /* 테마와 무관한 색 — 표지 이미지·채운 강조색 위에 얹는 글자와 칩. 두 테마에서 같은 값이어야 해서 [data-theme="light"]에서 다시 쓰지 않는다. */
+  --np-on-image: #ffffff;
+  --np-on-image-soft: #eceef3;
+  --np-chip-up: #d42a44;          /* 표지 위 상승 칩(▲135) */
+  --np-image-placeholder: #22242b; /* 표지가 오기 전 자리 */
+
   --np-border: #262930;
   --np-border-strong: #353942;
 

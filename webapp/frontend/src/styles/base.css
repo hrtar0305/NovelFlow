@@ -283,7 +283,7 @@ p {
 .react-datepicker__day--range-end,
 .react-datepicker__day--highlighted {
   background-color: var(--np-accent) !important;
-  color: #f5f7fa !important;
+  color: var(--np-on-image) !important;
 }
 
 .react-datepicker__day--in-range:not(.react-datepicker__day--range-start):not(.react-datepicker__day--range-end) {
