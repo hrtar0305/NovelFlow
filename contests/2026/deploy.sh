@@ -182,6 +182,11 @@ dmap() {
     \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:ListMultipartUploadParts\",\"s3:AbortMultipartUpload\"],
       \"Resource\":\"arn:aws:s3:::$BUCKET/*\"},{\"Effect\":\"Allow\",\"Action\":\"s3:ListBucket\",\"Resource\":\"arn:aws:s3:::$BUCKET\"}]}"
 
+  echo "== 상태 머신 역할: 날짜 잠금(RUN_LOCK#{date}) 쓰기 — 예약 중복 전달 방지"
+  aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name NovelFlowContest${Y}RunLock --policy-document "{
+    \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"dynamodb:PutItem\",
+      \"Resource\":\"arn:aws:dynamodb:$R:$ACC:table/$TABLE\"}]}"
+
   echo "== 상태 머신 ${SM_NAME%Workflow}DMapWorkflow"
   DEF=$(sed "s/YOUR_AWS_REGION/$R/g; s/YOUR_AWS_ACCOUNT_ID/$ACC/g" contest_detail_parser/NovelFlowContest2026DMapWorkflow.json)
   if exists aws stepfunctions describe-state-machine --region $R --state-machine-arn $DSM_ARN; then
