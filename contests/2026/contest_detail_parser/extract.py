@@ -16,9 +16,13 @@ EPISODE_UPLOAD_DATE = "b"
 EPISODE_NUMBER = "span:first-child"
 EPISODE_VIEW_COUNT_SPAN = "span.episode_count_view"
 
-# 잔류율을 계산하려고 회차 목록을 받는 기준(상세의 '회차' 수). 유효 회차(날짜가 YY.MM.DD 로
-# 찍힌 회차 — 24시간 안 회차는 'N시간 전'이라 빠진다)가 30개 이상이어야 값이 나오므로 그 아래는
-# 받아도 쓸 데가 없다. 요청은 작품당 최대 8번이라 공모전 전수에 걸면 부담이 크다.
+# 잔류율을 계산하려고 회차 목록을 받는 기준(상세의 '회차' 수). 유효 회차가 30개 이상이어야 값이 나오므로
+# 그 아래는 받아도 쓸 데가 없다(유효 회차 ⊂ 전체 회차). 요청은 작품당 최대 8번이라 공모전 전수에 걸면 부담이 크다.
+#
+# **유효 회차는 데일리와 한 군데 다르다 — 하루 오프셋**(DECISIONS 2026-10-03). 노벨피아는 **그날(달력) 올린 회차만**
+# 'N시간 전'으로 보이고 전날 것부터 날짜를 찍는다. 데일리는 21시에 모아 '그날 올린 회차'가 저절로 빠지지만(최신화가 최소
+# 21시간 지난 회차), 공모전은 자정 직후에 모아 방금 끝난 날 23:59 에 올린 회차까지 날짜로 들어온다. 그래서 공모전은
+# **날짜가 기록 날짜 D 보다 이른 회차만** 유효로 친다(`before`) — 최신화가 늘 24시간 이상 지난 회차가 된다.
 RETENTION_MIN_EPS = 30
 
 
@@ -71,14 +75,19 @@ def _episode_list_html(session, novel_id, sort_order, page, pages):
     return r.text
 
 
-def _valid_episodes(soup):
-    """(ep_id, ep_num) — EP.숫자 + YY.MM.DD 날짜 + 조회수 span 이 있는 회차만(crawler `_parse_valid_episodes`)."""
+def _valid_episodes(soup, before=None):
+    """(ep_id, ep_num) — EP.숫자 + YY.MM.DD 날짜 + 조회수 span 이 있는 회차만(crawler `_parse_valid_episodes`).
+
+    `before`('YY.MM.DD')를 주면 그 날짜보다 이른 회차만 남긴다(공모전 하루 오프셋). YY.MM.DD 는 같은 세기 안에서
+    문자열 순서가 곧 날짜 순서다.
+    """
     result = []
     for ep_div in soup.select(EPISODE_INFO_DIV):
         num_el = ep_div.select_one(EPISODE_NUMBER)
         date_el = ep_div.select_one(EPISODE_UPLOAD_DATE)
+        date_txt = date_el.get_text(strip=True) if date_el else ''
         if (num_el and date_el and re.match(r"^EP\.\s*\d+$", num_el.get_text(strip=True))
-                and re.match(r"^\d{2}\.\d{2}\.\d{2}$", date_el.get_text(strip=True))):
+                and re.match(r"^\d{2}\.\d{2}\.\d{2}$", date_txt) and (before is None or date_txt < before)):
             span = ep_div.select_one(EPISODE_VIEW_COUNT_SPAN)
             if span:
                 m = re.search(r'novel_count_view_(\d+)', ' '.join(span.get('class', [])))
@@ -105,8 +114,8 @@ def _episode_view_counts(session, novel_id, episode_ids, log):
         return {}
 
 
-def retention_fields(session, novel_id, pages, log):
-    """잔류율 원재료 8개(crawler 와 같은 이름·규칙). 받은 회차 목록은 `pages` 에 원본으로 담긴다.
+def retention_fields(session, novel_id, pages, log, before=None):
+    """잔류율 원재료 8개(crawler 와 같은 이름·규칙 — 유효 회차만 `before` 로 하루 앞당긴다). 받은 회차 목록은 `pages` 에 원본으로 담긴다.
 
     초기 30 유효 회차(오래된 순, 최대 2쪽)와 최근 30 유효 회차(최신순, 최대 5쪽)를 모아
     1화·30화·최신화·최신 30번째 전 회차의 조회수를 한 번에 받는다. 값을 못 얻으면 -1.
@@ -121,7 +130,7 @@ def retention_fields(session, novel_id, pages, log):
             soup = BeautifulSoup(_episode_list_html(session, novel_id, sort_order, page, pages), 'html.parser')
             if not soup.select(EPISODE_INFO_DIV):
                 break
-            parsed = _valid_episodes(soup)
+            parsed = _valid_episodes(soup, before)
             ids = {e[0] for e in parsed}
             if ids and ids.issubset(seen):
                 break  # 마지막 페이지가 반복 반환됨

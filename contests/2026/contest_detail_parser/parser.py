@@ -187,7 +187,8 @@ def _parse_one(session, novel_id, crawl_date, execution_id):
     # 잔류율: 회차 30 이상만 회차 목록을 받는다(유효 회차 30개 미만이면 어차피 값이 없다).
     if item["Eps"] >= extract.RETENTION_MIN_EPS:
         item.update(extract.retention_fields(
-            session, novel_id, pages, lambda lv, msg: _log(lv, execution_id, msg, novel_id=novel_id)))
+            session, novel_id, pages, lambda lv, msg: _log(lv, execution_id, msg, novel_id=novel_id),
+            before=crawl_date[2:].replace('-', '.')))   # 기록 날짜 D 에 올린 회차는 뺀다(하루 오프셋, extract.py 머리말)
     return item, pages, True
 
 
