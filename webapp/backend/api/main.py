@@ -551,14 +551,19 @@ def _contest_veteran(item: dict, year: int) -> bool | None:
         return True
     return None if item.get('AuthorOtherMore') else False
 
-def _decorate_contest_item(item: dict, year: int, previous_item: dict | None = None) -> dict:
+def _decorate_contest_item(item: dict, year: int, previous_item: dict | None = None, prev_ranked: bool = False) -> dict:
     """2026 부터의 해석값을 붙인다(원문은 그대로 두고). 2025 행에는 원문이 없어 전부 None 이 된다."""
     item['daily_rank'] = item.get('DailyRank')
     prev_rank = (previous_item or {}).get('DailyRank')
     # 'New' = 오늘 처음 순위에 들었다. 직전 수집 뒤 새로 등록된 작품(IsNew — 적재가 판정)과 어제는 기준값이 없어
-    # 순위 밖이었던 작품 둘 다다. 기준값이 없어 오늘도 순위 밖인 작품은 None.
-    item['daily_rank_change'] = (prev_rank - item['DailyRank']) if (prev_rank is not None and item.get('DailyRank') is not None) else (
-        'New' if item.get('DailyRank') is not None and prev_rank is None else None)
+    # 순위 밖이었던 작품 둘 다다. 단 **직전 수집일에 일간 순위가 아예 없었으면(`prev_ranked` 거짓 — 순위가 처음 생긴 날)
+    # 견줄 대상이 없으므로 None** — 전부 New 로 보이면 뜻이 없다. 기준값이 없어 오늘도 순위 밖인 작품도 None.
+    if prev_rank is not None and item.get('DailyRank') is not None:
+        item['daily_rank_change'] = prev_rank - item['DailyRank']
+    elif item.get('DailyRank') is not None and prev_ranked:
+        item['daily_rank_change'] = 'New'
+    else:
+        item['daily_rank_change'] = None
     item['serial_status'] = _derive_serial_status(item)
     item['is_veteran'] = _contest_veteran(item, year)
     item['life_pick_rank'] = _life_pick_rank(item)
@@ -1199,6 +1204,9 @@ def get_contest_showcase(year: int, response: Response):
             items = [i for i in items if (i.get('View') or 0) >= 0]
             items.sort(key=lambda i: (i.get('DailyRank') is None, i.get('DailyRank') or 0, -(i.get('View') or 0)))
             top = [_decorate_contest_item(i, year) for i in items[:11]]
+            for i in top:
+                # 카드의 '+증가'는 그날 일간 순위의 조회 증가(적재가 저장). 순위가 없으면 누적 조회를 보인다(화면 분기).
+                i['view_change'] = i.get('ViewDelta', 0)
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
             return {"latest_date": latest_date, "items": _apply_content_policy_all(_apply_daily_thumbnail_fallback_to_contest_items(top))}
 
@@ -1294,13 +1302,14 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
             raise HTTPException(status_code=404, detail="No data found for the given date.")
 
         previous_day_map = {item['ID']: item for item in previous_day_items}
+        prev_ranked = any(i.get('DailyRank') is not None for i in previous_day_items)
 
         for item in current_day_items:
             previous_item = previous_day_map.get(item['ID'])
             item['award'] = _get_contest_award(item['ID'], year)
             # 2026 은 적재가 저장한 조회 증가(직전 유효 측정값이 없으면 속성 없음 → 0. 직전 수집 뒤 신작은 ViewDelta = View 로 순위가 있다)
             item['view_change'] = item['ViewDelta'] if 'ViewDelta' in item else (0 if year != 2025 else _contest_item_view_change(item, previous_item))
-            _decorate_contest_item(item, year, previous_item)
+            _decorate_contest_item(item, year, previous_item, prev_ranked)
             item['is_new'] = False
             if previous_item and previous_item.get('Rank') is not None:
                 previous_rank = previous_item['Rank']
