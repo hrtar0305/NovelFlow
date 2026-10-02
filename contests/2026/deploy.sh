@@ -215,10 +215,10 @@ schedule() {
   if exists aws scheduler get-schedule --region $R --name $SCHED_NAME; then aws scheduler update-schedule "${ARGS[@]}" >/dev/null
   else aws scheduler create-schedule "${ARGS[@]}" >/dev/null; fi
 
-  # 23:30 준비 실행: 오래 걸리는 재확인·작가 받기를 자정 전에 해 두고, 자정 경로는 짧게 둔다(DECISIONS 2026-10-02).
+  # 준비 실행(11:30·23:30): 오래 걸리는 훑기·재확인·작가 받기를 자정 전에 나눠 해 두고, 자정 경로는 짧게 둔다(DECISIONS 2026-10-02·10-03).
   # 실행 ID 는 날마다 달라야 한다(재확인의 '이번 실행에서 본 번호' 판정) — 스케줄러가 예약 시각을 넣어 준다.
-  echo "== 스케줄 ${SCHED_NAME%Daily}Prep (매일 23:30 KST, 수집기 직접 호출)"
-  PARGS=(--region $R --name ${SCHED_NAME%Daily}Prep --schedule-expression "cron(30 23 * * ? *)" --schedule-expression-timezone Asia/Seoul
+  echo "== 스케줄 ${SCHED_NAME%Daily}Prep (매일 11:30·23:30 KST, 수집기 직접 호출)"
+  PARGS=(--region $R --name ${SCHED_NAME%Daily}Prep --schedule-expression "cron(30 11,23 * * ? *)" --schedule-expression-timezone Asia/Seoul
          --flexible-time-window Mode=OFF
          --target "{\"Arn\":\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\",\"RoleArn\":\"arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME\",\"Input\":\"{\\\"mode\\\":\\\"prep\\\",\\\"execution_id\\\":\\\"prep-<aws.scheduler.scheduled-time>\\\"}\",\"RetryPolicy\":{\"MaximumRetryAttempts\":0}}")
   if exists aws scheduler get-schedule --region $R --name ${SCHED_NAME%Daily}Prep; then aws scheduler update-schedule "${PARGS[@]}" >/dev/null
