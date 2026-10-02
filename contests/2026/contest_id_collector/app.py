@@ -6,7 +6,8 @@
 원천으로 쓰지 않는다. 참가는 새 작품 등록이므로 번호 훑기로 빠짐없이 잡힌다.
 
 실행은 두 가지다(사용자 결정 2026-10-02 — 자정 수집이 24시간 주기에 최대한 가깝도록 자정 경로를 짧게 둔다).
-- `mode: "prep"` (23:30, 스케줄러가 직접 부른다): 그때까지의 새 번호 + 재확인 전부(비공개·일반작) + 새 작가의 다른 작품.
+- `mode: "prep"` (11:30·23:30, 스케줄러가 직접 부른다): 그때까지의 새 번호 + 일정이 된 재확인(비공개·일반작) + 새 작가의 다른 작품.
+  하루 두 번이라 한 번에 받는 양이 절반쯤이다 — 노벨피아는 한 IP 의 요청을 사실상 하나씩 처리해(초당 약 1.6장) 양이 곧 시간이다.
 - `mode: "midnight"` (00:00, 상태 머신 첫 단계 — 기본값): 끝 번호부터 첫 '잘못된 소설 번호'까지 + 노벨피아 표시 수와
   견주기(모자라면 끝 번호만 다시, 최대 MATCH_ROUNDS_MIDNIGHT 번) + 새 작가의 다른 작품(최대 MIDNIGHT_AUTHOR_SECONDS 초,
   실패해도 목록은 이미 써 둔다). 재확인은 하지 않는다 — 끝 번호를 다시 훑어도
@@ -319,14 +320,23 @@ def handler(event, context):
     # ---- 2. 재확인(지우지 않는다; 공개 일반작은 주기만 늘린다) ----
     today = datetime.now(KST)
     # 같은 실행 안에서 다시 불려도(예산 반복) 이번 실행에서 본 번호는 다시 보지 않는다.
-    def is_due(v):
-        if v.get('status') != 'normal':
-            return True
-        age = today - datetime.fromisoformat(v['first_seen'])
-        gap = timedelta(days=1 if age < timedelta(days=FRESH_DAYS) else NORMAL_RECHECK_DAYS)
-        return today - datetime.fromisoformat(v['last_checked']) >= gap - timedelta(hours=2)   # 매일 실행 시각의 오차 흡수
+    # 준비 실행은 하루 두 번(11:30·23:30)이고 **재확인은 번호 짝수/홀수로 나눠 맡는다**(짝수 = 오전 실행, 홀수 = 밤 실행) —
+    # 노벨피아는 한 IP 의 요청을 사실상 하나씩 처리해(초당 약 1.6장) 양이 곧 시간이라, 23:30 의 양을 정확히 반으로 줄인다.
+    # 그래서 어느 번호든 하루 한 번(자기 몫의 실행에서) 본다. 비공개·다시 볼 번호도 같다(실행마다 보면 하루 두 번이 된다).
+    # 주기는 '마지막으로 본 뒤'로 잰다(− 2시간은 실행 시각의 오차 흡수). 시각으로 실행을 가르므로 손으로 돌려도 같은 규칙이다.
+    slot = 0 if today.hour < 18 else 1
 
-    due = [k for k, v in recheck.items() if k not in contest and v.get('last_run') != execution_id and is_due(v)]
+    def is_due(k, v):
+        if int(k) % 2 != slot:
+            return False
+        if v.get('status') != 'normal':
+            gap = timedelta(days=1)
+        else:
+            age = today - datetime.fromisoformat(v['first_seen'])
+            gap = timedelta(days=1 if age < timedelta(days=FRESH_DAYS) else NORMAL_RECHECK_DAYS)
+        return today - datetime.fromisoformat(v['last_checked']) >= gap - timedelta(hours=2)
+
+    due = [k for k, v in recheck.items() if k not in contest and v.get('last_run') != execution_id and is_due(k, v)]
     rechecked = 0
     while done_scan and due and remaining() > BUDGET_MS:
         part, due = due[:CHUNK], due[CHUNK:]
