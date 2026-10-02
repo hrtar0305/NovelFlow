@@ -15,10 +15,19 @@ sys.path.insert(0, 'contest_id_collector')
 
 
 def summarize(pages):
+    """수집기 `summarize_author` 와 같은 규칙 — 오류가 난 쪽이 있으면 None(색인에서 빼 수집기가 다시 받게)."""
+    if any('error' in p for p in pages):
+        return None
     novels, more = set(), False
     for p in pages:
-        w = (p.get('raw') or {}).get('writer_other_novel') or {}
-        novels |= {int(x['novel_no']) for x in w.get('list') or [] if x.get('novel_no')}
+        raw = p.get('raw')
+        w = raw.get('writer_other_novel') if isinstance(raw, dict) else None
+        w = w if isinstance(w, dict) else {}
+        for x in w.get('list') or []:
+            try:
+                novels.add(int(x['novel_no']))
+            except (TypeError, KeyError, ValueError):
+                pass
         more = bool(w.get('is_next_page'))
     return {'novels': sorted(novels), 'more': more}
 
@@ -32,8 +41,8 @@ def main():
     load = lambda k: json.loads(s3.get_object(Bucket=bucket, Key=k)['Body'].read())
     with ThreadPoolExecutor(16) as ex:
         docs = list(ex.map(load, keys))
-    index = {d['author_id']: summarize(d.get('pages') or []) for d in docs}
-    print(f'authors {len(index)} · with other works {sum(1 for v in index.values() if v["novels"])}')
+    index = {d['author_id']: v for d in docs if (v := summarize(d.get('pages') or [])) is not None}
+    print(f'authors {len(index)}/{len(docs)} · with other works {sum(1 for v in index.values() if v["novels"])}')
     if '--dry-run' not in sys.argv:
         s3.put_object(Bucket=bucket, Key='state/author_works.json', Body=json.dumps(index).encode(), ContentType='application/json')
         print('written')
