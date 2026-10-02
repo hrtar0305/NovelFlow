@@ -3,6 +3,8 @@ import logging
 import json
 import os
 import requests
+import time
+from datetime import datetime, timezone
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
@@ -83,7 +85,7 @@ def _extract_thumbnail_url(soup):
 def _create_placeholder_item(novel_id, crawl_date, reason="N/A"):
     """Creates a placeholder dictionary for a failed novel parse."""
     return {
-        "Date": crawl_date, "ID": novel_id, "Title": f"N/A ({reason})",
+        "Date": crawl_date, "ID": novel_id, "Title": f"N/A ({reason})", "CrawledAt": _now_iso(),
         "AuthorName": "N/A", "AuthorID": "0", "View": -1, "Like": -1, "Fav": -1, "Alr": -1,
         "Eps": -1, "Tags": [], "Synopsis": "",
         # 정상 행과 키를 맞춘다(DECISIONS 2026-08-24 차기 공모전 체크리스트).
@@ -93,6 +95,11 @@ def _create_placeholder_item(novel_id, crawl_date, reason="N/A"):
 # =====================================================================================
 # LAMBDA HANDLER: Parse Contest Novel Details
 # =====================================================================================
+def _now_iso():
+    """받은 시각(UTC). 같은 작품이 두 번 오면(Express 자식은 최소 1회 실행) 더 이른 쪽을 남기는 기준 — 자정에 가까운 값."""
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+
+
 def _upload_raw_batch(execution_id, raw_batch, crawl_date, context):
     """이 배치가 받은 원본을 한 덩어리로 묶어 S3 에 올린다.
 
@@ -104,7 +111,7 @@ def _upload_raw_batch(execution_id, raw_batch, crawl_date, context):
     배치 전체를 재시도해 같은 소설을 다시 긁는다.
     """
     if not raw_batch or not Config.RAW_BUCKET:
-        return
+        return True
     try:
         payloads = []
         for novel_id, pages in raw_batch:
@@ -123,8 +130,10 @@ def _upload_raw_batch(execution_id, raw_batch, crawl_date, context):
         _log(logging.INFO, execution_id, "Uploaded raw batch.",
              key=key, novels=len(payloads), bytes=len(blob),
              per_novel_kb=round(len(blob) / len(payloads) / 1024, 1))
+        return True
     except Exception as e:  # noqa: BLE001
         _log(logging.ERROR, execution_id, f"Failed to upload raw batch: {e}", exc_info=True)
+        return False
 
 
 def _parse_one(session, novel_id, crawl_date, execution_id):
@@ -147,7 +156,7 @@ def _parse_one(session, novel_id, crawl_date, execution_id):
         tags_raw = [tag.get_text(strip=True) for tag in soup.select(Config.Selectors.TAGS)]
         spans = extract.badge_spans(soup)
         item = {
-            "Date": crawl_date, "ID": novel_id,
+            "Date": crawl_date, "ID": novel_id, "CrawledAt": _now_iso(),
             "Title": soup.select_one(Config.Selectors.TITLE).get_text(strip=True),
             "AuthorName": soup.select_one(Config.Selectors.AUTHOR_LINK).get_text(strip=True),
             "AuthorID": str(soup.select_one(Config.Selectors.AUTHOR_LINK)['href'].split("/")[-1]),
@@ -238,11 +247,15 @@ def parse_contest_novel_details_batch(event, context):
 
 
 def parse_dmap_batch(event, context):
-    """Distributed Map(ItemBatcher) 한 묶음 — SQS 대신 Step Functions 가 나눠 준다(2026-10 전환 준비).
+    """Distributed Map(ItemBatcher) 한 묶음 — SQS 대신 Step Functions 가 나눠 준다.
 
     입력: {"Items": [novel_id, ...], "BatchInput": {"execution_id", "date"(기록 날짜), "raw": 원본 적재 여부}}
-    출력: {"items": [...], "failed": [novel_id, ...]} — ResultWriter 가 S3 에 남기고 적재가 읽는다.
-    끝내 네트워크 오류인 작품은 failed 로 돌려준다(묶음 전체를 다시 돌리지 않는다). 적재의 수량 검증이 잡는다.
+    출력: {"items": [...], "failed": [{"id", "error"}], "raw_failed": 원본을 못 올린 작품 수}
+    — ResultWriter 가 S3 에 남기고 대조 단계(consolidate `reconcile`)가 읽는다.
+
+    실패는 **묶음 안에 가둔다**: 네트워크 오류는 간격을 두고 다시 받고, 끝내 실패한 작품만 `failed` 로 돌려준다
+    (묶음 전체를 실패시키면 받은 39편까지 버려진다). 대조 단계가 빠진 작품만 모아 다시 돌린다.
+    경고창·파싱 오류는 다시 받아도 같으므로 placeholder 로 끝낸다.
     """
     bi = event.get('BatchInput') or {}
     execution_id, crawl_date = bi.get('execution_id', 'N/A'), bi.get('date')
@@ -250,20 +263,27 @@ def parse_dmap_batch(event, context):
     session = requests.Session()
     session.headers.update({"User-Agent": Config.USER_AGENT})
     results, failed, raw_batch = [], [], []
+    # 재시도 경로 시험(그림자 실행 전용): 첫 라운드에서 번호 % N == 0 인 작품을 받지 않고 네트워크 실패로 돌려준다.
+    inject = int(bi.get('inject_fail_mod') or 0) if bi.get('dry_run') and int(bi.get('round') or 0) == 0 else 0
     for novel_id in ids:
-        item = None
+        item, last_error = None, None
+        if inject and int(novel_id) % inject == 0:
+            failed.append({"id": novel_id, "error": "injected"})
+            continue
         for attempt in range(Config.MAX_INTERNAL_RETRIES):
             try:
                 item, pages, _ok = _parse_one(session, novel_id, crawl_date, execution_id)
                 raw_batch.append((novel_id, pages))
                 break
             except requests.exceptions.RequestException as e:
+                last_error = f"{type(e).__name__}: {str(e)[:160]}"
                 _log(logging.WARNING, execution_id, f"Network error for {novel_id} (attempt {attempt + 1}): {e}", novel_id=novel_id)
+                if attempt + 1 < Config.MAX_INTERNAL_RETRIES:
+                    time.sleep(2 * (attempt + 1))   # 2초, 4초 — 순간적인 끊김을 넘긴다
         if item is None:
-            failed.append(novel_id)
+            failed.append({"id": novel_id, "error": last_error})
         else:
             results.append(item)
-    if bi.get('raw', True):
-        _upload_raw_batch(execution_id, raw_batch, crawl_date, context)
-    _log(logging.INFO, execution_id, "DMap batch complete.", total=len(ids), ok=len(results), failed=len(failed))
-    return {"items": results, "failed": failed}
+    raw_ok = _upload_raw_batch(execution_id, raw_batch, crawl_date, context) if bi.get('raw', True) else True
+    _log(logging.INFO, execution_id, "DMap batch complete.", total=len(ids), ok=len(results), failed=len(failed), raw_ok=raw_ok)
+    return {"items": results, "failed": failed, "raw_failed": 0 if raw_ok else len(raw_batch)}

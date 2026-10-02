@@ -370,45 +370,176 @@ def handler(event, context):
     }
 
 # --- Distributed Map 경로 -----------------------------------------------------------
-def _dmap_items(manifest, execution_id):
-    """ResultWriter 의 manifest → 자식 실행 출력들의 items. 실패한 자식이 있으면 그 수를 함께 돌려준다."""
-    s3 = boto3.client('s3')
+# 흐름: ParseMap → reconcile(모으고 빠진 것 계산) ─┬→ 빠진 게 있으면 대기 → 빠진 것만 ParseMap → reconcile (최대 RETRY_ROUNDS)
+#                                                └→ consolidate(남은 결손은 placeholder + 실패 장부, 너무 많으면 쓰지 않고 실패)
+# 작업 파일은 STATE_BUCKET 의 runs/{date}/{execution}/ 에 둔다 — 대조 결과를 상태 머신 페이로드(256KB)에 싣지 않는다.
+
+RETRY_ROUNDS = int(os.environ.get('DMAP_RETRY_ROUNDS', '2'))
+RETRY_WAITS = [30, 120]                      # 라운드별 대기(초) — 노벨피아의 순간 장애를 넘길 시간
+MAX_MISSING_FRACTION = float(os.environ.get('DMAP_MAX_MISSING_FRACTION', '0.05'))
+ID_LIST_KEY = 'contest_novel_ids_2026.json'
+
+
+class TooManyMissing(Exception):
+    """재시도 뒤에도 결손이 상한을 넘었다 — 그날을 반쪽으로 쓰지 않고 실패시킨다(상태 머신이 재시도하지 않는다)."""
+
+
+def _s3():
+    return boto3.client('s3')
+
+
+def _get_json(key, default=None):
+    try:
+        return json.loads(_s3().get_object(Bucket=Config.STATE_BUCKET, Key=key)['Body'].read())
+    except _s3().exceptions.NoSuchKey:
+        return default
+
+
+def _put_json(key, obj):
+    _s3().put_object(Bucket=Config.STATE_BUCKET, Key=key, Body=json.dumps(obj, ensure_ascii=False, default=str).encode(),
+                     ContentType='application/json')
+
+
+def _run_prefix(date, execution_id):
+    return f'runs/{date}/{execution_id}'
+
+
+def _dmap_rows(manifest, execution_id):
+    """ResultWriter manifest → (items, failed[{id,error}], 실패한 자식 수, 원본을 못 올린 작품 수)."""
+    s3 = _s3()
     man = json.loads(s3.get_object(Bucket=manifest['Bucket'], Key=manifest['Key'])['Body'].read())
-    prefix = man.get('DestinationBucket') or manifest['Bucket']
-    items, failed_ids, failed_children = [], [], 0
+    bucket = man.get('DestinationBucket') or manifest['Bucket']
+    items, failed, failed_children, raw_failed = [], [], 0, 0
     for kind, files in (man.get('ResultFiles') or {}).items():
         for f in files:
-            rows = json.loads(s3.get_object(Bucket=prefix, Key=f['Key'])['Body'].read())
-            for row in rows:
+            for row in json.loads(s3.get_object(Bucket=bucket, Key=f['Key'])['Body'].read()):
                 if kind != 'SUCCEEDED':
-                    failed_children += 1
+                    failed_children += 1   # 그 묶음의 작품은 결과에 없다 → 기대 목록과의 차이로 '빠진 작품'이 된다
                     continue
                 out = json.loads(row.get('Output') or '{}')
                 items += out.get('items') or []
-                failed_ids += out.get('failed') or []
-    _log(logging.INFO, execution_id, "Collected DMap results.", items=len(items), failed_ids=len(failed_ids), failed_children=failed_children)
-    return items, failed_ids, failed_children
+                failed += [x if isinstance(x, dict) else {'id': str(x), 'error': None} for x in out.get('failed') or []]
+                raw_failed += int(out.get('raw_failed') or 0)
+    _log(logging.INFO, execution_id, "Collected DMap results.", items=len(items), failed=len(failed),
+         failed_children=failed_children, raw_failed=raw_failed)
+    return items, failed, failed_children, raw_failed
+
+
+def _is_placeholder(it):
+    return int(it.get('View', -1)) < 0
 
 
 def _dedupe_prefer_real(items):
-    """같은 ID 가 둘이면(자식 Express 는 최소 1회 실행) 실데이터를 placeholder 보다 우선한다."""
+    """같은 ID 가 둘이면 실데이터(View ≥ 0)를 placeholder 보다, 실데이터끼리는 **먼저 받은 쪽**을 남긴다.
+
+    SQS 판의 '가장 이른 SentTimestamp' 와 같은 원칙 — 자정에 가까운 값이 24시간 주기에 맞다.
+    """
     best = {}
     for it in items:
         k = str(it.get('ID'))
-        if k not in best or (best[k].get('View', -1) < 0 <= it.get('View', -1)):
+        cur = best.get(k)
+        if cur is None:
+            best[k] = it
+        elif _is_placeholder(cur) != _is_placeholder(it):
+            if _is_placeholder(cur):
+                best[k] = it
+        elif (it.get('CrawledAt') or '~') < (cur.get('CrawledAt') or '~'):
             best[k] = it
     return list(best.values())
 
 
-def handler_dmap(event, context):
-    """Distributed Map 결과를 적재한다. `dry_run` 이면 쓰지 않고 운영 테이블의 같은 날짜와 비교만 한다(그림자 실행)."""
-    execution_id = event.get('execution_id', 'N/A')
-    date = event['date']
-    items, failed_ids, failed_children = _dmap_items(event['manifest'], execution_id)
-    unique = _dedupe_prefer_real(items)
-    ids = json.loads(boto3.client('s3').get_object(Bucket=Config.STATE_BUCKET, Key='contest_novel_ids_2026.json')['Body'].read())
-    table = boto3.resource('dynamodb').Table(Config.DYNAMODB_TABLE_NAME)
+def reconcile_dmap(event):
+    """ParseMap 한 라운드의 결과를 지금까지 모은 것과 합치고, 아직 못 받은 작품을 정한다.
 
+    - 기대 목록은 첫 라운드에서 S3 ID 목록을 **복사해 고정**한다(그 사이 수집기가 목록을 다시 써도 흔들리지 않게).
+    - 빠진 작품 = 기대 − (실데이터 또는 경고창·파싱 placeholder). 네트워크로 끝내 실패한 작품과 자식이 통째로 실패한
+      묶음의 작품이 여기에 든다. 라운드마다 이유를 errors 에 쌓는다(실패 장부의 재료).
+    """
+    execution_id, date, rnd = event['execution_id'], event['date'], int(event.get('round', 0))
+    pre = _run_prefix(date, execution_id)
+    if rnd == 0:
+        expected = [str(x) for x in json.loads(_s3().get_object(Bucket=Config.STATE_BUCKET, Key=ID_LIST_KEY)['Body'].read())]
+        _put_json(f'{pre}/expected.json', expected)
+        collected, errors, raw_failed_total, children_failed_total = [], {}, 0, 0
+    else:
+        expected = _get_json(f'{pre}/expected.json')
+        state = _get_json(f'{pre}/collected.json')
+        collected, errors = state['items'], state['errors']
+        raw_failed_total, children_failed_total = state['raw_failed'], state['children_failed']
+
+    items, failed, failed_children, raw_failed = _dmap_rows(event['manifest'], execution_id)
+    unique = _dedupe_prefer_real(collected + items)
+    have = {str(i['ID']) for i in unique}
+    reason = {f['id']: f.get('error') for f in failed}
+    missing = [k for k in expected if k not in have]
+    for k in missing:
+        errors.setdefault(k, []).append({'round': rnd, 'error': reason.get(k) or 'batch_failed'})
+    _put_json(f'{pre}/collected.json', {'items': unique, 'errors': errors, 'raw_failed': raw_failed_total + raw_failed,
+                                        'children_failed': children_failed_total + failed_children})
+    _put_json(f'{pre}/missing-{rnd}.json', [int(k) for k in missing])
+
+    retry = bool(missing) and rnd < RETRY_ROUNDS
+    out = {'round': rnd + 1, 'expected': len(expected), 'missing': len(missing), 'retry': retry,
+           'missing_key': f'{pre}/missing-{rnd}.json', 'wait_seconds': RETRY_WAITS[min(rnd, len(RETRY_WAITS) - 1)],
+           # 다시 받을 때는 작게 나눠 천천히 — 실패 원인이 과부하일 수 있다
+           'batch': 10, 'concurrency': 3}
+    _log(logging.INFO if not missing else logging.WARNING, execution_id, "DMap reconcile.", **out)
+    return out
+
+
+def _placeholder(novel_id, date, reason):
+    return {"Date": date, "ID": novel_id, "Title": f"N/A ({reason})", "AuthorName": "N/A", "AuthorID": "0",
+            "View": -1, "Like": -1, "Fav": -1, "Alr": -1, "Eps": -1, "Tags": [], "Synopsis": "", "IsAdult": False}
+
+
+def _notice(date, ledger):
+    """알릴 만한 결손이 있으면 Discord 문구(멘션 없음). 없으면 None."""
+    parts = []
+    if ledger['fetch_failed']:
+        parts.append(f"받지 못해 placeholder {len(ledger['fetch_failed'])}편")
+    if ledger['recovered']:
+        parts.append(f"재시도로 복구 {ledger['recovered']}편")
+    if ledger['raw_failed']:
+        parts.append(f"원본 저장 실패 {ledger['raw_failed']}편")
+    d = ledger.get('discover') or {}
+    if d.get('fallback'):
+        parts.append("ID 수집 실패 → 23:30 목록으로 진행")
+    elif d.get('listed_total') and d.get('total_contest') is not None and d['total_contest'] < d['listed_total']:
+        parts.append(f"참가작 수 부족 {d['total_contest']}/{d['listed_total']}")
+    if not parts:
+        return None
+    return f"2026 공모전 {date} 수집 경고: " + " · ".join(parts) + f" (장부 failures/{date}.json)"
+
+
+def handler_dmap(event, context):
+    """`action: reconcile` 이면 대조, 아니면 최종 적재. `dry_run` 이면 쓰지 않고 운영 테이블과 비교만 한다(그림자 실행)."""
+    if event.get('action') == 'reconcile':
+        return reconcile_dmap(event)
+
+    execution_id, date = event.get('execution_id', 'N/A'), event['date']
+    pre = _run_prefix(date, execution_id)
+    expected = _get_json(f'{pre}/expected.json')
+    state = _get_json(f'{pre}/collected.json')
+    unique, errors = state['items'], state['errors']
+    have = {str(i['ID']) for i in unique}
+    still = [k for k in expected if k not in have]
+
+    ledger = {
+        'date': date, 'execution_id': execution_id, 'expected': len(expected),
+        'fetch_failed': [{'id': k, 'attempts': errors.get(k, [])} for k in still],
+        'recovered': sum(1 for k in errors if k in have),
+        'placeholders': {r: sum(1 for i in unique if str(i.get('Title', '')).startswith(f'N/A ({r}'))
+                         for r in ('Inaccessible', 'ParsingFailed')},
+        'raw_failed': state['raw_failed'], 'children_failed': state['children_failed'],
+        'discover': event.get('discover') or {},
+    }
+    if len(still) > MAX_MISSING_FRACTION * len(expected):
+        if not event.get('dry_run'):
+            _put_json(f'failures/{date}.json', {**ledger, 'written': False})
+        raise TooManyMissing(f"{len(still)}/{len(expected)} novels still missing after retries — not writing {date}.")
+    unique += [_placeholder(k, date, 'FetchFailed') for k in still]
+
+    table = boto3.resource('dynamodb').Table(Config.DYNAMODB_TABLE_NAME)
     if event.get('dry_run'):
         prod, kw = {}, {'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(date)}
         while True:
@@ -420,26 +551,27 @@ def handler_dmap(event, context):
             kw['ExclusiveStartKey'] = r['LastEvaluatedKey']
         mine = {str(i['ID']): i for i in unique}
         diff_view = [k for k in mine if k in prod and abs(int(prod[k].get('View', 0)) - int(mine[k].get('View', 0))) > max(50, int(prod[k].get('View', 0)) * 0.05)]
-        report = {
-            'dry_run': True, 'date': date, 'expected': len(ids), 'collected': len(unique), 'failed_ids': len(failed_ids),
-            'failed_children': failed_children, 'prod_rows': len(prod),
-            'only_in_dmap': len(set(mine) - set(prod)), 'only_in_prod': len(set(prod) - set(mine)),
-            'view_far_apart': len(diff_view),   # 실행 시각이 달라 조금씩은 다르다 — 크게 다른 것만 센다
-        }
-        # 필드 구성 — 운영 행에는 적재가 붙이는 필드(순위·작가 등)가 더 있으니, 파서가 내는 필드만 견준다.
         added_by_consolidate = {'Rank', 'DailyRank', 'ViewDelta', 'PrevDate', 'AuthorOtherNovels', 'AuthorOtherMore'}
-        missing, extra = {}, {}
+        missing_f, extra_f = {}, {}
         for k in set(mine) & set(prod):
             pk, mk = set(prod[k]) - added_by_consolidate, set(mine[k])
             for f in pk - mk:
-                missing[f] = missing.get(f, 0) + 1
+                missing_f[f] = missing_f.get(f, 0) + 1
             for f in mk - pk:
-                extra[f] = extra.get(f, 0) + 1
-        report['fields_missing_in_dmap'] = dict(sorted(missing.items(), key=lambda x: -x[1])[:10])
-        report['fields_extra_in_dmap'] = dict(sorted(extra.items(), key=lambda x: -x[1])[:10])
+                extra_f[f] = extra_f.get(f, 0) + 1
+        report = {'dry_run': True, 'date': date, 'expected': len(expected), 'collected': len(unique),
+                  'fetch_failed': len(still), 'recovered': ledger['recovered'], 'prod_rows': len(prod),
+                  'only_in_dmap': len(set(mine) - set(prod)), 'only_in_prod': len(set(prod) - set(mine)),
+                  'view_far_apart': len(diff_view),
+                  'fields_missing_in_dmap': dict(sorted(missing_f.items(), key=lambda x: -x[1])[:10]),
+                  'fields_extra_in_dmap': dict(sorted(extra_f.items(), key=lambda x: -x[1])[:10])}
         _log(logging.INFO, execution_id, "DMap dry-run comparison.", **report)
-        return report
+        notice = _notice(date, ledger)
+        return {**report, 'degraded': bool(notice), 'notice': notice and f"[그림자] {notice}"}
 
-    _validate_data(execution_id, unique, len(ids))
+    _validate_data(execution_id, unique, len(expected))
     _process_and_upload_data(table, execution_id, unique)
-    return {'statusCode': 200, 'processed_count': len(unique)}
+    _put_json(f'failures/{date}.json', {**ledger, 'written': True})   # 결손이 없어도 남긴다 — 그날 무엇을 했는지의 기록
+    notice = _notice(date, ledger)
+    return {'statusCode': 200, 'processed_count': len(unique), 'fetch_failed': len(still),
+            'recovered': ledger['recovered'], 'degraded': bool(notice), 'notice': notice}
