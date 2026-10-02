@@ -1519,3 +1519,23 @@ purge 뒤에 **Wait 65초**를 둔다. 공모전 투입은 `send_message_batch` 
   `{"writer_other_novel": {"list": [], "is_next_page": false}}` 이고, 그 밖의 모양은 모르는 응답으로 보고 다음에 다시 받는다.
 
 **상태:** 유효
+
+## 2026-10-02 — 2026 공모전 자정 수집을 Distributed Map 판으로 전환
+
+**결정:** 자정 스케줄 `NovelFlowContest2026Daily`의 대상을 SQS 판(`NovelFlowContest2026Workflow`)에서
+Distributed Map 판(`NovelFlowContest2026DMapWorkflow`)으로 바꾼다. 같은 이미지·같은 `_parse_one`·같은 적재 계산이고
+입구만 다르다(ItemReader 가 S3 ID 목록을 읽어 40편씩 EXPRESS 자식에게 나눠 주고, ResultWriter 결과를 적재가 읽는다).
+
+**이유:** 24시간 주기에 가까운 수집(앞 항목들). SQS 판은 purge 뒤 65초 대기(purge 경합 — 2026-09-27)와 60초 간격 완료
+폴링이 구조적으로 붙고, 이벤트 소스가 동시 실행을 천천히 늘린다. 같은 10/01 목록으로 견주면 목록 뒤 적재 끝까지
+**7분 33초 → 2분 53초**. purge 경합 자체가 없어진다(큐를 쓰지 않음).
+
+**검증(그림자 실행, 10/01, DB 쓰기·원본 저장 없음):** 1,821/1,821 수집, 실패 0. 운영에만 있는 번호 0, DMap 에만 있는 15편은
+자정 뒤 새 참가작. 조회수가 크게 다른 25편은 모두 45분 사이 증가(감소 0). 파서 필드 구성 동일. 묶음 출력 최대 36.7KB
+(Step Functions 256KB 상한의 1/7).
+
+**되돌리기:** SQS 판은 지우지 않는다. `PIPELINE=sqs bash contests/2026/deploy.sh schedule` 로 스케줄 대상만 되돌린다.
+두 판 모두 실패 알림 규칙에 들어 있다. 원본 저장(`raw: true`)과 실제 쓰기 경로는 SQS 판과 같은 함수지만 DMap 판에서는
+첫 자정 실행(10/02 데이터)이 처음이다.
+
+**상태:** 유효

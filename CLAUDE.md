@@ -13,7 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **데이터 흐름**: 크롤러(`crawler/app.py`, Step Functions가 소설 1편당 Lambda 1회) → SQS →
   `crawler/consolidate_data.py`가 수량 검증 후 `{date}.jsonl`을 S3에 커밋 + 원본 HTML 묶음을 raw 버킷에 PUT
   → S3 트리거로 `data-pipeline/data_ingestion.py`가 DynamoDB 적재 → Streams로 `update_search_index.py`가 Algolia 동기화.
-  공모전(`contests/2025/`, `contests/2026/`)은 Express 5분 제한 때문에 SQS Task/Result 큐 + 완료 폴링 구조로 따로 돕니다.
+  공모전 2025(`contests/2025/`)는 Express 5분 제한 때문에 SQS Task/Result 큐 + 완료 폴링 구조로 따로 돕니다.
+  2026(`contests/2026/`)은 같은 구조로 시작해 2026-10-02 자정분부터 Distributed Map 판으로 돕니다(SQS 판은 되돌리기용으로 남김).
 - **DynamoDB는 테이블당 PK=`ID`, SK=`Date` 하나에 특수 항목이 섞여 있습니다.** 소설 스냅샷 외에
   `STATS#<date>`(태그 통계), `RSNAP#<date>`(분석 리포트용 압축 스냅샷), `AVAILABLE_DATES`,
   `ADULT_BLOCKLIST`가 같은 테이블에 있습니다. 전체 스캔·날짜 조회 코드를 짤 때 이 항목들을 걸러야 합니다.
@@ -105,7 +106,7 @@ python scripts/backfill_ranking_snapshots.py --dry-run
 - 백엔드 `main.py` 변경 시 Lambda 재배포가 필요합니다(자동 배포 없음). 배포는 보통 사용자가 직접 합니다 — 코드만 정리하고 별도 안내하세요.
 - 백엔드 배포 패키지에는 `api/` 아래 모듈이 **전부** 들어가야 합니다(`main.py`가 `analysis_report`를 import). `Dockerfile.arm64`는 `api/*.py`만 복사하므로, `api/` 아래에 하위 폴더를 만들면 COPY도 바꾸세요.
 - `raw_store.py`는 `crawler/`·`contests/2025/contest_detail_parser/`·`contests/2026/contest_detail_parser/`에 **같은 파일이 복사**돼 있습니다(이미지가 따로 빌드됨). 2026 파서의 `extract.py`도 크롤러 추출 규칙(배지·연재 상태·인생픽·잔류율)의 복사본입니다. 한쪽을 고치면 다른 쪽도 맞추세요.
-- 2026 공모전 스택은 `bash contests/2026/deploy.sh [infra|code|orchestration|schedule]`로 배포합니다(2025 스택은 건드리지 않음).
+- 2026 공모전 스택은 `bash contests/2026/deploy.sh [infra|code|orchestration|dmap|schedule]`로 배포합니다(2025 스택은 건드리지 않음). 자정 스케줄 대상은 기본 DMap 판이고 `PIPELINE=sqs`로 되돌립니다.
 - crawler 이미지는 Lambda **두 개**(`np-trend-crawler-get-ranking`, `...-get-novel-data`)가 공유합니다. AWS 리소스 이름은 옛 프로젝트명 `np-trend`/`NP-Trend`를 유지 중이니 코드에서 임의로 `NovelFlow`로 바꾸지 마세요. 단 **새로 만드는 리소스는 NovelFlow 이름**을 씁니다(2026 공모전 스택 `novelflow-contest-2026-*`부터).
 - DECISIONS.md는 **append-only**입니다. 항목을 지우지 말고, 바뀐 결정은 새 항목을 쓰고 이전 항목 `상태`를 `대체됨 (→ 날짜)`로 바꿉니다. 템플릿은 파일 상단 「작성 규칙」.
 - DynamoDB Decimal은 `_convert_decimals()`로 변환합니다(`json.loads(json.dumps())` 이중 변환 대신).
