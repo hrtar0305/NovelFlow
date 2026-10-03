@@ -8,6 +8,7 @@ import logging
 import math
 from decimal import Decimal
 from ast import literal_eval
+from boto3.dynamodb.conditions import Key
 
 # Configure logging
 logger = logging.getLogger()
@@ -20,6 +21,19 @@ dynamodb = boto3.resource('dynamodb')
 # Get table name from environment variable
 TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME', 'NovelRanks')
 table = dynamodb.Table(TABLE_NAME)
+
+# 크롤러 placeholder 행(접근 불가·재시도 실패·파싱 실패)의 제목 접두사.
+# crawler/consolidate_data.py 의 PLACEHOLDER_TITLE_PREFIX 와 같은 값이어야 한다.
+PLACEHOLDER_TITLE_PREFIX = "N/A ("
+
+# 같은 날짜를 다시 적재할 때 지우는 잔존 행이 새 파일 행 수의 이 비율을 넘으면 지우지 않는다.
+# 정상적인 재실행(한두 시간 뒤·자정 넘김)은 순위 경계에서 수십 편이 바뀌는 정도라, 이보다 많으면
+# 일부만 담긴 파일을 올린 것으로 보고 사람이 보게 한다.
+MAX_STALE_RATIO = 0.2
+
+
+def _is_placeholder(item):
+    return str(item.get('Title', '')).startswith(PLACEHOLDER_TITLE_PREFIX)
 
 def lambda_handler(event, context):
     """
@@ -65,8 +79,14 @@ def lambda_handler(event, context):
         
         logger.info(f"Successfully processed and stored {len(items)} items from {file_key}.")
 
+        # 아래 부가 단계들은 하나가 실패해도 나머지를 마저 시도하고, 끝에서 모아 예외를 올린다.
+        # 삼키면 Lambda 가 성공으로 끝나 S3 비동기 재시도가 일어나지 않고, 날짜 목록·태그 랭킹에서
+        # 그날이 조용히 빠진다. 모든 쓰기가 (ID, Date) 키 덮어쓰기라 재시도해도 중복은 생기지 않는다
+        # (DECISIONS 「전달 보장」).
+        failures = []
+
         # Analyze and store tag trends using the successfully processed items
-        calculate_and_store_tag_trends(processed_items)
+        _run_step(failures, 'tag trends', calculate_and_store_tag_trends, processed_items)
 
         # 파일명에서 날짜를 뽑는다 ('2025-08-19.jsonl' -> '2025-08-19').
         #
@@ -80,16 +100,22 @@ def lambda_handler(event, context):
                 f"파일명이 날짜 형식(YYYY-MM-DD)이 아니다: {file_key} — "
                 "날짜별 집계와 AVAILABLE_DATES 갱신을 건너뛴다."
             )
+            _raise_if_failed(failures, file_key)
             return {
                 'statusCode': 200,
                 'body': json.dumps(f'Stored {len(items)} items from {file_key}; date-scoped steps skipped.')
             }
 
+        # 같은 날짜를 다시 적재했다면 이전 실행에만 있던 작품 행을 지운다
+        _run_step(failures, 'stale rows', delete_stale_rows, date_from_file, processed_items)
+
         # Update AVAILABLE_DATES item in DynamoDB
-        update_available_dates(date_from_file)
+        _run_step(failures, 'AVAILABLE_DATES', update_available_dates, date_from_file)
 
         # 데이터 분석 리포트용 압축 스냅샷
-        store_ranking_snapshot(date_from_file, processed_items)
+        _run_step(failures, 'RSNAP', store_ranking_snapshot, date_from_file, processed_items)
+
+        _raise_if_failed(failures, file_key)
 
         return {
             'statusCode': 200,
@@ -99,6 +125,21 @@ def lambda_handler(event, context):
     except Exception as e:
         logger.error(f"Error processing file {file_key} from bucket {bucket_name}: {e}")
         raise e
+
+
+def _run_step(failures, name, fn, *args):
+    """부가 단계 하나를 돌리고, 실패하면 로그를 남긴 뒤 `failures` 에 모은다."""
+    try:
+        fn(*args)
+    except Exception as e:
+        logger.error(f"Step '{name}' failed: {e}")
+        failures.append(f"{name}: {e}")
+
+
+def _raise_if_failed(failures, file_key):
+    if failures:
+        raise RuntimeError(f"{file_key}: 부가 단계 {len(failures)}개 실패 — " + '; '.join(failures))
+
 
 def process_row(item):
     """레코드 하나를 DynamoDB 항목 형태로 맞춘다.
@@ -214,6 +255,7 @@ def calculate_and_store_tag_trends(items):
         logger.info(f"Successfully calculated and stored tag trends for {date}.")
     except Exception as e:
         logger.error(f"Failed to store tag trends for {date}. Error: {e}")
+        raise
 
 def store_ranking_snapshot(date, items):
     """데이터 분석 리포트가 읽을 날짜별 압축 스냅샷(`RSNAP#<date>`)을 쓴다.
@@ -233,6 +275,13 @@ def store_ranking_snapshot(date, items):
 
     제목·작가·태그는 담지 않는다. 화면에 글자가 필요한 날짜는 기간의 마지막 날뿐이고,
     그건 백엔드가 기존 조회로 가져온다.
+
+    **placeholder 행은 수치를 0(Eps·View·Like 모두)으로 싣는다.** 제목이 없는 RSNAP 에서
+    리포트(`analysis_report.per_work`)는 `View == 0 and Eps == 0` 을 자리표시로 보고 기간 증감
+    계산에서 건너뛴다. 크롤러 placeholder 도 0 이고 `scripts/backfill_ranking_snapshots.py` 도
+    0 을 쓰므로, 다른 표식(-1 등)을 쓰면 RSNAP 에 두 규칙이 섞이고 리포트가 그 값을 실측으로
+    센다. 여기서는 placeholder 를 제목으로 확인해 0 을 강제할 뿐이다. 행 자체는 남긴다 — 빼면
+    그날 순위 이탈·재진입으로 잡혀 순위 변동 집계가 오염된다. 순위와 성인 여부는 그대로 있다.
     """
     try:
         ids, rank, eps, view, like, adult = [], [], [], [], [], []
@@ -241,9 +290,14 @@ def store_ranking_snapshot(date, items):
                 continue
             ids.append(str(it['ID']))
             rank.append(int(it.get('Ranking') or 0))
-            eps.append(int(it.get('Eps') or 0))
-            view.append(int(it.get('View') or 0))
-            like.append(int(it.get('Like') or 0))
+            if _is_placeholder(it):
+                eps.append(0)
+                view.append(0)
+                like.append(0)
+            else:
+                eps.append(int(it.get('Eps') or 0))
+                view.append(int(it.get('View') or 0))
+                like.append(int(it.get('Like') or 0))
             adult.append(bool(it.get('IsAdult')))
 
         table.put_item(Item={
@@ -255,9 +309,73 @@ def store_ranking_snapshot(date, items):
         logger.info(f"Stored ranking snapshot RSNAP#{date} with {len(ids)} rows.")
 
     except Exception as e:
-        # 리포트용 부가 데이터다. 여기서 실패해도 당일 적재 자체는 이미 끝났으므로
-        # 예외를 올리지 않는다 — 올리면 S3 트리거가 재시도해 중복 적재가 된다.
+        # 예외를 올려 S3 비동기 재시도를 받는다. 재시도는 같은 키를 덮어써 중복이 생기지 않는다.
         logger.error(f"Failed to store ranking snapshot for {date}. Error: {e}")
+        raise
+
+
+def delete_stale_rows(date, items):
+    """그 날짜의 작품 행 중 이번 파일에 없는 것을 지운다.
+
+    **왜 필요한가.** 적재는 파일에 있는 행을 (ID, Date) 키로 덮어쓸 뿐이다. 같은 날짜로 두 번
+    수집되면(실패 뒤 재실행, 자정 넘긴 재실행이 다음 날 정기 실행과 겹침) 첫 실행에만 있던 작품
+    행이 옛 순위 그대로 남아, 그날 목록이 500건을 넘고 순위 번호가 겹친다. STATS·RSNAP 은 파일
+    행만으로 만들므로 DynamoDB 행과도 어긋난다. 파일이 그날의 기준이다.
+
+    **좁게 지운다.**
+    - 이 함수까지 왔다는 것은 파일 전 행이 변환·적재를 통과했다는 뜻이다(consolidate 의 수량·품질
+      검증을 통과해 커밋된 파일). 그래도 파일이 '그 날짜의 순위표'처럼 보이지 않으면(날짜가 섞였거나
+      순위 없는 행이 있으면) 지우지 않는다.
+    - 후보는 `DateRankIndex`(Date + Ranking)에서만 찾는다. STATS#·RSNAP#·AVAILABLE_DATES·
+      ADULT_BLOCKLIST·RUN_LOCK# 같은 특수 항목은 Ranking 이 없어 이 색인에 잡히지 않고, 혹시 몰라
+      숫자 ID(작품 번호)만 지운다.
+    - 지울 행이 새 파일 행 수의 MAX_STALE_RATIO 를 넘으면 지우지 않고 예외를 올린다 — 일부만
+      담긴 파일을 올렸을 가능성이 커서, 그날 행을 대량으로 지우기 전에 사람이 봐야 한다.
+
+    색인은 최종 일관성이지만 안전하다: 이번 파일에 있는 ID 는 절대 지우지 않고, 지울 후보는 이전
+    실행이 오래전에 쓴 행이다.
+    """
+    new_ids = {str(it['ID']) for it in items if it.get('ID')}
+    if not new_ids:
+        return
+    if any(it.get('Date') != date for it in items):
+        logger.warning(f"{date}: 파일에 다른 날짜 행이 섞여 있다 — 잔존 행 정리를 건너뛴다.")
+        return
+    if any(not isinstance(it.get('Ranking'), int) or it.get('Ranking') <= 0 for it in items):
+        logger.warning(f"{date}: 순위 없는 행이 있다(순위표 파일이 아님) — 잔존 행 정리를 건너뛴다.")
+        return
+
+    stale = set()
+    query_kwargs = {
+        'IndexName': 'DateRankIndex',
+        'KeyConditionExpression': Key('Date').eq(date),
+        'ProjectionExpression': 'ID',
+    }
+    while True:
+        resp = table.query(**query_kwargs)
+        for row in resp.get('Items', []):
+            row_id = str(row.get('ID', ''))
+            if row_id.isdigit() and row_id not in new_ids:
+                stale.add(row_id)
+        if 'LastEvaluatedKey' not in resp:
+            break
+        query_kwargs['ExclusiveStartKey'] = resp['LastEvaluatedKey']
+
+    if not stale:
+        return
+    if len(stale) > len(new_ids) * MAX_STALE_RATIO:
+        raise RuntimeError(
+            f"{date}: 이번 파일({len(new_ids)}행)에 없는 기존 행이 {len(stale)}개라 지우지 않는다 — "
+            "일부만 담긴 파일인지 확인할 것."
+        )
+
+    with table.batch_writer() as batch:
+        for row_id in sorted(stale):
+            batch.delete_item(Key={'ID': row_id, 'Date': date})
+    logger.warning(
+        f"{date}: 이전 실행에만 있던 작품 행 {len(stale)}개를 지웠다 "
+        f"(예: {', '.join(sorted(stale)[:10])})."
+    )
 
 
 def update_available_dates(date_from_file):
@@ -292,3 +410,4 @@ def update_available_dates(date_from_file):
 
     except Exception as e:
         logger.error(f"Failed to update AVAILABLE_DATES with {date_from_file}. Error: {e}")
+        raise
