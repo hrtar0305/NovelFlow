@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   2026(`contests/2026/`)은 같은 구조로 시작해 2026-10-02 자정분부터 Distributed Map 판으로 돕니다(SQS 판은 되돌리기용으로 남김).
 - **DynamoDB는 테이블당 PK=`ID`, SK=`Date` 하나에 특수 항목이 섞여 있습니다.** 소설 스냅샷 외에
   `STATS#<date>`(태그 통계), `RSNAP#<date>`(분석 리포트용 압축 스냅샷), `AVAILABLE_DATES`,
-  `ADULT_BLOCKLIST`가 같은 테이블에 있습니다. 전체 스캔·날짜 조회 코드를 짤 때 이 항목들을 걸러야 합니다.
+  `ADULT_BLOCKLIST`, `RUN_LOCK#<date>`(예약 실행 날짜 잠금)가 같은 테이블에 있습니다. 전체 스캔·날짜 조회 코드를 짤 때 이 항목들을 걸러야 합니다.
 - **백엔드는 `webapp/backend/api/main.py` 한 파일**(엔드포인트 + 정책 초크 포인트)이고, 분석 리포트 계산만
   `analysis_report.py`로 분리돼 있습니다. 이 모듈은 I/O도 성인작 판정도 하지 않습니다 — 이미 걸러진 데이터만 받습니다.
 - **적재 시점에 판정을 굳히지 않습니다.** `RSNAP`·백필 스크립트 모두 `IsAdult`를 그대로 싣고, 판정은 백엔드
