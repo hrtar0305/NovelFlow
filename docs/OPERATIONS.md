@@ -181,7 +181,10 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 
 ## 스케줄 (EventBridge, KST)
 
-- 데일리 랭킹 파이프라인: 매일 21:00
+- 데일리 랭킹 파이프라인: 매일 21:00 — 스케줄 입력 `{"target_novel_count": 500, "scheduled": true}`. `scheduled` 가 있는 실행만
+  `RUN_LOCK#<KST 날짜>`(NovelRanks, Date=`LOCK`)를 잡아 중복 전달을 건너뛴다. **손으로 다시 돌릴 때는 `scheduled` 를 빼면 된다**(잠금 없음).
+  로그인 쿠키는 get-ranking 이 SSM SecureString `/NP-Trend/AUTH_COOKIES` 에 쓰고 버전만 넘긴다 — 크롤러 이미지와 두 상태 머신
+  (NpTrendCrawlerWorkflow·NpTrendCrawlerExpressWorkflow)은 함께 바꿔야 한다(필드 `auth_cookies_version`).
 - 2025 공모전 파이프라인: 매일 14:00
 - 2026 공모전(이름은 `NovelFlowContest2026*`):
   - 준비 실행 `NovelFlowContest2026Prep`: 매일 11:30·23:30 — 수집기 Lambda 직접 호출(`mode: prep`). 새 번호 훑기 + 재확인(짝수 번호 = 오전, 홀수 = 밤) + 새 작가의 다른 작품.

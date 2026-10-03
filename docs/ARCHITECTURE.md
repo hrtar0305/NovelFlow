@@ -16,7 +16,7 @@ EventBridge (매일 오후 9시 KST)
         │     ├ Parameter Store에서 로그인 정보 조회
         │     ├ Playwright로 노벨피아 로그인 + 성인 모드 ON
         │     ├ 쿠키를 requests 세션에 주입 → 상위 500개 랭킹 크롤링
-        │     └ 소설 목록(ID, 순위, 점수) + auth_cookies 반환
+        │     └ 소설 목록(ID, 순위, 점수) + 쿠키 버전 반환(쿠키 본체는 SSM SecureString /NP-Trend/AUTH_COOKIES)
         │
         ├─▶ Express Workflow (Map, MaxConcurrency: 20)
         │     └─▶ Lambda: parse_novel_details (소설 1개당, crawler/app.py)
