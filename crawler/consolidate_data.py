@@ -48,17 +48,24 @@ def _log(level, execution_id, message, **kwargs):
 
 # --- Helper Functions ---
 def _collect_messages_from_sqs(sqs_client, execution_id, target_novel_count):
-    """Collects all available messages from the SQS queue until empty or timeout."""
-    all_novel_data = []
-    receipt_handles_to_delete = []
-    raw_payloads = []            # 소설별 gzip 원본. 검증을 통과한 뒤에만 묶어 올린다.
+    """큐가 빌 때까지(또는 시간 초과까지) 메시지를 모은다. 중복은 여기서 거르지 않는다.
+
+    돌려주는 것:
+        entries          — 메시지마다 (항목, 원본 인코딩, SentTimestamp). 고르기는 `_deduplicate_by_id`.
+        receipt_handles  — 받은 메시지 **전부**의 삭제 핸들. 중복분도 커밋 때 함께 지운다.
+    """
+    entries = []
+    # MessageId → 가장 최근 receipt handle. 같은 메시지를 두 번 받으면(가시성 시간 초과) 핸들이
+    # 새로 나오고, 지울 때는 마지막 핸들을 써야 한다(옛 핸들로 지우면 성공 응답만 오고 남는다).
+    receipt_handles = {}
     loop_start_time = time.time()
 
     _log(logging.INFO, execution_id, f"Expecting {target_novel_count} items from SQS.")
 
     while time.time() - loop_start_time < Config.LOOP_TIMEOUT_SECONDS:
         response = sqs_client.receive_message(
-            QueueUrl=Config.SQS_QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=5
+            QueueUrl=Config.SQS_QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=5,
+            AttributeNames=['SentTimestamp'],
         )
         messages = response.get('Messages', [])
         if not messages:
@@ -66,34 +73,75 @@ def _collect_messages_from_sqs(sqs_client, execution_id, target_novel_count):
             break
 
         for message in messages:
+            receipt_handles[message['MessageId']] = message['ReceiptHandle']
             try:
                 item = json.loads(message['Body'])
-                # 원본은 항목에서 **떼어낸다.** NDJSON 과 DynamoDB 에 들어가면 안 되고
-                # (한 줄이 122KB 가 된다) 묶음 파일로만 간다.
-                encoded = item.pop(RAW_FIELD, None)
-                if encoded:
-                    # **gzip 을 풀어 비압축 JSON 으로 모은다.** gzip 인 채로 묶으면
-                    # 이중 압축이라 zstd 가 더 줄이지 못하고(실측 편당 79KB), 게다가
-                    # gzip 바이트의 0x0A 가 줄 구분자를 깨뜨린다.
-                    raw_payloads.append(raw_store.decode_to_json_bytes(encoded))
-                all_novel_data.append(item)
-                receipt_handles_to_delete.append({'Id': message['MessageId'], 'ReceiptHandle': message['ReceiptHandle']})
             except json.JSONDecodeError:
                 _log(logging.ERROR, execution_id, "Failed to parse message body.", body=message.get('Body'))
+                continue
+            # 원본은 항목에서 **떼어낸다.** NDJSON 과 DynamoDB 에 들어가면 안 되고
+            # (한 줄이 122KB 가 된다) 묶음 파일로만 간다. 풀기는 고른 뒤에 한다.
+            encoded = item.pop(RAW_FIELD, None)
+            sent_ts = int((message.get('Attributes') or {}).get('SentTimestamp') or 0)
+            entries.append((item, encoded, sent_ts))
     else:
         raise TimeoutError(f"Consolidation loop timed out after {Config.LOOP_TIMEOUT_SECONDS} seconds.")
 
-    return all_novel_data, receipt_handles_to_delete, raw_payloads
+    handles = [{'Id': str(i), 'ReceiptHandle': h} for i, h in enumerate(receipt_handles.values())]
+    return entries, handles
+
+
+def _deduplicate_by_id(execution_id, entries):
+    """같은 작품이 두 번 오면 하나만 남긴다 — 실데이터 우선, 실데이터끼리는 먼저 보낸 쪽.
+
+    우리 흐름은 at-least-once 다(DECISIONS 2026-10-02 「전달 보장」). Express 자식을 재시도하면
+    500편을 처음부터 다시 보내 앞 시도의 결과와 겹치고, 재시도가 없어도 Lambda 가 SQS 로 보낸 뒤
+    응답 직전에 끊기면 Map 이 그 작품을 다시 돌린다. 개수만 세면 한 편만 겹쳐도 501 이라
+    그날이 통째로 실패한다. 규칙은 공모전 `_deduplicate_items`·`_dedupe_prefer_real` 과 같다.
+
+    원본은 **남긴 메시지 것만** 푼다. 묶음에 같은 작품이 두 번 들어가지 않게.
+    """
+    best = {}
+    without_id = 0
+    for item, encoded, sent_ts in entries:
+        novel_id = item.get('ID')
+        if not novel_id:
+            without_id += 1
+            continue
+        key = str(novel_id)
+        cur = best.get(key)
+        if cur is None:
+            best[key] = (item, encoded, sent_ts)
+        elif _is_placeholder(cur[0]) != _is_placeholder(item):
+            if _is_placeholder(cur[0]):
+                best[key] = (item, encoded, sent_ts)
+        elif sent_ts < cur[2]:
+            best[key] = (item, encoded, sent_ts)
+
+    items, raw_payloads = [], []
+    for item, encoded, _ in best.values():
+        items.append(item)
+        if encoded:
+            # **gzip 을 풀어 비압축 JSON 으로 모은다.** gzip 인 채로 묶으면
+            # 이중 압축이라 zstd 가 더 줄이지 못하고(실측 편당 79KB), 게다가
+            # gzip 바이트의 0x0A 가 줄 구분자를 깨뜨린다.
+            raw_payloads.append(raw_store.decode_to_json_bytes(encoded))
+
+    duplicates = len(entries) - without_id - len(items)
+    level = logging.WARNING if duplicates or without_id else logging.INFO
+    _log(level, execution_id, "Deduplicated SQS results by novel ID.",
+         received=len(entries), unique=len(items), duplicates=duplicates, without_id=without_id)
+    return items, raw_payloads
+
 
 def _validate_data(execution_id, collected_data, target_count):
-    """Validates that the collected data count matches the target count."""
+    """중복을 거른 고유 작품 수가 랭킹 수와 같은지 본다."""
     collected_count = len(collected_data)
     if collected_count != target_count:
-        error_message = f"Validation Failed: Expected {target_count}, but collected {collected_count}."
+        error_message = f"Validation Failed: Expected {target_count}, but collected {collected_count} unique items."
         _log(logging.ERROR, execution_id, error_message)
         raise ValueError(error_message)
     _log(logging.INFO, execution_id, "Validation successful.")
-
 
 # --- 품질 게이트 ---------------------------------------------------------------
 # 수량 검증만으로는 "500건을 받았지만 내용이 전부 망가진" 경우를 잡지 못한다.
@@ -107,9 +155,17 @@ def _validate_data(execution_id, collected_data, target_count):
 #   - placeholder: 정상일 0.0~0.8% (2026-08-22~24 실측) → 5%에서 실패
 #   - View 감소: 정상일 0건 (6개 날짜쌍 실측) → 100건에서 실패
 #     누적 조회수는 단조 증가해야 하므로 대량 감소는 다른 날짜/다른 사이트를 긁었다는 신호.
+#   - 성인작 비율: 정상 26.4% (2026-08-24 실측, 위 시나리오 ②) → 10% 미만이면 실패.
+#     시나리오 ②는 건수도 조회수도 멀쩡해서 앞의 두 검사로는 드러나지 않고 **내용**으로만 드러난다.
+#     IsAdult 는 서버가 novel_age 로 그리는 배지라 로그인과 무관하게 정확하다 — 로그인이 빠지면
+#     성인작이 목록에서 빠질 뿐 일반작이 성인으로 오판되지는 않는다.
+#     표본이 작은 수동 실행(target_novel_count 가 작은 시험)은 비율이 흔들리므로
+#     실데이터가 MIN_ADULT_SAMPLE 건 이상일 때만 본다.
 PLACEHOLDER_TITLE_PREFIX = "N/A ("
 MAX_PLACEHOLDER_RATIO = 0.05
 MAX_VIEW_DECREASE_COUNT = 100
+MIN_ADULT_RATIO = 0.10
+MIN_ADULT_SAMPLE = 100
 
 
 def _is_placeholder(item):
@@ -185,9 +241,19 @@ def _quality_gate(s3_client, execution_id, data, date):
                 f"(threshold {MAX_VIEW_DECREASE_COUNT}). Cumulative views must not shrink."
             )
 
+    # ③ 성인작 비율 — 로그인·성인 모드가 조용히 빠진 날을 잡는다
+    real_items = [item for item in data if not _is_placeholder(item)]
+    adults = sum(1 for item in real_items if item.get("IsAdult") is True)
+    adult_ratio = adults / len(real_items) if real_items else 0.0
+    if len(real_items) >= MIN_ADULT_SAMPLE and adult_ratio < MIN_ADULT_RATIO:
+        raise ValueError(
+            f"Quality gate failed: adult ratio {adult_ratio:.1%} ({adults}/{len(real_items)}) "
+            f"is below {MIN_ADULT_RATIO:.0%}. Likely login or adult mode was lost."
+        )
+
     _log(logging.INFO, execution_id,
          f"Quality gate passed: placeholders {placeholders}/{total} ({ratio:.1%}), "
-         f"view decreases {decreased}"
+         f"view decreases {decreased}, adults {adults}/{len(real_items)} ({adult_ratio:.1%})"
          + ("" if previous_views else " (previous day unavailable)"))
 
 def _upload_records_to_s3(s3_client, execution_id, data, date):
@@ -256,7 +322,12 @@ def _delete_messages_from_sqs(sqs_client, execution_id, receipt_handles):
     for i in range(0, len(receipt_handles), 10):
         batch = receipt_handles[i:i+10]
         if batch:
-            sqs_client.delete_message_batch(QueueUrl=Config.SQS_QUEUE_URL, Entries=batch)
+            response = sqs_client.delete_message_batch(QueueUrl=Config.SQS_QUEUE_URL, Entries=batch)
+            # 부분 실패는 예외가 아니라 응답의 Failed 로 온다. 남은 메시지는 다음 실행 첫 단계의
+            # purge 가 비우므로 여기서 실행을 실패시키지는 않고 기록만 남긴다.
+            if response.get('Failed'):
+                _log(logging.WARNING, execution_id, "Some SQS messages were not deleted.",
+                     failed=[f.get('Code') for f in response['Failed']])
 
 # --- Main Handler ---
 def handler(event, context):
@@ -269,11 +340,14 @@ def handler(event, context):
 
     # 1. Data Collection (Read-Only)
     try:
-        all_novel_data, receipt_handles, raw_payloads = _collect_messages_from_sqs(
+        entries, receipt_handles = _collect_messages_from_sqs(
             sqs_client, execution_id, target_novel_count)
     except Exception as e:
         _log(logging.ERROR, execution_id, f"Failed during SQS message retrieval: {e}", exc_info=True)
         raise
+
+    # 같은 작품이 겹쳐 온 것을 먼저 고른다. 수량은 고른 뒤의 고유 작품 수로 본다.
+    all_novel_data, raw_payloads = _deduplicate_by_id(execution_id, entries)
 
     # 2. Data Validation — 수량 검증 후 품질 게이트.
     #    둘 다 업로드 전에 둔다: 실패하면 SQS 메시지가 큐에 남아 재처리가 가능하다
@@ -287,6 +361,7 @@ def handler(event, context):
         # 원본 묶음은 NDJSON 뒤에 올린다. 실패해도 예외를 올리지 않으므로
         # 아래 메시지 삭제까지 그대로 진행된다.
         _upload_raw_bundle(s3_client, execution_id, raw_payloads, consolidated_file_date)
+        # 고르고 버린 중복 메시지도 함께 지운다. 남기면 다음 실행 결과에 섞인다.
         _delete_messages_from_sqs(sqs_client, execution_id, receipt_handles)
     except Exception as e:
         critical_error_msg = f"CRITICAL: Failed during commit phase: {e}"

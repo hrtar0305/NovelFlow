@@ -10,7 +10,7 @@
         "novel_item.$": "$$.Map.Item.Value",
         "execution_id.$": "$.execution_id",
         "date.$": "$.date",
-        "auth_cookies.$": "$.auth_cookies"
+        "auth_cookies_version.$": "$.auth_cookies_version"
       },
       "Iterator": {
         "StartAt": "GetNovelData",
@@ -22,7 +22,7 @@
               "date.$": "$.date",
               "novel.$": "$.novel_item",
               "execution_id.$": "$.execution_id",
-              "auth_cookies.$": "$.auth_cookies"
+              "auth_cookies_version.$": "$.auth_cookies_version"
             },
             "Retry": [
               {
@@ -52,7 +52,7 @@
               "date.$": "$.date",
               "novel.$": "$.novel_item",
               "execution_id.$": "$.execution_id",
-              "auth_cookies.$": "$.auth_cookies",
+              "auth_cookies_version.$": "$.auth_cookies_version",
               "is_placeholder": true
             },
             "Retry": [
