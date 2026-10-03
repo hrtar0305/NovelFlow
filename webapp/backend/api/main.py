@@ -752,6 +752,8 @@ class NovelRankingShowcaseResponse(BaseModel):
 class ContestShowcaseResponse(BaseModel):
     latest_date: str
     items: List[ContestNovelData] = Field(default_factory=list)
+    # 2026~(수상 발표 전): 급상승 — 직전 수집일 대비 일간 순위가 가장 많이 오른 작품들. 2025 는 비어 있다.
+    movers: List[ContestNovelData] = Field(default_factory=list)
 
 @app.get("/")
 def read_root(response: Response):
@@ -1201,16 +1203,28 @@ def get_contest_showcase(year: int, response: Response):
             raise HTTPException(status_code=404, detail="No latest date found for contest.")
 
         if year != 2025:
-            # 수상작 발표 전: 쇼케이스는 그날 일간 순위 상위(없으면 누적 조회 상위)로 채운다.
+            # 수상작 발표 전: 일간 랭킹 쇼케이스와 같은 '상위 + 급상승'을 **늘 최신 수집일**로 낸다(일간 랭킹과 같은 규칙 —
+            # 과거 날짜의 표를 볼 때는 화면이 '기준일'을 붙인다). 급상승에는 직전 수집일의 일간 순위가 필요하다.
             items = _fetch_all_contest_items(latest_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl=tbl)
-            items = [i for i in items if (i.get('View') or 0) >= 0]
-            items.sort(key=lambda i: (i.get('DailyRank') is None, i.get('DailyRank') or 0, -(i.get('View') or 0)))
-            top = [_decorate_contest_item(i, year) for i in items[:11]]
-            for i in top:
-                # 카드의 '+증가'는 그날 일간 순위의 조회 증가(적재가 저장). 순위가 없으면 누적 조회를 보인다(화면 분기).
+            # 정책(성인작 제외)을 **고르기 전에** 지난다 — 고른 뒤에 빼면 상위·급상승이 5칸을 못 채운다.
+            items = _apply_content_policy_all([i for i in items if (i.get('View') or 0) >= 0])
+            previous_date = _get_previous_contest_date(latest_date, tbl)
+            prev = _fetch_all_contest_items(previous_date, 'ID, DailyRank', None, tbl=tbl) if previous_date else []
+            prev_by_id = {p['ID']: p for p in prev}
+            prev_ranked = any(p.get('DailyRank') is not None for p in prev)
+            for i in items:
+                _decorate_contest_item(i, year, prev_by_id.get(i['ID']), prev_ranked)
+                # 카드의 '+증가'는 그날 일간 순위의 조회 증가(적재가 저장).
                 i['view_change'] = i.get('ViewDelta', 0)
+            ranked = sorted((i for i in items if i.get('DailyRank') is not None), key=lambda i: i['DailyRank'])
+            top = ranked[:11] or sorted(items, key=lambda i: -(i.get('View') or 0))[:11]   # 순위가 없는 날(첫날)은 누적 조회 상위
+            movers = sorted((i for i in ranked if isinstance(i.get('daily_rank_change'), int) and i['daily_rank_change'] > 0),
+                            key=lambda i: (-i['daily_rank_change'], i['DailyRank']))[:5]
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
-            return {"latest_date": latest_date, "items": _apply_content_policy_all(_apply_daily_thumbnail_fallback_to_contest_items(top))}
+            # 표지가 없는 작품만 일간 테이블의 표지로 채운다(고른 몇 편만 — 작품마다 조회가 한 번 든다).
+            return {"latest_date": latest_date,
+                    "items": _apply_daily_thumbnail_fallback_to_contest_items(top),
+                    "movers": _apply_daily_thumbnail_fallback_to_contest_items(movers)}
 
         configured_showcase_ids = get_contest_showcase_ids_2025()
 

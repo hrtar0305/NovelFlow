@@ -27,7 +27,7 @@ import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
  *
  * 2026 부터는 대표 순위가 일간 순위다(적재 때 확정한 DailyRank, `utils/contest.ts`). 수상작 발표 전에는
  * 수상 열·'수상작만'을 숨기고, 기성/신인 열·필터와 잔류율 두 열을 둔다. 쇼케이스는 일간 랭킹과 같은 배치(상위 5 +
- * 급상승 5) — 2025 의 시상대 배치는 수상작을 놓기 위한 것이라 일간 순위에는 맞지 않는다(사용자 검토 2026-10-03).
+ * 급상승 5)·같은 규칙(늘 최신 수집일) — 2025 의 시상대 배치는 수상작을 놓기 위한 것이라 일간 순위에는 맞지 않는다(사용자 검토 2026-10-03).
  */
 
 const NOTES = [
@@ -69,6 +69,8 @@ export default function ContestPage() {
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<ContestNovel[]>([]);
   const [showcase, setShowcase] = useState<ContestNovel[]>([]);
+  const [showcaseMovers, setShowcaseMovers] = useState<ContestNovel[]>([]);
+  const [showcaseDate, setShowcaseDate] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // ?tag= 로 들어오면(공모전 작품 상세의 태그 링크) 그 태그를 '모두 포함'으로 건다.
@@ -90,8 +92,8 @@ export default function ContestPage() {
       .then(r => setDates(new Set<string>(r.data.available_dates || [])))
       .catch(() => { setError('조회 가능한 날짜를 불러오지 못했습니다.'); setLoading(false); });
     getContestShowcase(y)
-      .then(r => setShowcase(mapRows(r.data.items || [])))
-      .catch(() => setShowcase([]));
+      .then(r => { setShowcase(mapRows(r.data.items || [])); setShowcaseMovers(mapRows(r.data.movers || [])); setShowcaseDate(r.data.latest_date); })
+      .catch(() => { setShowcase([]); setShowcaseMovers([]); });
   }, [year]);
 
   useEffect(() => {
@@ -136,17 +138,12 @@ export default function ContestPage() {
   const showcaseItems = useMemo(() => (awardShowcase ? [...showcase]
     .sort((a, b) => ((AWARD_ORDER[a.award ?? ''] ?? 99) - (AWARD_ORDER[b.award ?? ''] ?? 99)) || ((b.View ?? -1) - (a.View ?? -1)))
     .slice(0, 11) : []), [showcase, awardShowcase]);
-  // 일간 쇼케이스: 보고 있는 날짜의 표에서 바로 고른다(표와 날짜가 어긋나지 않는다). 급상승 = 순위가 오른 폭 순.
-  const dailyShowcase = useMemo(() => {
-    if (awardShowcase) return { top: [], movers: [] };
-    const ranked = rows.filter(n => n.daily_rank != null).sort((a, b) => a.daily_rank! - b.daily_rank!);
-    const movers = ranked.filter(n => typeof n.daily_rank_change === 'number' && n.daily_rank_change > 0)
-      .sort((a, b) => (b.daily_rank_change as number) - (a.daily_rank_change as number) || a.daily_rank! - b.daily_rank!);
-    return {
-      top: ranked.slice(0, 5).map(n => toShowcase(year, n, <>+{formatInt(n.view_change)}</>)),
-      movers: movers.slice(0, 5).map(n => toShowcase(year, n, null, n.daily_rank_change as number)),
-    };
-  }, [rows, awardShowcase, year]);
+  // 일간 쇼케이스: 일간 랭킹과 같이 **늘 최신 수집일**(백엔드가 상위·급상승을 골라 준다). 과거 날짜의 표를 볼 때는
+  // 쇼케이스가 '기준일'을 붙인다.
+  const dailyShowcase = useMemo(() => (awardShowcase ? { top: [], movers: [] } : {
+    top: showcase.filter(n => n.daily_rank != null).slice(0, 5).map(n => toShowcase(year, n, <>+{formatInt(n.view_change)}</>)),
+    movers: showcaseMovers.slice(0, 5).map(n => toShowcase(year, n, null, typeof n.daily_rank_change === 'number' ? n.daily_rank_change : null)),
+  }), [showcase, showcaseMovers, awardShowcase, year]);
 
   const count = activeFilterCount(filter) + (winnersOnly ? 1 : 0) + (career !== 'all' ? 1 : 0);
   const filtered = count > 0 || filter.search.trim() !== '';
@@ -228,7 +225,7 @@ export default function ContestPage() {
         onDateChange={d => navigate(`/contests/${year}/${d}`)} onYearChange={y => navigate(`/contests/${y}`)}
         meta={rows.length ? `${cfg.schedule} · 참여 작품 ${formatInt(rows.length)}편` : cfg.schedule} />
 
-      {!awardShowcase ? <Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} tableDate={dateParam ?? null} /> : null}
+      {!awardShowcase ? <Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} showcaseDate={showcaseDate} tableDate={dateParam ?? null} /> : null}
 
       {showcaseItems.length > 0 ? (
         <section className="contest-award-showcase showcase-section" aria-label="수상작">
