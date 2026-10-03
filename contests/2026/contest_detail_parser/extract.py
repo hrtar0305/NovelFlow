@@ -24,6 +24,9 @@ EPISODE_VIEW_COUNT_SPAN = "span.episode_count_view"
 # 21시간 지난 회차), 공모전은 자정 직후에 모아 방금 끝난 날 23:59 에 올린 회차까지 날짜로 들어온다. 그래서 공모전은
 # **날짜가 기록 날짜 D 보다 이른 회차만** 유효로 친다(`before`) — 최신화가 늘 24시간 이상 지난 회차가 된다.
 RETENTION_MIN_EPS = 30
+# 잔류율 원재료 8개의 '값 없음'. 받다가 해석 오류가 나도 이 값으로 둔다(파서 `_parse_one`).
+RETENTION_DEFAULTS = {"FirstEpView": -1, "FirstEpNum": -1, "Ep30View": -1, "Ep30Num": -1,
+                      "RecentBaseView": -1, "RecentBaseNum": -1, "TargetLatestEpView": -1, "TargetLatestEpNum": -1}
 
 
 def badge_spans(soup):
@@ -109,7 +112,8 @@ def _episode_view_counts(session, novel_id, episode_ids, log):
         return {}
     try:
         return {it['episode_no']: int(it['count_view'].replace(',', '')) for it in r.json().get('list', [])}
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
+    # TypeError·AttributeError: `list` 가 null·응답이 배열·`count_view` 가 숫자처럼 모양이 다른 응답
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError, AttributeError) as e:
         log(logging.WARNING, f"Failed to parse /proc/novel response: {e}")
         return {}
 
@@ -121,8 +125,7 @@ def retention_fields(session, novel_id, pages, log, before=None):
     1화·30화·최신화·최신 30번째 전 회차의 조회수를 한 번에 받는다. 값을 못 얻으면 -1.
     """
     from bs4 import BeautifulSoup
-    item = {"FirstEpView": -1, "FirstEpNum": -1, "Ep30View": -1, "Ep30Num": -1,
-            "RecentBaseView": -1, "RecentBaseNum": -1, "TargetLatestEpView": -1, "TargetLatestEpNum": -1}
+    item = dict(RETENTION_DEFAULTS)
 
     def collect(sort_order, max_pages):
         eps, seen = [], set()

@@ -1,5 +1,5 @@
 {
-  "Comment": "2026 공모전 수집 — Distributed Map 판. 실패를 가정한다: ID 수집 실패는 직전 목록으로 진행, 작품 실패는 묶음 안에 가두고 빠진 것만 다시 받으며(최대 2라운드), 남은 결손은 placeholder + 실패 장부(failures/{date}.json) + 경고 알림. 결손이 5%를 넘으면 쓰지 않고 실패. 그림자 실행: {\"skip_discovery\": true, \"raw\": false, \"dry_run\": true, \"target_date\": \"YYYY-MM-DD\"}. 재시도 경로 시험: 그림자 실행에 \"inject_fail_mod\": N 을 주면 첫 라운드에서 번호 % N == 0 인 작품을 네트워크 실패로 친다(dry_run 일 때만). 예약 실행은 날짜 잠금(RUN_LOCK#{date})을 잡아 중복 전달을 건너뛴다 — 같은 날짜를 입력 없이 다시 돌리려면 잠금 항목을 지우거나 target_date 를 준다.",
+  "Comment": "2026 공모전 수집 — Distributed Map 판. 실패를 가정한다: ID 수집 실패·지연(실행 시작 12분 뒤로는 다시 부르지 않음)은 직전 목록으로 진행, 작품 실패는 묶음 안에 가두고 빠진 것만 다시 받으며(최대 2라운드), 남은 결손은 placeholder + 실패 장부(failures/{date}.json) + 경고 알림. 결손이 5%를 넘으면 쓰지 않고 실패. 그림자 실행: {\"skip_discovery\": true, \"raw\": false, \"dry_run\": true, \"target_date\": \"YYYY-MM-DD\"}. 재시도 경로 시험: 그림자 실행에 \"inject_fail_mod\": N 을 주면 첫 라운드에서 번호 % N == 0 인 작품을 네트워크 실패로 친다(dry_run 일 때만). 예약 실행은 날짜 잠금(RUN_LOCK#{date})을 잡아 중복 전달을 건너뛴다 — 같은 날짜를 입력 없이 다시 돌리려면 잠금 항목을 지우거나 target_date 를 준다.",
   "StartAt": "Defaults",
   "TimeoutSeconds": 2700,
   "States": {
@@ -12,7 +12,8 @@
           "fallback": false,
           "skipped": true,
           "total_contest": null,
-          "listed_total": null
+          "listed_total": null,
+          "alive_contest": null
         },
         "DiscoverRounds": {
           "n": 0
@@ -34,24 +35,22 @@
     },
     "DiscoverIds": {
       "Type": "Task",
+      "Comment": "수집기 응답(done·total_contest·alive_contest·listed_total…)을 통째로 $.Discover 에 둔다. ResultSelector 로 필드를 고르면 수집기·상태 머신 배포 순서가 어긋날 때(새 필드가 없는 옛 수집기) 경로 오류로 자정 실행이 실패했다(최종 검증 2026-10-03).",
       "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-id-collector",
       "Parameters": {
         "execution_id.$": "$$.Execution.Name"
       },
-      "ResultSelector": {
-        "done.$": "$.done",
-        "fallback": false,
-        "skipped": false,
-        "total_contest.$": "$.total_contest",
-        "listed_total.$": "$.listed_total"
-      },
       "ResultPath": "$.Discover",
+      "TimeoutSeconds": 900,
       "Retry": [
         {
           "ErrorEquals": [
-            "States.ALL"
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
           ],
-          "IntervalSeconds": 30,
+          "IntervalSeconds": 10,
           "MaxAttempts": 2,
           "BackoffRate": 2
         }
@@ -62,7 +61,7 @@
             "States.ALL"
           ],
           "ResultPath": "$.DiscoverError",
-          "Next": "DiscoveryFallback"
+          "Next": "WaitAfterDiscoverError"
         }
       ],
       "Next": "IsDiscoveryDone?"
@@ -74,10 +73,35 @@
           "Variable": "$.Discover.done",
           "BooleanEquals": true,
           "Next": "FirstRound"
-        },
+        }
+      ],
+      "Default": "DiscoverAgain?"
+    },
+    "WaitAfterDiscoverError": {
+      "Type": "Wait",
+      "Comment": "수집기 실패 뒤 순간 장애를 넘길 시간.",
+      "Seconds": 30,
+      "Next": "DiscoverAgain?"
+    },
+    "DiscoverAgain?": {
+      "Type": "Choice",
+      "Comment": "수집기를 다시 부를지 — 횟수가 아니라 시각으로 끊는다. 호출 하나가 최대 15분이라 횟수(예전 4번)로는 45분 실행 제한 안에 대체 경로에 닿지 못했다. ResolveDate 가 정한 마감(실행 시작 + 12분, 팬아웃 DISCOVERY_RECALL_MINUTES)이 지났으면 직전 목록으로 진행 — 수집 단계는 최악 27분에 끝난다. 마감이 없는 입력(옛 팬아웃)이면 횟수만 본다.",
+      "Choices": [
         {
           "Variable": "$.DiscoverRounds.n",
           "NumericGreaterThanEquals": 4,
+          "Next": "DiscoveryFallback"
+        },
+        {
+          "Not": {
+            "Variable": "$.Resolved.discovery_deadline",
+            "IsPresent": true
+          },
+          "Next": "CountDiscoverRound"
+        },
+        {
+          "Variable": "$$.State.EnteredTime",
+          "TimestampGreaterThanEqualsPath": "$.Resolved.discovery_deadline",
           "Next": "DiscoveryFallback"
         }
       ],
@@ -85,7 +109,7 @@
     },
     "CountDiscoverRound": {
       "Type": "Pass",
-      "Comment": "시간 예산으로 끊긴 수집기를 다시 부른다. 무한히 돌지 않게 횟수를 센다(4번 넘으면 직전 목록으로 진행).",
+      "Comment": "수집기를 다시 부른다(시간 예산으로 끊겼거나 실패). 언제 멈출지는 DiscoverAgain? 가 시각으로 정하고, 횟수(4번)는 마지막 안전장치다.",
       "Parameters": {
         "n.$": "States.MathAdd($.DiscoverRounds.n, 1)"
       },
@@ -100,7 +124,8 @@
         "fallback": true,
         "skipped": false,
         "total_contest": null,
-        "listed_total": null
+        "listed_total": null,
+        "alive_contest": null
       },
       "ResultPath": "$.Discover",
       "Next": "FirstRound"
@@ -231,11 +256,11 @@
     },
     "FirstRound": {
       "Type": "Pass",
-      "Comment": "첫 라운드: 전체 목록, 40편 묶음, 동시 10.",
+      "Comment": "첫 라운드: 전체 목록, 20편 묶음, 동시 10. 묶음은 EXPRESS 자식(최대 5분) 안에 끝나야 한다 — 처리량은 동시 수가 정하고 묶음 크기는 자식 하나의 소요만 정하므로 줄여도 느려지지 않는다(파서 시간 예산 170초 + ParseBatch 280초 제한).",
       "Result": {
         "round": 0,
         "missing_key": "contest_novel_ids_2026.json",
-        "batch": 40,
+        "batch": 20,
         "concurrency": 10
       },
       "ResultPath": "$.Work",
@@ -275,32 +300,25 @@
         "States": {
           "ParseBatch": {
             "Type": "Task",
+            "Comment": "EXPRESS 자식은 최대 5분이다. 파서가 시간 예산(170초)을 넘기면 남은 작품을 failed(TimeBudget)로 돌려주고, 이 단계는 280초에서 끊는다. 자식 안에서는 호출 직후 나는 Lambda 서비스 오류만 다시 부른다 — 오래 돈 뒤의 실패(TaskFailed·Unknown·Timeout)를 다시 돌리면 5분을 넘겨 받은 것까지 버린다. 그런 묶음은 Reconcile 이 빠진 작품만 다시 받는다.",
             "Resource": "arn:aws:states:::lambda:invoke",
             "Parameters": {
               "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap",
               "Payload.$": "$"
             },
             "OutputPath": "$.Payload",
+            "TimeoutSeconds": 280,
             "Retry": [
               {
                 "ErrorEquals": [
                   "Lambda.TooManyRequestsException",
                   "Lambda.ServiceException",
                   "Lambda.AWSLambdaException",
-                  "Lambda.SdkClientException",
-                  "Lambda.Unknown",
-                  "States.Timeout"
+                  "Lambda.SdkClientException"
                 ],
                 "IntervalSeconds": 10,
                 "MaxAttempts": 2,
                 "BackoffRate": 2
-              },
-              {
-                "ErrorEquals": [
-                  "States.TaskFailed"
-                ],
-                "IntervalSeconds": 10,
-                "MaxAttempts": 1
               }
             ],
             "End": true

@@ -2,7 +2,7 @@ import boto3
 import json
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger()
@@ -12,6 +12,9 @@ S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
 S3_FILE_NAME = os.environ.get('S3_FILE_NAME')
 SQS_TASK_QUEUE_URL = os.environ.get('SQS_TASK_QUEUE_URL')
 AWS_REGION = "ap-northeast-2"
+# DMap 판: 실행 시작 뒤 이 시각이 지나면 ID 수집기를 다시 부르지 않고 지금 목록으로 진행한다(상태 머신 `DiscoverAgain?`).
+# 호출 한 번이 최대 15분(Lambda 900초)이라 수집 단계는 최악 12 + 15 = 27분에 끝나고, 실행 제한 45분 중 18분이 수집·적재에 남는다.
+DISCOVERY_RECALL_MINUTES = int(os.environ.get('DISCOVERY_RECALL_MINUTES', '12'))
 
 if not all([S3_BUCKET_NAME, S3_FILE_NAME, SQS_TASK_QUEUE_URL]):
     raise ValueError("Env vars S3_BUCKET_NAME, S3_FILE_NAME, and SQS_TASK_QUEUE_URL must be set.")
@@ -56,7 +59,10 @@ def get_id_list_from_s3(event, context):
     formatted_date = collection_date(event)
     if event.get('resolve_only'):
         # Distributed Map 경로: 날짜만 정하고 큐에는 보내지 않는다(Map 이 S3 목록을 직접 읽는다).
-        return {"date": formatted_date}
+        # 수집기 재호출 마감도 여기서 정한다 — 상태 머신은 시각 덧셈을 못 한다. Choice 의 Timestamp 비교가 받는 RFC3339(UTC, Z) 모양.
+        started = datetime.fromisoformat(event['date'].replace('Z', '+00:00')) if event.get('date') else datetime.now(timezone.utc)
+        deadline = started.astimezone(timezone.utc) + timedelta(minutes=DISCOVERY_RECALL_MINUTES)
+        return {"date": formatted_date, "discovery_deadline": deadline.strftime('%Y-%m-%dT%H:%M:%SZ')}
 
     try:
         logger.info(f"[{execution_id}] Attempting to read s3://{S3_BUCKET_NAME}/{S3_FILE_NAME}")
