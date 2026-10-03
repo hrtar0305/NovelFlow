@@ -6,17 +6,33 @@ import { getContestNovelTrend } from '../services/api';
 import NovelHeader from '../components/novel/NovelHeader';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { describeContestRank } from '../utils/currentRank';
-import { formatMan, formatRatio } from '../utils/format';
+import { formatDateKo, formatInt, formatMan, formatRatio } from '../utils/format';
 import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
 import MetricsPanel from '../components/novel/MetricsPanel';
 import { buildMetricPoints } from '../utils/metricSeries';
 
 /**
  * 공모전 작품 상세(2026-09-30 개편) — 일간 작품 상세와 같은 머리·섹션 문법.
- * 공모전 이름·수상은 제목 위 눈썹 라벨이 아니라 작가 줄에 둔다. 공모전은 잔류율이 없어 한 줄 수치에서 뺀다.
+ * 공모전 이름·수상은 제목 위 눈썹 라벨이 아니라 작가 줄에 둔다. 한 줄 수치는 공모전용으로 바꾼다 — 2025 는 잔류율이 없고,
+ * 2026~ 은 목록 표처럼 초반·최신 잔류를 근거 조회수와 함께 붙인다.
  * 전일 대비는 실제 직전 수집일 기준이다(DECISIONS 2026-07-01).
  */
+const ok = (v?: number | null): v is number => typeof v === 'number' && v >= 0;
+/** 잔류율 옆 근거 '1화 6,609 → 30화 2,223' — 일간 상세 머리(NovelHeader)와 같은 표기. */
+const basis = (aNum?: number | null, aView?: number | null, bNum?: number | null, bView?: number | null) => (
+  ok(aNum) && ok(aView) && ok(bNum) && ok(bView)
+    ? <span className="detail-head__basis">{formatInt(aNum)}화 {formatInt(aView)} → {formatInt(bNum)}화 {formatInt(bView)}</span>
+    : null
+);
+
+// 같은 라우트에서 작품·연도만 바뀌면 컴포넌트가 재사용돼 기간·표지 상태와 늦게 온 이전 작품 응답이 남는다 — 작품마다 새로 띄운다
+// (일간 상세 NovelDetailPage 와 같은 방식).
 const ContestNovelDetailPage = () => {
+  const { year = LATEST_CONTEST_YEAR, novelId } = useParams<{ year: string; novelId: string }>();
+  return <ContestNovelDetailBody key={`${year}/${novelId}`} />;
+};
+
+const ContestNovelDetailBody = () => {
   const { year = LATEST_CONTEST_YEAR, novelId } = useParams<{ year: string; novelId: string }>();
   const daily = contestConfig(year).headline === 'daily';
   const {
@@ -79,12 +95,19 @@ const ContestNovelDetailPage = () => {
         backTo={{ to: `/contests/${year}`, label: `우주최강 공모전 ${year}` }}
         tagHref={t => `/contests/${year}?tag=${encodeURIComponent(t)}`}
         byExtra={<span className="detail-head__contest">우주최강 공모전 {year}{award ? <> <b className={award === '본선' ? undefined : 'award-text'}>{award}</b></> : null}
-          {(details as { is_veteran?: boolean | null }).is_veteran === true ? ' · 기성 작가' : (details as { is_veteran?: boolean | null }).is_veteran === false ? ' · 신인 작가' : null}</span>}
+          {(details as { is_veteran?: boolean | null }).is_veteran === true ? ' · 기성 작가' : (details as { is_veteran?: boolean | null }).is_veteran === false ? ' · 신인 작가' : null}
+          {/* 최신 수집이 자리표시(삭제·비공개 등)면 알린다 — 수치는 직전 정상 수집일 것이거나 비어 있다. */}
+          {details.is_unavailable ? ` · 최근 수집에서 열리지 않음${details.values_date ? `(수치는 ${formatDateKo(details.values_date)} 기준)` : ''}` : null}</span>}
         nums={[
           { label: '조회', value: formatMan(details.View) },
           { label: '추천', value: formatMan(details.Like) },
           { label: '선호', value: formatMan(details.Fav) },
           { label: '추천비', value: formatRatio(ratio, 2) },
+          // 2026~ 목록 표에 있는 잔류율은 상세에도 둔다(유효 회차 30 미만이면 '–' — 대체 계산으로 채우지 않는다).
+          ...(daily ? [
+            { label: '초반 잔류', value: <>{formatRatio(details.EarlyRetentionRate ?? null, 0)}{details.EarlyRetentionRate != null ? basis(details.FirstEpNum, details.FirstEpView, details.Ep30Num, details.Ep30View) : null}</> },
+            { label: '최신 잔류', value: <>{formatRatio(details.RecentRetentionRate ?? null, 0)}{details.RecentRetentionRate != null ? basis(details.RecentBaseNum, details.RecentBaseView, details.TargetLatestEpNum, details.TargetLatestEpView) : null}</> },
+          ] : []),
         ]}
       />
 

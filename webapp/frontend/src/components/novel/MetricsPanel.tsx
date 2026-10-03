@@ -46,6 +46,8 @@ export default function MetricsPanel({ points, kind, status }: Props) {
   const summary = useMemo(() => summarizeMetrics(points), [points]);
 
   const n = points.length;
+  // 기간이 줄어든 응답이 오면 hover가 새 points 밖을 가리킬 수 있다 — effect로 지우면 그 전 렌더에서 이미 터지므로 렌더 중에 거른다.
+  const hv = hover != null && hover < n ? hover : null;
   const mobile = width > 0 && width < 640;
   const PL = mobile ? 44 : 60;
   const PR = 12;
@@ -60,7 +62,7 @@ export default function MetricsPanel({ points, kind, status }: Props) {
     setHover(i >= 0 && i < n ? i : null);
   };
 
-  const hl = (h: number) => (hover != null ? <rect x={X(hover) - col / 2} y={0} width={col} height={h} className="mx-hl" /> : null);
+  const hl = (h: number) => (hv != null ? <rect x={X(hv) - col / 2} y={0} width={col} height={h} className="mx-hl" /> : null);
 
   // ── 순위 ──
   const recs = points.filter(p => p.rec && p.rank != null);
@@ -122,7 +124,7 @@ export default function MetricsPanel({ points, kind, status }: Props) {
             </g>
           );
         })}
-        {hover != null && points[hover].rec && points[hover].rank != null ? <circle cx={X(hover)} cy={Y(points[hover].rank!)} r={4.5} className="mx-rankdot" /> : null}
+        {hv != null && points[hv].rec && points[hv].rank != null ? <circle cx={X(hv)} cy={Y(points[hv].rank!)} r={4.5} className="mx-rankdot" /> : null}
       </svg>
     );
   })();
@@ -136,12 +138,14 @@ export default function MetricsPanel({ points, kind, status }: Props) {
       {summary?.d.eps != null ? <> · 기간 <b>{signed(summary.d.eps)}화</b></> : null}
     </>
   ) : null;
+  // 점수의 '마지막 날'은 마지막 기록일 — summary.last 는 수치가 있는 마지막 기록이라 자리표시 날(순위·점수만 정상)이면 앞날이다.
+  const lastScore = points.filter(p => p.rec).at(-1)?.score ?? null;
   type Row = { key: string; label: string; total: ReactNode; kind: 'bar' | 'upload' | 'line'; get: (p: MetricPoint) => number | null };
   const rows: Row[] = [
     { key: 'view', label: '조회 증가', total: summary?.d.view != null ? `+${formatMan(summary.d.view)}` : null, kind: 'bar', get: p => p.d?.view ?? null },
     { key: 'like', label: '추천 증가', total: summary ? signed(summary.d.like) : null, kind: 'bar', get: p => p.d?.like ?? null },
     { key: 'eps', label: '연재', total: uploadTotal, kind: 'upload', get: p => p.d?.eps ?? null },
-    ...(kind === 'daily' ? [{ key: 'score', label: '점수', total: summary ? formatInt(summary.last.score) : null, kind: 'line' as const, get: (p: MetricPoint) => p.score }] : []),
+    ...(kind === 'daily' ? [{ key: 'score', label: '점수', total: summary ? formatInt(lastScore) : null, kind: 'line' as const, get: (p: MetricPoint) => p.score }] : []),
   ];
   const rowSvg = (r: Row) => {
     if (r.kind === 'upload') return uploadSvg();
@@ -171,7 +175,7 @@ export default function MetricsPanel({ points, kind, status }: Props) {
         {r.kind === 'line' ? <path d={line} className="mx-scoreline" /> : per.map((v, i) => {
           if (v == null || v <= 0) return null;
           const multi = points[i].span > 1;
-          const on = hover === i;
+          const on = hv === i;
           const cls = `mx-bar${multi ? ' is-multi' : ''}${on ? ' is-on' : ''}`;
           const bh = Math.max(1.5, (v / mx) * (h - 6));
           return <rect key={points[i].date} x={X(i) - bw / 2} y={h - 0.5 - bh} width={bw} height={bh} rx={1.5} className={cls} />;
@@ -185,7 +189,7 @@ export default function MetricsPanel({ points, kind, status }: Props) {
     return (
       <svg width={width} height={h} className="mx-svg" aria-hidden="true">
         {hl(h)}
-        <UploadCells points={points} X={X} cw={Math.max(3, Math.min(col - 3, 28))} h={h - 4} y={2} hover={hover} />
+        <UploadCells points={points} X={X} cw={Math.max(3, Math.min(col - 3, 28))} h={h - 4} y={2} hover={hv} />
       </svg>
     );
   }
@@ -198,9 +202,9 @@ export default function MetricsPanel({ points, kind, status }: Props) {
   );
 
   const tip = (() => {
-    if (hover == null || width === 0) return null;
-    const p = points[hover];
-    const left = X(hover) + (X(hover) > width - 210 ? -196 : 14);
+    if (hv == null || width === 0) return null;
+    const p = points[hv];
+    const left = X(hv) + (X(hv) > width - 210 ? -196 : 14);
     return (
       <div className="mx-tip" style={{ left }}>
         <div className="mx-tip__d">{formatDateKo(p.date)}</div>

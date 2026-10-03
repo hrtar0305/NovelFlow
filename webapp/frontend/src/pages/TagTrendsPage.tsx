@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { format, parseISO, subDays } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO, subDays } from 'date-fns';
 import { getAvailableDates, getTagSeries } from '../services/api';
 import PageTitle from '../components/ui/PageTitle';
 import ViewSwitch from '../components/ui/ViewSwitch';
@@ -21,6 +21,8 @@ import { formatInt } from '../utils/format';
 
 const RANGES = [7, 14, 30];
 const DEFAULT_DAYS = 7;
+/** 백엔드 /api/trends/tags/series 의 기간 상한(main.py `TAG_RANGE_MAX_DAYS`, 첫날~마지막 날 차이). 넘기면 400이다. */
+const MAX_SPAN_DAYS = 180;
 
 type Tab = 'risers' | 'fallers' | 'entered' | 'left' | 'spikes' | 'swings';
 const TAB_LABEL: Record<Tab, string> = {
@@ -82,8 +84,11 @@ export default function TagTrendsPage() {
   const hasDates = available.length > 0;
   const first = windowDates[0];
   const last = windowDates.at(-1);
+  // 사용자 지정 기간이 상한을 넘으면 부르지 않고 안내한다 — 부르면 400이 '불러오지 못했습니다'로만 보이고 다시 시도해도 같다.
+  const tooLong = !!first && !!last && differenceInCalendarDays(parseISO(last), parseISO(first)) > MAX_SPAN_DAYS;
 
   useEffect(() => {
+    if (tooLong) { setSeries(null); setError(null); setLoading(false); return; }
     if (!first || !last || first === last) { setSeries(null); if (hasDates) setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
@@ -95,7 +100,7 @@ export default function TagTrendsPage() {
       .catch(() => { if (!cancelled) { setSeries(null); setError('태그 데이터를 불러오지 못했습니다.'); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [first, last, hasDates, retry]);
+  }, [first, last, hasDates, tooLong, retry]);
 
   const lists = useMemo(() => buildTagTrends(series), [series]);
   const { churn } = lists;
@@ -209,6 +214,7 @@ export default function TagTrendsPage() {
 
       {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => setRetry(n => n + 1)}>다시 시도</button></p>
         : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
+        : tooLong ? <p className="empty-line">기간은 첫날과 마지막 날이 {MAX_SPAN_DAYS}일 이내로 떨어지게 골라 주세요.</p>
         : tooShort ? <p className="empty-line">기간 안에 수집일이 2일 이상 있어야 견줄 수 있습니다.</p>
         : table()}
 

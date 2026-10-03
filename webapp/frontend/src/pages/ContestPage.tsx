@@ -67,7 +67,9 @@ export default function ContestPage() {
   const daily = cfg.headline === 'daily';
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [dates, setDates] = useState<Set<string>>(new Set());
+  // 날짜 목록은 받은 연도와 함께 둔다 — 연도를 바꾼 첫 렌더에 이전 연도 날짜로 리다이렉트하지 않게(같은 라우트라 다시 마운트되지 않는다).
+  const [datesOf, setDatesOf] = useState<{ year: string; set: Set<string> }>({ year: '', set: new Set() });
+  const dates = useMemo(() => (datesOf.year === year ? datesOf.set : new Set<string>()), [datesOf, year]);
   const [rows, setRows] = useState<ContestNovel[]>([]);
   const [showcase, setShowcase] = useState<ContestNovel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,15 +90,19 @@ export default function ContestPage() {
 
   useEffect(() => {
     const y = parseInt(year, 10);
+    // 연도를 빠르게 오가면 늦게 온 이전 연도 응답이 지금 연도를 덮지 않게 버린다.
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setShowcase([]);
     getContestAvailableDates(y)
-      .then(r => setDates(new Set<string>(r.data.available_dates || [])))
-      .catch(() => { setError('조회 가능한 날짜를 불러오지 못했습니다.'); setLoading(false); });
+      .then(r => { if (!cancelled) setDatesOf({ year, set: new Set<string>(r.data.available_dates || []) }); })
+      .catch(() => { if (!cancelled) { setError('조회 가능한 날짜를 불러오지 못했습니다.'); setLoading(false); } });
     // 수상작 쇼케이스(2025 — 운영자가 고른 수상작 순서)만 API 로 받는다. 일간 쇼케이스는 표에서 고른다.
     if (contestConfig(year).headline !== 'daily') {
-      getContestShowcase(y).then(r => setShowcase(mapRows(r.data.items || []))).catch(() => setShowcase([]));
-    } else {
-      setShowcase([]);
+      getContestShowcase(y).then(r => { if (!cancelled) setShowcase(mapRows(r.data.items || [])); }).catch(() => { if (!cancelled) setShowcase([]); });
     }
+    return () => { cancelled = true; };
   }, [year]);
 
   useEffect(() => {

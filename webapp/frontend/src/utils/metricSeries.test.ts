@@ -106,3 +106,27 @@ describe('windowStart(기간 전날 기준값)', () => {
     expect(p[0]).toMatchObject({ d: null, change: 'New' });
   });
 });
+
+describe('수집 실패 자리표시', () => {
+  it('공모전 View -1 은 기록 없음, 복귀한 날 증가량은 그 앞 정상 기록부터(N일치)', () => {
+    const p = buildMetricPoints([rec('2026-10-01', 5, 1000), rec('2026-10-02', null, -1, { Like: -1, Fav: -1, Eps: -1 }), rec('2026-10-03', 4, 1500)], 'collection');
+    expect(p[1]).toMatchObject({ rec: false, view: null, d: null });
+    expect(p[2]).toMatchObject({ span: 2, d: { view: 500 } });
+  });
+  it('삭제돼 마지막 기록이 -1 이어도 기간 증가량은 정상 기록끼리', () => {
+    const s = summarizeMetrics(buildMetricPoints([rec('2026-10-01', 5, 1000), rec('2026-10-02', 3, 3000), rec('2026-10-03', null, -1)], 'collection'))!;
+    expect(s.last.date).toBe('2026-10-02');
+    expect(s.d.view).toBe(2000);
+  });
+  it('일간 N/A(조회 0): 순위·점수는 남기고 수치·증가량은 값 없음', () => {
+    const p = buildMetricPoints([
+      rec('2026-10-01', 50, 1000, { Eps: 10 }),
+      rec('2026-10-02', 45, 0, { Title: 'N/A (FetchFailed)', Like: 0, Fav: 0, Eps: 0, Alr: 0, Score: 1200 }),
+      rec('2026-10-03', 40, 1600, { Eps: 12 }),
+    ], 'calendar');
+    expect(p[1]).toMatchObject({ rec: true, rank: 45, score: 1200, view: null, eps: null, d: null, change: 5 });
+    expect(p[2]).toMatchObject({ span: 2, d: { view: 600, eps: 2 }, change: 5 });
+    expect(uploadStats(p)).toMatchObject({ known: 0, streak: 0, resting: 0 });
+    expect(summarizeMetrics(p)!).toMatchObject({ days: 3, d: { view: 600 } });
+  });
+});

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getNovelTrend, getNovelAvailableDates, getAvailableDates, getLatestNovelDetails } from '../services/api';
 import { format, parseISO, subDays, startOfDay, addDays } from 'date-fns';
 
@@ -50,9 +50,14 @@ export const useNovelData = (novelId: string | undefined) => {
   const [maxDate, setMaxDate] = useState<Date | null>(null);
   const [availableDates, setAvailableDates] = useState<Date[]>([]);
   const [novelAvailableDatesSet, setNovelAvailableDatesSet] = useState<Set<string>>(new Set());
+  // 요청 번호. 기간·작품을 빠르게 바꾸면 늦게 온 이전 응답(캐시 안 된 90일 등)이 지금 선택을 덮어쓰므로,
+  // 마지막에 시작한 요청의 응답만 반영한다. 작품이 바뀔 때도 올려 이전 작품의 진행 중 요청을 버린다.
+  const reqSeq = useRef(0);
 
   const fetchNovelData = async (start: Date, end: Date, datesToUse?: Date[]) => {
     if (!novelId) return;
+    const seq = ++reqSeq.current;
+    const stale = () => seq !== reqSeq.current;
     setLoading(true);
     setError(null);
 
@@ -62,6 +67,7 @@ export const useNovelData = (novelId: string | undefined) => {
       // 하루 앞(달력 기준 전날)부터 받는다 — 기간 첫날의 증가량·연재 여부·변동을 전날과 견줘 채우기 위해서다.
       const baseline = subDays(startOfDay(start), 1);
       const response = await getNovelTrend(novelId, format(baseline, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'));
+      if (stale()) return;
       const fetchedData = response.data.sort((a: NovelData, b: NovelData) => a.Date.localeCompare(b.Date));
 
       // Create a map for quick lookup of fetched data by date
@@ -90,16 +96,19 @@ export const useNovelData = (novelId: string | undefined) => {
       setNovelData(fullDateRangeData);
       setDataStart(format(startOfDay(start), 'yyyy-MM-dd'));
     } catch {
+      if (stale()) return;
       setError('해당 소설을 찾을 수 없습니다.');
       setNovelData([]);
     } finally {
-      setLoading(false);
+      if (!stale()) setLoading(false);
     }
   };
 
   useEffect(() => {
     if (!novelId) return;
 
+    let cancelled = false;
+    reqSeq.current++;
     setLoading(true);
     setError(null);
     Promise.all([
@@ -107,6 +116,7 @@ export const useNovelData = (novelId: string | undefined) => {
         getNovelAvailableDates(novelId),
         getLatestNovelDetails(novelId)
     ]).then(([allDatesResponse, novelDatesResponse, detailsResponse]) => {
+        if (cancelled) return;
         const allFetchedDates: string[] = allDatesResponse.data.available_dates || [];
         const allDateObjects = allFetchedDates.map(d => parseISO(d)).sort((a, b) => a.getTime() - b.getTime());
         
@@ -142,9 +152,11 @@ export const useNovelData = (novelId: string | undefined) => {
         }
 
     }).catch(() => {
+        if (cancelled) return;
         setError('해당 소설을 찾을 수 없습니다.');
         setLoading(false);
     });
+    return () => { cancelled = true; };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [novelId]);

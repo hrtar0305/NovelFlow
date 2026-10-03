@@ -38,6 +38,14 @@ interface ContestNovelDetails {
   Eps?: number;
   Ranking?: number;
   award?: string | null;
+  /** 최신 수집이 자리표시(삭제·비공개·수집 실패)였다. 수치는 직전 정상 행(values_date) 것이거나 비어 있다. */
+  is_unavailable?: boolean;
+  values_date?: string | null;
+  // 2026~ 잔류율과 그 원재료(회차 30 미만이면 비어 있다). 2025 는 없다.
+  EarlyRetentionRate?: number | null;
+  RecentRetentionRate?: number | null;
+  FirstEpView?: number | null; FirstEpNum?: number | null; Ep30View?: number | null; Ep30Num?: number | null;
+  RecentBaseView?: number | null; RecentBaseNum?: number | null; TargetLatestEpView?: number | null; TargetLatestEpNum?: number | null;
 }
 
 export const useContestNovelData = (year: string | undefined, novelId: string | undefined) => {
@@ -59,9 +67,12 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
   const [maxDate, setMaxDate] = useState<Date | null>(null);
   const [availableDates, setAvailableDates] = useState<Date[]>([]);
   const [novelAvailableDatesSet, setNovelAvailableDatesSet] = useState<Set<string>>(new Set());
+  // 기간 버튼·날짜를 연달아 바꾸면 응답이 순서 없이 온다 — 마지막 요청의 응답만 화면에 반영한다.
+  const reqSeq = useRef(0);
 
   const fetchTrendData = async (start: Date, end: Date) => {
     if (!year || !novelId) return;
+    const seq = ++reqSeq.current;
     setLoading(true);
     setError(null);
     try {
@@ -73,13 +84,15 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
       // 대표 순위(2025 누적, 2026~ 일간)와 자리표시(View -1 → 기록 없음)는 contestTrendRow 한 곳에서 정한다(행 펼침과 공유).
       const mappedData = response.data.filter((d: ContestTrendData) => collected.size === 0 || collected.has(d.Date))
         .map((d: ContestTrendData) => contestTrendRow(d, daily));
+      if (seq !== reqSeq.current) return;
       setTrendData(mappedData);
       setDataStart(format(startOfDay(start), 'yyyy-MM-dd'));
     } catch {
+      if (seq !== reqSeq.current) return;
       setError('트렌드 데이터를 불러오는 데 실패했습니다.');
       setTrendData([]);
     } finally {
-      setLoading(false);
+      if (seq === reqSeq.current) setLoading(false);
     }
   };
 
@@ -103,6 +116,15 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
         const detailsData = detailsRes.data;
         if (detailsData) {
             detailsData.Ranking = daily ? (detailsData.daily_rank ?? undefined) : detailsData.Rank;
+            // 삭제·비공개 자리표시(View -1)가 최신 상세로 오면 -1 을 수치로 보이지 않는다 — 추이(contestTrendRow)·목록과 같은 규칙.
+            // 백엔드는 직전 정상 행의 값을 채워 주지만(is_unavailable), 정상 행이 없거나 이전 배포의 응답일 때를 막는다.
+            for (const k of ['View', 'Like', 'Fav', 'Alr', 'Eps'] as const) {
+                if (typeof detailsData[k] === 'number' && detailsData[k] < 0) detailsData[k] = null;
+            }
+            if (typeof detailsData.Title === 'string' && detailsData.Title.startsWith('N/A (')) {
+                detailsData.Title = null;
+                detailsData.is_unavailable = true;
+            }
         }
         setDetails(detailsData);
 

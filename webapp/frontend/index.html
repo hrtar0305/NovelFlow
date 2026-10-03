@@ -17,8 +17,14 @@
     <script>
       (function() {
         var q = new URLSearchParams(location.search).get('theme');
-        if (q === 'light' || q === 'dark') localStorage.setItem('theme', q);
-        var t = localStorage.getItem('theme') || 'dark';
+        var t = 'dark';
+        // 저장소가 막힌 브라우저(프라이빗 모드 등)에서도 테마와 theme-color 가 정해지게 한다.
+        try {
+          if (q === 'light' || q === 'dark') localStorage.setItem('theme', q);
+          t = localStorage.getItem('theme') || 'dark';
+        } catch (e) {
+          t = q === 'light' ? 'light' : 'dark';
+        }
         document.documentElement.setAttribute('data-theme', t);
         document.documentElement.style.backgroundColor = t === 'light' ? '#ffffff' : '#121418';
         var darkMeta = document.getElementById('theme-color-dark');

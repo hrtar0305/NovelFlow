@@ -17,7 +17,9 @@ function getInitialTheme(): ThemeMode {
     return 'dark';
   }
 
-  const persistedTheme = localStorage.getItem('theme');
+  // 프라이빗 모드·사이트 데이터 차단 등에서 storage 접근이 예외를 던질 수 있다(CoverMaskProvider와 같은 이유).
+  let persistedTheme: string | null = null;
+  try { persistedTheme = window.localStorage.getItem('theme'); } catch { /* storage 차단 시 무시 */ }
   if (persistedTheme === 'dark' || persistedTheme === 'light') {
     return persistedTheme;
   }
@@ -41,7 +43,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     const bgColor = THEME_BG_COLORS[theme];
     root.style.backgroundColor = bgColor;
     document.body.style.backgroundColor = bgColor;
-    localStorage.setItem('theme', theme);
+    try { window.localStorage.setItem('theme', theme); } catch { /* 저장 실패 무시 */ }
 
     const darkMeta = document.getElementById('theme-color-dark');
     const lightMeta = document.getElementById('theme-color-light');

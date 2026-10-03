@@ -2,7 +2,7 @@ import React, { useState, useCallback, forwardRef, useMemo } from 'react';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import type { DatePickerProps } from 'react-datepicker';
 import { offset } from '@floating-ui/react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { CalendarEvent } from 'react-bootstrap-icons';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -45,7 +45,8 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
   const maxDate = useMemo(() => {
     if (availableDates.size === 0) return undefined;
     const dates = Array.from(availableDates).sort();
-    return new Date(dates[dates.length - 1]);
+    // new Date('YYYY-MM-DD')는 UTC 자정이라 UTC보다 늦은 시간대에서 로컬 전날이 된다 — filterDate처럼 로컬 날짜로 읽는다.
+    return parseISO(dates[dates.length - 1]);
   }, [availableDates]);
 
   const filterDate = useCallback((d: Date) => {

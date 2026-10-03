@@ -10,8 +10,14 @@ import { format, parseISO, subDays } from 'date-fns';
 import MetricsPanel from '../components/novel/MetricsPanel';
 import { buildMetricPoints } from '../utils/metricSeries';
 
+// 같은 라우트에서 작품만 바뀌면(헤더 검색 등) 컴포넌트가 재사용돼 기간 버튼·표지 '보기' 같은 상태가
+// 이전 작품 것으로 남는다. 작품 ID를 key로 줘 작품마다 본문을 새로 띄운다.
 const NovelDetailPage = () => {
   const { novelId } = useParams<{ novelId: string }>();
+  return <NovelDetailBody key={novelId} novelId={novelId} />;
+};
+
+const NovelDetailBody = ({ novelId }: { novelId: string | undefined }) => {
   const { 
     startDate,
     endDate,

@@ -5,11 +5,15 @@
  * - 직전 기록이 하루 전이 아니면(순위권 밖이었거나 수집이 빠진 날) 증가량은 여러 날치다. `span`(며칠치)을 함께 두고,
  *   차트는 하루 평균 높이의 점선 막대로, 표는 'N일치'로 밝힌다. 하루치인 척하지 않는다.
  * - 기록 여부는 조회수 유무로 본다. 일간 추이 API는 순위권 밖 날을 `Ranking: null`·값 없음으로 채워 준다.
+ * - 수집 실패 자리표시(제목 'N/A (…)', 조회 0 또는 -1)의 수치는 값 없음으로 본다 — 실제 값으로 치면 그날과 다음 날
+ *   증가량이 −(누적)·+(누적)으로 튄다. 일간 자리표시는 순위·점수가 정상이라(그날 순위권 안) 기록으로 두되,
+ *   증가량의 기준은 그 앞의 정상 기록에 머문다(다음 정상 기록의 증가량은 'N일치').
  */
 
 export interface MetricRow {
   Date: string;
   Ranking: number | null;
+  Title?: string | null;
   Score?: number | null;
   View?: number | null;
   Like?: number | null;
@@ -22,7 +26,7 @@ export type Delta = { view: number | null; like: number | null; fav: number | nu
 
 export interface MetricPoint {
   date: string;
-  /** 그날 기록이 있는가(일간: 순위권 안) */
+  /** 그날 기록이 있는가(일간: 순위권 안). 일간 자리표시는 순위만 있고 수치(view 등)는 null 이다. */
   rec: boolean;
   rank: number | null;
   score: number | null;
@@ -31,7 +35,7 @@ export interface MetricPoint {
   fav: number | null;
   eps: number | null;
   alr: number | null;
-  /** 직전 기록과 며칠 떨어졌나. 첫 기록이면 0 */
+  /** 직전 기록(수치가 있는)과 며칠 떨어졌나. 첫 기록이면 0 */
   span: number;
   /** 직전 기록 대비 증가량. 첫 기록이면 null */
   d: Delta | null;
@@ -54,19 +58,21 @@ const sub = (a: number | null, b: number | null) => (a != null && b != null ? a 
 export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowStart?: string): MetricPoint[] {
   const sorted = [...rows].sort((a, b) => a.Date.localeCompare(b.Date));
   const out: MetricPoint[] = [];
-  let prevRec: MetricPoint | null = null;
+  let prevRec: MetricPoint | null = null;  // 증가량의 기준 = 수치가 있는 직전 기록
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
-    const view = num(r.View);
-    const rec = view != null;
+    const placeholder = (num(r.View) ?? 0) < 0 || String(r.Title ?? '').startsWith('N/A (');
+    const view = placeholder ? null : num(r.View);
+    const hasVal = view != null;
+    const rec = hasVal || (placeholder && num(r.Ranking) != null);
     const p: MetricPoint = {
       date: r.Date, rec,
       rank: rec ? num(r.Ranking) : null,
       score: rec ? num(r.Score) : null,
-      view, like: rec ? num(r.Like) : null, fav: rec ? num(r.Fav) : null, eps: rec ? num(r.Eps) : null, alr: rec ? num(r.Alr) : null,
+      view, like: hasVal ? num(r.Like) : null, fav: hasVal ? num(r.Fav) : null, eps: hasVal ? num(r.Eps) : null, alr: hasVal ? num(r.Alr) : null,
       span: 0, d: null, change: null,
     };
-    if (rec && prevRec) {
+    if (hasVal && prevRec) {
       p.span = dayNo(p.date) - dayNo(prevRec.date);
       p.d = { view: sub(p.view, prevRec.view), like: sub(p.like, prevRec.like), fav: sub(p.fav, prevRec.fav), eps: sub(p.eps, prevRec.eps) };
     }
@@ -76,13 +82,13 @@ export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowSta
       if (adjacent) p.change = before.rec && before.rank != null ? before.rank - p.rank : 'New';
     }
     out.push(p);
-    if (rec) prevRec = p;
+    if (hasVal) prevRec = p;
   }
   return windowStart ? out.filter(p => p.date >= windowStart) : out;
 }
 
 export interface MetricSummary {
-  /** 기간 증가량의 처음·끝 기록 */
+  /** 기간 증가량의 처음·끝 기록(수치가 있는 기록. 자리표시뿐이면 처음·끝 기록) */
   first: MetricPoint;
   last: MetricPoint;
   /**
@@ -104,8 +110,9 @@ export interface MetricSummary {
 export function summarizeMetrics(points: MetricPoint[]): MetricSummary | null {
   const recs = points.filter(p => p.rec);
   if (recs.length === 0) return null;
-  const first = recs[0];
-  const last = recs[recs.length - 1];
+  const vals = recs.filter(p => p.view != null);
+  const first = vals[0] ?? recs[0];
+  const last = vals[vals.length - 1] ?? recs[recs.length - 1];
   const ranked = recs.filter(p => p.rank != null);
   const best = ranked.length ? ranked.reduce((a, b) => (b.rank! < a.rank! ? b : a)) : last;
   // 기간 증가량 = 첫 기록의 전날 기준값부터 마지막 기록까지. 첫날의 증가량을 알면(기준값이 있으면) 그것도 넣는다.

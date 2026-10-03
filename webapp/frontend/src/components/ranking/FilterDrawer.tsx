@@ -42,7 +42,9 @@ export default function FilterDrawer({ open, onClose, filter, onChange, tagStats
 
   // 바깥(적용 조건 한 줄의 ×, 초기화)에서 바뀐 값을 입력칸에 되돌려 놓는다.
   useEffect(() => { setMinEps(filter.minEps?.toString() ?? ''); setMaxEps(filter.maxEps?.toString() ?? ''); }, [filter.minEps, filter.maxEps]);
-  useEffect(() => { setRuleText(filter.rule); if (filter.rule) setMode('rule'); }, [filter.rule]);
+  // 태그 모드도 따라간다 — 표 위 '초기화'가 tagMode를 되돌려도 드로어가 이전 모드('제외')로 남으면 다음 태그 클릭이 필터 전체를 뒤집었다.
+  // 의존성이 rule·tagMode뿐이라, 드로어에서 '조건식'만 눌러 둔(아직 적용 전) 상태는 덮어쓰지 않는다.
+  useEffect(() => { setRuleText(filter.rule); setMode(filter.rule ? 'rule' : filter.tagMode); }, [filter.rule, filter.tagMode]);
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -128,7 +130,7 @@ export default function FilterDrawer({ open, onClose, filter, onChange, tagStats
                   return (
                     <li key={tag}>
                       <button type="button" aria-pressed={on} className={on ? (filter.tagMode === 'exclude' ? 'is-exclude' : 'is-on') : ''}
-                        onClick={() => onChange(toggleTag({ ...filter, tagMode: mode }, tag))}>
+                        onClick={() => onChange(toggleTag(filter, tag))}>
                         <span>{tag}</span><i>{count}</i>
                       </button>
                     </li>

@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import ErrorBoundary from './components/ui/ErrorBoundary';
 import AppShell from './components/layout/AppShell';
 import './styles/index.css';
 import { LATEST_CONTEST_YEAR } from './utils/contest';
@@ -23,8 +24,10 @@ const routeFallback = (
 );
 
 function App() {
+  const { pathname } = useLocation();
   return (
     <AppShell>
+      <ErrorBoundary resetKey={pathname}>
       <Suspense fallback={routeFallback}>
         <Routes>
           <Route path='/' element={<Navigate to="/novels/rankings" replace />} />
@@ -47,6 +50,7 @@ function App() {
           <Route path='*' element={<NotFoundPage />} />
         </Routes>
       </Suspense>
+      </ErrorBoundary>
     </AppShell>
   );
 }

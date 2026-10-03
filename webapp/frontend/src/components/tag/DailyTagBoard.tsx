@@ -64,12 +64,15 @@ export default function DailyTagBoard({
   const zoned = useMemo(() => withZones(tags), [tags]);
   const cut = useMemo(() => mainstreamCut(tags), [tags]);
   const counts = useMemo(() => zoneCounts(zoned), [zoned]);
+  const hasZones = cut != null;
+  // 구역이 없는 날(집중도 이전)에는 구역 버튼이 숨으므로, 다른 날에 골라 둔 구역이 남아 표를 비우지 않게 무시한다.
+  const activeZone: Zone = hasZones ? zone : 'all';
   const q = search.trim().toLowerCase();
   const rows = useMemo(() => sortTags(
-    zoned.filter(t => (zone === 'all' || t.zone === zone) && (!q || t.tag.toLowerCase().includes(q))), sort,
-  ), [zoned, zone, q, sort]);
+    zoned.filter(t => (activeZone === 'all' || t.zone === activeZone) && (!q || t.tag.toLowerCase().includes(q))), sort,
+  ), [zoned, activeZone, q, sort]);
   const mapRows = useMemo(() => zoned.filter((t): t is Row & { zone: ZoneKey; local_lift: number } => t.zone != null && t.local_lift != null), [zoned]);
-  const matches = useMemo(() => (zone !== 'all' || q ? new Set(rows.map(r => r.tag)) : null), [rows, zone, q]);
+  const matches = useMemo(() => (activeZone !== 'all' || q ? new Set(rows.map(r => r.tag)) : null), [rows, activeZone, q]);
 
   const scrollToToolbar = () => {
     const el = toolbarRef.current;
@@ -89,7 +92,6 @@ export default function DailyTagBoard({
   }, [renderExpanded, setOpenTag]);
 
   const strongIf = (keys: TagSortKey[], v: ReactNode) => (keys.includes(sort.key) ? <b className="rank-strong">{v}</b> : v);
-  const hasZones = cut != null;
 
   const columns: RankColumn<Row>[] = [
     { key: 'rank', header: '순위', width: '48px', sortKey: 'Rank', render: t => <span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span> },
@@ -112,7 +114,7 @@ export default function DailyTagBoard({
     </div>
   );
 
-  const filtered = zone !== 'all' || q !== '';
+  const filtered = activeZone !== 'all' || q !== '';
   const excluded = tags.length - mapRows.length;
 
   return (
