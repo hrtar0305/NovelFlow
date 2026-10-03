@@ -28,6 +28,7 @@ import re
 import sys
 
 import boto3
+from botocore.exceptions import ClientError
 from bs4 import BeautifulSoup
 
 RAW_BUCKET = os.environ.get('RAW_HTML_BUCKET')
@@ -220,9 +221,9 @@ def main():
     s3 = boto3.client('s3')
     table = None if args.dry_run else boto3.resource('dynamodb').Table(TABLE_NAME)
 
-    grand = shown = 0
+    grand = shown = grand_missing = 0
     for date in dates:
-        n = 0
+        n = missing = 0
         for key, payload in iter_raw(s3, date, args.novel_id):
             values = {}
             for f in fields:
@@ -242,17 +243,29 @@ def main():
                     shown += 1
             else:
                 expr = ', '.join(f'#{f} = :{f}' for f in values)
-                table.update_item(
-                    Key={'ID': str(payload['novel_id']), 'Date': date},
-                    UpdateExpression=f'SET {expr}',
-                    ExpressionAttributeNames={f'#{f}': f for f in values},
-                    ExpressionAttributeValues={f':{f}': v for f, v in values.items()},
-                )
+                # update_item 은 행이 없으면 새로 만든다. 적재가 빠진 날짜에 Ranking·Score 없는
+                # 유령 행을 만들지 않도록 기존 행에만 쓴다 — 없으면 reparse 가 아니라 적재부터 다시.
+                try:
+                    table.update_item(
+                        Key={'ID': str(payload['novel_id']), 'Date': date},
+                        UpdateExpression=f'SET {expr}',
+                        ConditionExpression='attribute_exists(ID)',
+                        ExpressionAttributeNames={f'#{f}': f for f in values},
+                        ExpressionAttributeValues={f':{f}': v for f, v in values.items()},
+                    )
+                except ClientError as e:
+                    if e.response.get('Error', {}).get('Code') != 'ConditionalCheckFailedException':
+                        raise
+                    missing += 1
+                    continue
             n += 1
         grand += n
-        print(f"{date}: {n}건 {'(저장 안 함)' if args.dry_run else '갱신'}")
+        grand_missing += missing
+        tail = f" · 행 없음 {missing}건(적재 누락 의심)" if missing else ''
+        print(f"{date}: {n}건 {'(저장 안 함)' if args.dry_run else '갱신'}{tail}")
 
-    print(f"\n합계 {grand}건 · 필드 {fields}")
+    tail = f" · 행 없음 {grand_missing}건 — 그 날짜는 적재부터 다시 할 것" if grand_missing else ''
+    print(f"\n합계 {grand}건 · 필드 {fields}{tail}")
 
 
 if __name__ == '__main__':
