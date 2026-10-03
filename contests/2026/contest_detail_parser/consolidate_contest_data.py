@@ -20,6 +20,8 @@ class Config:
     AUTHOR_INDEX_KEY = 'state/author_works.json'
     SQS_RESULT_QUEUE_URL = os.environ.get('SQS_RESULT_QUEUE_URL')
     LOOP_TIMEOUT_SECONDS = 480  # Lambda 제한(600초)보다 짧게 — 루프가 먼저 끝나야 원인이 로그에 남는다
+    # 기록 날짜 D 의 수집 = D+1 00:00 KST. 그 뒤 이만큼 안에 수집기가 처음 찾은 번호까지 D 의 작품으로 친다(`_found_after_date`).
+    LATE_FOUND_GRACE_HOURS = 2
 
 if not Config.DYNAMODB_TABLE_NAME or not Config.SQS_RESULT_QUEUE_URL:
     raise ValueError("DYNAMODB_TABLE_NAME and SQS_RESULT_QUEUE_URL env vars must be set.")
@@ -60,7 +62,11 @@ def _collect_all_messages(sqs_client, execution_id):
     return all_messages, receipt_handles_to_delete
 
 def _deduplicate_items(messages, execution_id):
-    """Deduplicates items based on 'ID', keeping the one with the earliest SentTimestamp."""
+    """Deduplicates items based on 'ID' — 실데이터(View ≥ 0)를 placeholder 보다, 같은 종류끼리는 earliest SentTimestamp.
+
+    파서가 다시 받아도 실패한 작품에 placeholder 를 보내므로(SQS_GIVE_UP_RECEIVE_COUNT), 같은 작품의 실데이터가 따로 오면
+    그쪽을 남긴다 — DMap 판 `_dedupe_prefer_real` 과 같은 원칙(DECISIONS 2026-10-02 「전달 보장」).
+    """
     if not messages:
         return []
     _log(logging.INFO, execution_id, f"Deduplicating {len(messages)} messages based on earliest timestamp...")
@@ -78,9 +84,10 @@ def _deduplicate_items(messages, execution_id):
                 _log(logging.WARNING, execution_id, "Message found without a novel ID.", body=msg['Body'])
                 continue
 
-            # 새로운 아이템이거나, 기존 아이템보다 더 먼저 보내진 경우에만 저장/덮어쓰기
-            if novel_id not in unique_items_map or sent_timestamp < unique_items_map[novel_id][1]:
-                unique_items_map[novel_id] = (item, sent_timestamp)
+            # 새로운 아이템이거나, (placeholder 여부, 보낸 시각) 순으로 앞서는 경우에만 저장/덮어쓰기
+            rank = (_is_placeholder(item), sent_timestamp)
+            if novel_id not in unique_items_map or rank < unique_items_map[novel_id][1]:
+                unique_items_map[novel_id] = (item, rank)
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             _log(logging.ERROR, execution_id, f"Failed to process a message during deduplication: {e}", body=msg.get('Body'))
 
@@ -151,13 +158,35 @@ def _calculate_and_store_tag_stats(dynamodb_table, execution_id, items):
     except Exception as e:
         _log(logging.ERROR, execution_id, f"Failed to store tag stats for {date}. Error: {e}")
 
-def new_since(prev_date, items, prev_views, contest_meta):
+def _found_after_date(date, meta):
+    """수집기가 이 번호를 기록 날짜 `date` 의 수집(다음 날 00:00 KST) **뒤**에 처음 봤나 — 그날엔 없던 작품.
+
+    기준은 처음 본 시각이다(`via: recheck` 면 번호를 처음 본 `first_seen` — 재확인으로 찾은 시각은 등록보다 늦다).
+    여유 `Config.LATE_FOUND_GRACE_HOURS` 는 정상 자정 실행의 수집기 소요를 덮는다. 시각을 모르면 False(빼지 않는다).
+    """
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    if not meta:
+        return False
+    seen = meta.get('first_seen') if meta.get('via') == 'recheck' else meta.get('found_at')
+    if not seen:
+        return False
+    upper = datetime.fromisoformat(date).replace(tzinfo=ZoneInfo('Asia/Seoul')) + timedelta(days=1, hours=Config.LATE_FOUND_GRACE_HOURS)
+    try:
+        return datetime.fromisoformat(seen) >= upper
+    except (TypeError, ValueError):
+        return False
+
+
+def new_since(prev_date, items, prev_views, contest_meta, date=None):
     """직전 수집 **뒤에 새로 등록된** 참가작 번호들 — 이들의 누적 조회는 곧 그 하루(등록~자정)의 조회다.
 
     셋 다 맞아야 한다(하나라도 모르면 신작으로 치지 않는다 — 오염보다 누락이 낫다):
     - 직전 수집일에 행이 아예 없다(placeholder 라도 있었으면 '부활'이라 기준값을 모른다),
     - 수집기가 새 번호 훑기로 찾았다(`via: recheck` 이면 등록은 더 일렀을 수 있다 — 배지가 늦게 보였거나 비공개였다),
     - 처음 찾은 시각이 직전 수집(그 날짜 다음 날 00:00 KST) 무렵 이후다(직전 수집 사이에 빠진 날이 있으면 며칠 치가 섞인다).
+    그리고 기록 날짜 `date` 의 수집 **뒤**에 찾은 번호는 신작이 아니다(`_found_after_date`) — 과거 날짜를 target_date 로 다시
+    돌리면 목록에 그 뒤 등록된 작품이 섞여, 그날 없던 작품이 그날 신작으로 잡힌다. 하한과 대칭인 상한이다.
     """
     if not prev_date:
         return set()
@@ -171,7 +200,7 @@ def new_since(prev_date, items, prev_views, contest_meta):
         if k in prev_views or not meta or meta.get('via') == 'recheck' or not meta.get('found_at'):
             continue
         try:
-            if datetime.fromisoformat(meta['found_at']) >= cutoff:
+            if datetime.fromisoformat(meta['found_at']) >= cutoff and not (date and _found_after_date(date, meta)):
                 out.add(k)
         except ValueError:
             continue
@@ -331,7 +360,7 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
 
     # 3. 일간 순위(대표 순위) — 직전 수집일 대비 누적 조회 증가
     prev_date, prev_views = _previous_views(dynamodb_table, processed_items[0]['Date'], execution_id)
-    new_ids = new_since(prev_date, processed_items, prev_views, _load_contest_meta(execution_id))
+    new_ids = new_since(prev_date, processed_items, prev_views, _load_contest_meta(execution_id), processed_items[0]['Date'])
     daily_rank(processed_items, prev_views, new_ids)
     _log(logging.INFO, execution_id, "Daily rank computed.", prev_date=prev_date, new_novels=len(new_ids),
          ranked=sum(1 for i in processed_items if 'DailyRank' in i))
@@ -356,6 +385,8 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
 
     # --- Update the CONTEST_AVAILABLE_DATES item ---
     # This must happen only after the main data has been successfully written.
+    # 실패를 삼키지 않는다: 이 집합은 다음 날 `_previous_views` 가 실제 직전 수집일을 고르는 유일한 근거라, 빠지면 다음 날
+    # 일간 순위가 이틀치 증가로 계산된다. 올리면 상태 머신이 적재를 다시 돈다(행 덮어쓰기·집합 ADD 라 멱등).
     try:
         # Get the date from the first processed item
         latest_date = processed_items[0]['Date']
@@ -368,7 +399,7 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
         _log(logging.INFO, execution_id, f"Successfully added {latest_date} to CONTEST_AVAILABLE_DATES.")
     except Exception as e:
         _log(logging.ERROR, execution_id, f"Failed to update CONTEST_AVAILABLE_DATES item: {e}")
-        # This is not a critical failure, so we don't re-raise the exception.
+        raise
 
 def _delete_messages_from_sqs(sqs_client, execution_id, receipt_handles):
     """Deletes messages from SQS in batches of 10."""
@@ -508,6 +539,14 @@ def reconcile_dmap(event):
     pre = _run_prefix(date, execution_id)
     if rnd == 0:
         expected = [str(x) for x in json.loads(_s3().get_object(Bucket=Config.STATE_BUCKET, Key=ID_LIST_KEY)['Body'].read())]
+        # 기록 날짜의 수집 뒤에 처음 찾은 번호는 그날 없던 작품이다(과거 날짜를 target_date 로 다시 돌릴 때 섞인다) — 기대에서 빼
+        # 그날 행을 만들지 않는다. 받기는 했어도 적재(수량 검증·placeholder)는 기대 목록만 본다. 다음 날 정상 수집에서 신작으로 든다.
+        meta = _load_contest_meta(execution_id)
+        late = {k for k in expected if _found_after_date(date, meta.get(k))}
+        if late:
+            expected = [k for k in expected if k not in late]
+            _log(logging.WARNING, execution_id, "Excluded novels first found after this date's collection.",
+                 date=date, excluded=len(late), sample=sorted(late)[:10])
         _put_json(f'{pre}/expected.json', expected)
         collected, errors, raw_failed_total, children_failed_total = [], {}, 0, 0
     else:
@@ -553,8 +592,11 @@ def _notice(date, ledger):
     d = ledger.get('discover') or {}
     if d.get('fallback'):
         parts.append("ID 수집 실패 → 23:30 목록으로 진행")
-    elif d.get('listed_total') and d.get('total_contest') is not None and d['total_contest'] < d['listed_total']:
-        parts.append(f"참가작 수 부족 {d['total_contest']}/{d['listed_total']}")
+    else:
+        # 노벨피아 표시 수는 지금 보이는 작품만 센다 — 우리 목록(누적, 삭제·비공개 뒤에도 추적)이 아니라 '살아 있는' 수와 견준다.
+        ours = d.get('alive_contest') if d.get('alive_contest') is not None else d.get('total_contest')
+        if d.get('listed_total') and ours is not None and ours < d['listed_total']:
+            parts.append(f"참가작 수 부족 {ours}/{d['listed_total']}")
     if not parts:
         return None
     return f"2026 공모전 {date} 수집 경고: " + " · ".join(parts) + f" (장부 failures/{date}.json)"
@@ -570,6 +612,12 @@ def handler_dmap(event, context):
     expected = _get_json(f'{pre}/expected.json')
     state = _get_json(f'{pre}/collected.json')
     unique, errors = state['items'], state['errors']
+    # 받은 것 중 기대 목록 밖(기록 날짜 뒤에 찾아 reconcile 이 뺀 번호 등)은 그날 행으로 쓰지 않는다.
+    exp_set = set(expected)
+    outside = [str(i['ID']) for i in unique if str(i['ID']) not in exp_set]
+    if outside:
+        _log(logging.WARNING, execution_id, "Dropping collected novels outside the expected list.", count=len(outside), sample=outside[:10])
+        unique = [i for i in unique if str(i['ID']) in exp_set]
     have = {str(i['ID']) for i in unique}
     still = [k for k in expected if k not in have]
 
@@ -621,6 +669,13 @@ def handler_dmap(event, context):
     _validate_data(execution_id, unique, len(expected))
     _process_and_upload_data(table, execution_id, unique)
     _put_json(f'failures/{date}.json', {**ledger, 'written': True})   # 결손이 없어도 남긴다 — 그날 무엇을 했는지의 기록
+    # 지금 보이지 않는 참가작(경고창·파싱 실패 자리표시 — 받지 못한 FetchFailed 는 제외)을 수집기에 알린다. 수집기는 이 번호를 빼고
+    # '살아 있는 수'를 노벨피아 표시 수와 견준다(누적 목록이 삭제·비공개작까지 세서 놓친 신작을 가리지 않게). 매일 덮어쓴다.
+    try:
+        gone = sorted(str(i['ID']) for i in unique if str(i.get('Title', '')).startswith(('N/A (Inaccessible', 'N/A (ParsingFailed')))
+        _put_json('state/gone_ids.json', gone)
+    except Exception as e:  # noqa: BLE001 — 부가 정보라 적재를 막지 않는다
+        _log(logging.WARNING, execution_id, f"Could not write gone_ids: {e}")
     notice = _notice(date, ledger)
     return {'statusCode': 200, 'processed_count': len(unique), 'fetch_failed': len(still),
             'recovered': ledger['recovered'], 'degraded': bool(notice), 'notice': notice}

@@ -167,10 +167,14 @@ dmap() {
   if exists aws lambda get-function --region $R --function-name ${F_PARSER}-dmap; then
     aws lambda update-function-code --region $R --function-name ${F_PARSER}-dmap --image-uri "$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" >/dev/null
     aws lambda wait function-updated --region $R --function-name ${F_PARSER}-dmap
+    # EXPRESS 자식은 5분이 한도다 — 파서가 그보다 오래 살면 Step Functions 가 끊은 뒤에도 Lambda 가 계속 돈다(리뷰 #36).
+    # 파서는 시간 예산(남은 작품은 failed 로 돌려 재시도 라운드가 받는다) 안에서 끝나고, Lambda 는 290초에서 끊는다.
+    aws lambda update-function-configuration --region $R --function-name ${F_PARSER}-dmap --timeout 290 >/dev/null
+    aws lambda wait function-updated --region $R --function-name ${F_PARSER}-dmap
   else
     aws lambda create-function --region $R --function-name ${F_PARSER}-dmap --package-type Image \
       --code ImageUri="$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" --role $LAMBDA_ROLE \
-      --image-config 'Command=["parser.parse_dmap_batch"]' --timeout 600 --memory-size 512 --environment "$PENV" >/dev/null
+      --image-config 'Command=["parser.parse_dmap_batch"]' --timeout 290 --memory-size 512 --environment "$PENV" >/dev/null
     aws lambda wait function-active --region $R --function-name ${F_PARSER}-dmap
   fi
   zip -qj "$BUILD/consolidate.zip" contest_detail_parser/consolidate_contest_data.py
@@ -223,6 +227,30 @@ schedule() {
          --target "{\"Arn\":\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\",\"RoleArn\":\"arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME\",\"Input\":\"{\\\"mode\\\":\\\"prep\\\",\\\"execution_id\\\":\\\"prep-<aws.scheduler.scheduled-time>\\\"}\",\"RetryPolicy\":{\"MaximumRetryAttempts\":0}}")
   if exists aws scheduler get-schedule --region $R --name ${SCHED_NAME%Daily}Prep; then aws scheduler update-schedule "${PARGS[@]}" >/dev/null
   else aws scheduler create-schedule "${PARGS[@]}" >/dev/null; fi
+
+  collector_alarm
+}
+
+collector_alarm() {
+  # 준비 실행은 스케줄러가 수집기를 직접 부른다 — 상태 머신 밖이라 실패 알림 규칙·성공 부재 알람이 못 본다. 재확인·작가 받기는
+  # 이제 준비 실행에만 있어서 조용히 계속 실패하면 공개로 돌린 참가작을 놓친다. 수집기 Errors(예외·15분 초과, 자정 호출 포함)를
+  # 알람으로 걸고 기존 알림 경로(이메일 = 알람 액션, Discord = 규칙 novelflow-alarm-state)에 잇는다. 웹훅은 알림 Lambda 에만 있다.
+  ALARM=novelflow-contest-$Y-collector-errors
+  TOPIC=arn:aws:sns:$R:$ACC:np-trend-crawler-failure-notifications
+  echo "== 알람 $ALARM (수집기 오류 → 이메일 + Discord)"
+  aws cloudwatch put-metric-alarm --region $R --alarm-name $ALARM \
+    --alarm-description "2026 공모전 ID 수집기(준비 실행 11:30·23:30 / 자정) Lambda 오류 — 로그 /aws/lambda/$F_COLLECTOR" \
+    --namespace AWS/Lambda --metric-name Errors --dimensions Name=FunctionName,Value=$F_COLLECTOR \
+    --statistic Sum --period 3600 --evaluation-periods 1 --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold \
+    --treat-missing-data notBreaching --alarm-actions $TOPIC
+  # put-rule 은 패턴을 통째로 바꾼다 — 기존 세 알람(OPERATIONS 「실패 알림」)을 함께 적는다.
+  aws events put-rule --region $R --name novelflow-alarm-state \
+    --description "NovelFlow 알람 상태 변경 → Discord (ALARM 은 멘션)" --event-pattern "{
+    \"source\":[\"aws.cloudwatch\"],\"detail-type\":[\"CloudWatch Alarm State Change\"],\"resources\":[
+      \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-daily-no-success-26h\",
+      \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-contest-no-success-26h\",
+      \"arn:aws:cloudwatch:$R:$ACC:alarm:np-trend-crawler-dlq-alarm\",
+      \"arn:aws:cloudwatch:$R:$ACC:alarm:$ALARM\"]}" >/dev/null
 }
 
 case "${1:-all}" in
@@ -231,7 +259,8 @@ case "${1:-all}" in
   orchestration) orchestration ;;
   schedule) schedule ;;
   dmap) dmap ;;
+  alarm) collector_alarm ;;
   all) infra; code; orchestration ;;   # 스케줄은 시험 실행이 통과한 뒤 따로 켠다
-  *) echo "usage: $0 [all|infra|code|orchestration|schedule|dmap]"; exit 1 ;;
+  *) echo "usage: $0 [all|infra|code|orchestration|schedule|dmap|alarm]"; exit 1 ;;
 esac
 echo "done: ${1:-all}"

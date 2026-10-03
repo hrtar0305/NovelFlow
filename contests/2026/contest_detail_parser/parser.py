@@ -29,6 +29,13 @@ class Config:
     # Request & Parsing Configuration
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
     MAX_INTERNAL_RETRIES = 3 # Max retries for individual novel parsing
+    # SQS 판: 이 수신 차례(ApproximateReceiveCount)에서도 끝내 못 받으면 큐로 돌려보내지 않고 placeholder 로 끝낸다.
+    # 작업 큐에 DLQ 가 없어 돌려보내기만 하면 완료 판정이 영영 안 끝난다. 가시성 960초라 두 번째 수신은 약 16분 뒤(2700초 안).
+    SQS_GIVE_UP_RECEIVE_COUNT = int(os.environ.get('SQS_GIVE_UP_RECEIVE_COUNT', '2'))
+    # DMap 판: 묶음 하나에 쓸 시간. 자식이 EXPRESS(최대 5분)라 넘기면 받은 작품까지 통째로 버려진다. 넘으면 남은 작품을
+    # `failed`(TimeBudget)로 돌려주고 Reconcile 이 다음 라운드에 다시 받는다. 예산 뒤에도 진행 중인 한 편(최악 약 95초)과
+    # 원본 업로드가 ParseBatch 제한(280초) 안에 들어가도록 잡는다.
+    DMAP_TIME_BUDGET_SECONDS = float(os.environ.get('DMAP_TIME_BUDGET_SECONDS', '170'))
     
     # Novelpia URLs & Settings
     NOVELPIA_BASE_URL = "https://novelpia.com"
@@ -186,9 +193,15 @@ def _parse_one(session, novel_id, crawl_date, execution_id):
         item["SerialDays"] = days
     # 잔류율: 회차 30 이상만 회차 목록을 받는다(유효 회차 30개 미만이면 어차피 값이 없다).
     if item["Eps"] >= extract.RETENTION_MIN_EPS:
-        item.update(extract.retention_fields(
-            session, novel_id, pages, lambda lv, msg: _log(lv, execution_id, msg, novel_id=novel_id),
-            before=crawl_date[2:].replace('-', '.')))   # 기록 날짜 D 에 올린 회차는 뺀다(하루 오프셋, extract.py 머리말)
+        try:
+            item.update(extract.retention_fields(
+                session, novel_id, pages, lambda lv, msg: _log(lv, execution_id, msg, novel_id=novel_id),
+                before=crawl_date[2:].replace('-', '.')))   # 기록 날짜 D 에 올린 회차는 뺀다(하루 오프셋, extract.py 머리말)
+        except requests.exceptions.RequestException:
+            raise   # 네트워크 오류는 호출부가 다시 받는다
+        except Exception as e:  # noqa: BLE001 — 부가 필드의 해석 오류로 묶음 전체(Lambda)를 죽이지 않는다. 값 없음(-1)으로 둔다
+            _log(logging.WARNING, execution_id, f"Retention parse failed for {novel_id}: {e}", novel_id=novel_id, exc_info=True)
+            item.update(extract.RETENTION_DEFAULTS)
     return item, pages, True
 
 
@@ -198,7 +211,8 @@ def parse_contest_novel_details_batch(event, context):
     **실패한 작품만 다시 받는다(ReportBatchItemFailures).** 2025 는 한 편이 네트워크 오류로
     끝내 실패하면 배치 전체를 다시 던져 나머지 79편도 다시 긁었다(백로그 #29). 이벤트 소스
     매핑의 FunctionResponseTypes 에 ReportBatchItemFailures 를 켜야 동작한다.
-    중복 결과는 완료 판정(유니크 ID)과 consolidate(최초 타임스탬프 우선)가 걸러낸다.
+    중복 결과는 완료 판정(유니크 ID)과 consolidate(실데이터 우선, 그다음 최초 타임스탬프)가 걸러낸다.
+    다시 받은 차례(`SQS_GIVE_UP_RECEIVE_COUNT`)에서도 실패하면 돌려보내지 않고 placeholder 를 보낸다(DLQ 가 없어 끝없이 돈다).
     """
     records = event.get('Records', [])
     if not records:
@@ -234,8 +248,15 @@ def parse_contest_novel_details_batch(event, context):
             except requests.exceptions.RequestException as e:
                 _log(logging.WARNING, execution_id, f"Network error for {novel_id} (attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES}): {e}", novel_id=novel_id)
         if item is None:
-            failures.append({"itemIdentifier": record['messageId']})
-            continue
+            receive_count = int((record.get('attributes') or {}).get('ApproximateReceiveCount') or 1)
+            if receive_count < Config.SQS_GIVE_UP_RECEIVE_COUNT:
+                failures.append({"itemIdentifier": record['messageId']})
+                continue
+            # 다시 받아도 실패 — DMap 판의 결손 처리와 같은 모양(N/A (FetchFailed), View -1)으로 그날을 끝낸다.
+            _log(logging.ERROR, execution_id, f"Giving up on {novel_id} after {receive_count} receives. Sending placeholder.",
+                 novel_id=novel_id, receive_count=receive_count)
+            item = _create_placeholder_item(novel_id, crawl_date, reason="FetchFailed")
+            placeholder_count += 1
         try:
             sqs_client.send_message(QueueUrl=Config.SQS_RESULT_QUEUE_URL, MessageBody=json.dumps(item, ensure_ascii=False))
         except BotoClientError as sqs_e:
@@ -258,7 +279,14 @@ def parse_dmap_batch(event, context):
     실패는 **묶음 안에 가둔다**: 네트워크 오류는 간격을 두고 다시 받고, 끝내 실패한 작품만 `failed` 로 돌려준다
     (묶음 전체를 실패시키면 받은 39편까지 버려진다). 대조 단계가 빠진 작품만 모아 다시 돌린다.
     경고창·파싱 오류는 다시 받아도 같으므로 placeholder 로 끝낸다.
+    **시간 예산**(`DMAP_TIME_BUDGET_SECONDS`)을 넘기면 새 작품·새 시도를 시작하지 않고 남은 작품을 `failed`(TimeBudget)로
+    돌려준다 — EXPRESS 자식 5분을 넘겨 받은 작품까지 버려지는 것보다, 받은 것은 남기고 나머지만 다음 라운드로 넘기는 편이 낫다.
     """
+    started = time.monotonic()
+
+    def over_budget():
+        return time.monotonic() - started > Config.DMAP_TIME_BUDGET_SECONDS
+
     bi = event.get('BatchInput') or {}
     execution_id, crawl_date = bi.get('execution_id', 'N/A'), bi.get('date')
     ids = [str(x).strip() for x in event.get('Items') or []]
@@ -272,7 +300,13 @@ def parse_dmap_batch(event, context):
         if inject and int(novel_id) % inject == 0:
             failed.append({"id": novel_id, "error": "injected"})
             continue
+        if over_budget():
+            failed.append({"id": novel_id, "error": "TimeBudget"})
+            continue
         for attempt in range(Config.MAX_INTERNAL_RETRIES):
+            if attempt and over_budget():
+                last_error = f"TimeBudget (after {last_error})"
+                break
             try:
                 item, pages, _ok = _parse_one(session, novel_id, crawl_date, execution_id)
                 raw_batch.append((novel_id, pages, item.get("CrawledAt")))
@@ -287,5 +321,7 @@ def parse_dmap_batch(event, context):
         else:
             results.append(item)
     raw_ok = _upload_raw_batch(execution_id, raw_batch, crawl_date, context) if bi.get('raw', True) else True
-    _log(logging.INFO, execution_id, "DMap batch complete.", total=len(ids), ok=len(results), failed=len(failed), raw_ok=raw_ok)
+    _log(logging.INFO, execution_id, "DMap batch complete.", total=len(ids), ok=len(results), failed=len(failed), raw_ok=raw_ok,
+         over_budget=sum(1 for f in failed if str(f.get("error") or "").startswith("TimeBudget")),
+         seconds=round(time.monotonic() - started, 1))
     return {"items": results, "failed": failed, "raw_failed": 0 if raw_ok else len(raw_batch)}

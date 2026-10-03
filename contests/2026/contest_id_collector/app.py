@@ -58,6 +58,7 @@ BUDGET_MS = int(os.environ.get('STOP_WHEN_REMAINING_MS', '90000'))
 CHUNK = 40
 MATCH_ROUNDS_MIDNIGHT = int(os.environ.get('MATCH_ROUNDS_MIDNIGHT', '3'))   # 자정: 노벨피아 표시 수와 맞을 때까지 다시 훑는 최대 횟수
 MIDNIGHT_AUTHOR_SECONDS = int(os.environ.get('MIDNIGHT_AUTHOR_SECONDS', '20'))  # 자정: 작가 받기에 쓸 최대 시간(밀린 몫은 준비 실행)
+UPSTREAM_FAIL_STREAK = int(os.environ.get('UPSTREAM_FAIL_STREAK', str(2 * WORKERS)))  # 훑기: 노벨피아 장애로 보고 멈추는 연속 실패 수
 
 ID_LIST_KEY = f"contest_novel_ids_{YEAR}.json"      # 팬아웃이 읽는 목록(2025 와 같은 모양: 번호 배열)
 STATE_KEY = "state/progress.json"
@@ -66,6 +67,9 @@ CONTEST_META_KEY = "state/contest_ids.json"        # 번호 → 처음 찾은 �
 AUTHOR_INDEX_KEY = "state/author_works.json"       # 작가 → 다른 작품 번호들(적재가 작품 행에 붙인다). 받은 작가의 유일한 기록
 # (예전의 state/authors_fetched.json 은 쓰지 않는다 — 두 파일이 어긋나면 작가가 색인에서 영구히 빠졌다)
 AUTHOR_KEY = "authors/{}.json"
+# 적재가 매일 덮어쓰는 '그날 경고창·파싱 실패로 placeholder 가 된 참가작' 번호 배열(네트워크 실패분은 넣지 않는다).
+# contest 는 삭제·철회된 작품도 지우지 않는 누적이라, 노벨피아의 현재 등록 수와 견줄 때만 이것을 뺀다(없으면 빼지 않는다).
+GONE_KEY = "state/gone_ids.json"
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
 KST = ZoneInfo("Asia/Seoul")
@@ -127,6 +131,11 @@ def check(session, nid):
             err = str(e)[:120]
             time.sleep(1.5 * (attempt + 1))
     return 'retry', f'request failed: {err}'
+
+
+def _upstream_failure(kind, info):
+    """노벨피아 쪽 장애로 보이는 'retry'(요청 실패·제목 없는 페이지). 경고창이 뜬 비공개 등은 정상 응답이라 아니다."""
+    return kind == 'retry' and isinstance(info, str) and info.startswith(('request failed', 'no title'))
 
 
 def author_works(session, author_id, novel_no):
@@ -201,6 +210,7 @@ def handler(event, context):
     st = _get(STATE_KEY, {'next_id': START_ID, 'last_checked_id': START_ID - 1})
     contest = _get(CONTEST_META_KEY, {})
     recheck = _get(RECHECK_KEY, {})
+    gone = {str(x) for x in _get(GONE_KEY, [])}
     sess = [_session() for _ in range(WORKERS)]
     pool = ThreadPoolExecutor(WORKERS)
 
@@ -208,7 +218,12 @@ def handler(event, context):
         return list(pool.map(lambda t: check(sess[t[0] % WORKERS], t[1]), enumerate(ids)))
 
     new_contest = []
+    aborted = None   # 마지막 훑기를 노벨피아 장애로 끊었으면 사유(끝 번호는 앞으로 밀지 않았다)
     done_scan = st.get('scan_done_at') is not None and st.get('scan_run_id') == execution_id
+
+    def alive():
+        """노벨피아 표시 수('총 N개 작품', 현재 등록 수)와 견줄 우리 쪽 수 — 누적에서 사라진 참가작을 뺀다."""
+        return sum(1 for k in contest if k not in gone)
 
     def save():
         _put(STATE_KEY, st)
@@ -230,18 +245,40 @@ def handler(event, context):
 
         한 번에 WORKERS 개씩만 동시에 요청하고 번호 순서대로 판정하므로, 끝을 넘어 나가는 요청은 최대 WORKERS−1 개다.
         중간의 일시적 이상 번호에 멈추더라도 뒤의 수량 확인이 모자람을 잡아 다시 훑게 한다. 끝까지 갔으면 True.
+
+        노벨피아 장애(요청 실패·제목 없는 페이지)가 UPSTREAM_FAIL_STREAK 번 잇달으면 끝 번호를 그 연속의 첫 번호로 되돌리고
+        멈춘다(True, `aborted`). 장애 중엔 '잘못된 소설 번호'를 못 만나 아직 없는 번호를 수백 개 지나치고, 그 구간에 나중에 등록되는
+        참가작을 번호 훑기로는 영영 못 찾는다(없는 번호가 재확인 목록에 쌓이기도 한다). 그래서 연속 중인 번호는 연속이 끊길 때
+        (정상 응답을 만나면) 기록하고, 저장하는 끝 번호도 연속의 첫 번호 앞까지만 둔다.
         """
-        nid, n = st['next_id'], 0
+        nonlocal aborted
+        aborted = None
+        nid, n, streak = st['next_id'], 0, []
         while remaining() > BUDGET_MS:
             ids = list(range(nid, nid + WORKERS))
             for i, (kind, info) in zip(ids, run_ids(ids)):
+                if _upstream_failure(kind, info):
+                    streak.append((i, kind, info))
+                    if len(streak) >= UPSTREAM_FAIL_STREAK:
+                        first = streak[0][0]
+                        st.update(next_id=first, last_checked_id=first - 1, scan_done_at=_now(), scan_run_id=execution_id)
+                        save()
+                        aborted = 'upstream_unavailable'
+                        _log(logging.WARNING, execution_id, "Novelpia looks unavailable — scan stopped without advancing the frontier.",
+                             from_id=first, to_id=i, streak=len(streak), last_error=info)
+                        return True
+                    continue
+                for p in streak:
+                    record(*p)
+                streak = []
                 if kind == 'invalid':
                     st.update(next_id=i, last_checked_id=i - 1, scan_done_at=_now(), scan_run_id=execution_id)
                     save()
                     return True
                 record(i, kind, info)
             nid = ids[-1] + 1
-            st.update(next_id=nid, last_checked_id=nid - 1)
+            resume = streak[0][0] if streak else nid   # 아직 기록하지 않은 연속은 다음 호출이 다시 본다
+            st.update(next_id=resume, last_checked_id=resume - 1)
             n += 1
             if n % 10 == 0:
                 save()
@@ -290,12 +327,13 @@ def handler(event, context):
     if not done_scan:
         done_scan = scan_to_frontier()
     listed, rounds = None, 0
+    # 노벨피아 장애로 끊긴 훑기는 몇 초 뒤 다시 훑어도 같다 — 자정 수집만 늦추므로 다시 훑지 않는다(수 부족 경고는 남는다).
     while not prep and done_scan and rounds < MATCH_ROUNDS_MIDNIGHT and remaining() > BUDGET_MS:
         rounds += 1
         listed = listed_total(sess[0])
-        if listed is None or len(contest) >= listed:
+        if listed is None or alive() >= listed or aborted:
             break
-        _log(logging.INFO, execution_id, "Short of Novelpia count — rescanning the frontier.", round=rounds, ours=len(contest), listed=listed)
+        _log(logging.INFO, execution_id, "Short of Novelpia count — rescanning the frontier.", round=rounds, ours=alive(), listed=listed)
         time.sleep(3)
         scan_to_frontier()
     if not prep:
@@ -308,14 +346,15 @@ def handler(event, context):
                 got, failed, authors_left = fetch_authors(MIDNIGHT_AUTHOR_SECONDS)
             except Exception as e:  # noqa: BLE001
                 _log(logging.ERROR, execution_id, f"Author fetch failed at midnight (prep run will retry): {e}")
-        if listed is not None and len(contest) < listed:
+        if listed is not None and alive() < listed:
             _log(logging.WARNING, execution_id, "Collected fewer contest novels than Novelpia lists (prep run will recheck).",
-                 ours=len(contest), listed=listed, short_by=listed - len(contest), rounds=rounds)
+                 ours=alive(), listed=listed, short_by=listed - alive(), gone=len(contest) - alive(), rounds=rounds)
         _log(logging.INFO, execution_id, "Midnight ID pass finished.", done=done_scan, last_checked_id=st['last_checked_id'],
-             total_contest=len(contest), new_contest=len(new_contest), listed=listed, match_rounds=rounds,
-             authors_fetched=got, authors_failed=failed, authors_left=authors_left)
-        return {"done": done_scan, "total_contest": len(contest), "listed_total": listed,
-                "new_contest": len(new_contest), "last_checked_id": st['last_checked_id']}
+             total_contest=len(contest), alive_contest=alive(), new_contest=len(new_contest), listed=listed, match_rounds=rounds,
+             aborted=aborted, authors_fetched=got, authors_failed=failed, authors_left=authors_left)
+        # alive_contest = 노벨피아 표시 수(listed_total)와 견줄 수. total_contest 는 누적(목록 크기)이다.
+        return {"done": done_scan, "total_contest": len(contest), "alive_contest": alive(), "listed_total": listed,
+                "new_contest": len(new_contest), "last_checked_id": st['last_checked_id'], "aborted": aborted}
 
     # ---- 2. 재확인(지우지 않는다; 공개 일반작은 주기만 늘린다) ----
     today = datetime.now(KST)
@@ -323,7 +362,10 @@ def handler(event, context):
     # 준비 실행은 하루 두 번(11:30·23:30)이고 **재확인은 번호 짝수/홀수로 나눠 맡는다**(짝수 = 오전 실행, 홀수 = 밤 실행) —
     # 노벨피아는 한 IP 의 요청을 사실상 하나씩 처리해(초당 약 1.6장) 양이 곧 시간이라, 23:30 의 양을 정확히 반으로 줄인다.
     # 그래서 어느 번호든 하루 한 번(자기 몫의 실행에서) 본다. 비공개·다시 볼 번호도 같다(실행마다 보면 하루 두 번이 된다).
-    # 주기는 '마지막으로 본 뒤'로 잰다(− 2시간은 실행 시각의 오차 흡수). 시각으로 실행을 가르므로 손으로 돌려도 같은 규칙이다.
+    # 주기는 '마지막으로 본 뒤'로 잰다. 여유는 14시간이다 — 남의 슬롯(자정·반대편 준비 실행)에서 처음 기록된 번호는 같은 날
+    # 자기 슬롯까지 11.5~12시간뿐이라, 여유가 작으면 첫 재확인이 다음 날(36시간 뒤)로 밀린다. 그래서 하루 주기는 10시간(자기 슬롯이
+    # 하루 한 번을 보장한다 — 같은 슬롯에서 몇 시간 뒤 손으로 다시 돌려도 건너뛴다), 3일 주기는 58시간(72시간 뒤 자기 슬롯)이다.
+    # 시각으로 실행을 가르므로 손으로 돌려도 같은 규칙이다.
     slot = 0 if today.hour < 18 else 1
 
     def is_due(k, v):
@@ -334,11 +376,12 @@ def handler(event, context):
         else:
             age = today - datetime.fromisoformat(v['first_seen'])
             gap = timedelta(days=1 if age < timedelta(days=FRESH_DAYS) else NORMAL_RECHECK_DAYS)
-        return today - datetime.fromisoformat(v['last_checked']) >= gap - timedelta(hours=2)
+        return today - datetime.fromisoformat(v['last_checked']) >= gap - timedelta(hours=14)
 
     due = [k for k, v in recheck.items() if k not in contest and v.get('last_run') != execution_id and is_due(k, v)]
     rechecked = 0
-    while done_scan and due and remaining() > BUDGET_MS:
+    # 훑기가 노벨피아 장애로 끊겼으면 재확인도 미룬다 — 돌리면 전부 실패한 채 '오늘 봤다'로 남아 하루를 잃는다.
+    while done_scan and not aborted and due and remaining() > BUDGET_MS:
         part, due = due[:CHUNK], due[CHUNK:]
         for k, (kind, info) in zip(part, run_ids([int(x) for x in part])):
             v = recheck[k]
@@ -365,6 +408,8 @@ def handler(event, context):
     done = done_scan and not due
     listed = listed_total(sess[0])   # 준비 실행은 기록만(자정 실행이 맞춘다)
     _log(logging.INFO, execution_id, "Contest ID collection pass finished.", done=done, last_checked_id=st['last_checked_id'],
-         total_contest=len(contest), new_contest=len(new_contest), recheck_total=len(recheck),
-         rechecked=rechecked, recheck_left=len(due), authors_fetched=got, authors_failed=failed, authors_left=authors_left, listed=listed, match_rounds=rounds)
-    return {"done": done, "total_contest": len(contest), "listed_total": listed, "new_contest": len(new_contest), "last_checked_id": st['last_checked_id']}
+         total_contest=len(contest), alive_contest=alive(), new_contest=len(new_contest), recheck_total=len(recheck),
+         rechecked=rechecked, recheck_left=len(due), authors_fetched=got, authors_failed=failed, authors_left=authors_left, listed=listed,
+         match_rounds=rounds, aborted=aborted)
+    return {"done": done, "total_contest": len(contest), "alive_contest": alive(), "listed_total": listed,
+            "new_contest": len(new_contest), "last_checked_id": st['last_checked_id'], "aborted": aborted}
