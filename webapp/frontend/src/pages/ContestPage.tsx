@@ -172,10 +172,13 @@ export default function ContestPage() {
     return r == null ? <span className="rank-num rank-num--none" title="비교할 직전 기록이 없습니다">–</span>
       : <span className={`rank-num${r <= 3 ? ' is-top' : ''}`}>{r}</span>;
   };
+  // 열 폭 = max(머리글 글자, 가장 긴 값) — 14px 표 글꼴 실측(2026-10-03). 2025 예선 기간 실측 최댓값: 누적 843,670 · 일간 49,355 ·
+  // 변동 3,492(4자리) · 순위 4,719. 2025 는 예선 뒤에도 모아 누적이 8자리(16,677,971)까지 가서 누적 열을 더 넓게 둔다.
+  // 잔류·일간 조회는 숫자보다 머리글('초반 잔류 ³ ↕' 69px)이 길어 머리글 기준. 남는 폭은 제목·태그로 간다.
   const columns: RankColumn<ContestNovel>[] = [
     { key: 'rank', header: '순위', aside: <FootnoteRef id="crank" n={1} />, width: '56px',
       sortKey: daily ? 'daily_rank' : undefined, render: n => <RankNum n={n} /> },
-    { key: 'chg', header: '변동', width: '44px', sortKey: daily ? 'daily_rank_change' : 'rank_change', render: n => <ChangeMark value={headChange(n)} /> },
+    { key: 'chg', header: '변동', width: '48px', sortKey: daily ? 'daily_rank_change' : 'rank_change', render: n => <ChangeMark value={headChange(n)} /> },
     ...(hasAwards || !daily ? [{ key: 'award', header: '수상', width: '64px', render: (n: ContestNovel) => <AwardText award={n.award} /> }] : []),
     { key: 'title', header: '제목', width: 'minmax(0,1fr)',
       render: n => (
@@ -186,25 +189,25 @@ export default function ContestPage() {
             : <Link to={`/contests/${year}/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link>}
         </span>
       ) },
-    { key: 'author', header: '작가', width: '92px',
+    { key: 'author', header: '작가', width: '104px',
       render: n => (isDeletedContestNovel(n) ? dash
         : n.AuthorID && n.AuthorID !== '0'
           ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" title={n.AuthorName ?? undefined} onClick={e => e.stopPropagation()}>{n.AuthorName || '(작자 미상)'}</Link>
           : <span className="rank-author" title={n.AuthorName ?? undefined}>{n.AuthorName || '(작자 미상)'}</span>) },
-    ...(daily ? [{ key: 'career', header: '구분', width: '44px', render: (n: ContestNovel) => <CareerText v={n.is_veteran} /> }] : []),
-    { key: 'vchg', header: '일간 조회', aside: <FootnoteRef id="cview" n={2} />, width: '84px', sortKey: 'view_change',
+    ...(daily ? [{ key: 'career', header: '구분', width: '32px', render: (n: ContestNovel) => <CareerText v={n.is_veteran} /> }] : []),
+    { key: 'vchg', header: '일간 조회', aside: <FootnoteRef id="cview" n={2} />, width: '70px', sortKey: 'view_change',
       // 2026: 비교할 직전 기록이 없으면(일간 순위 없음) 0 이 아니라 '알 수 없음'이다.
       render: n => (isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : strongIf(['view_change'], formatInt(n.view_change))) },
-    { key: 'view', header: '누적 조회', width: '84px', sortKey: 'View',
+    { key: 'view', header: '누적 조회', width: daily ? '72px' : '80px', sortKey: 'View',
       render: n => (isDeletedContestNovel(n) ? dash : strongIf(['View'], formatInt(n.View))) },
-    { key: 'ratio', header: '추천비', width: '64px', sortKey: 'like_to_view_ratio',
+    { key: 'ratio', header: '추천비', width: '56px', sortKey: 'like_to_view_ratio',
       render: n => (isDeletedContestNovel(n) ? dash : strongIf(['like_to_view_ratio'], formatRatio(n.like_to_view_ratio, 2))) },
-    { key: 'eps', header: '회차', width: '52px', sortKey: 'Eps',
+    { key: 'eps', header: '회차', width: '44px', sortKey: 'Eps',
       render: n => (isDeletedContestNovel(n) ? dash : strongIf(['Eps'], formatInt(n.Eps))) },
     ...(daily ? [
-      { key: 'early', header: '초반 잔류', aside: <FootnoteRef id="early" n={3} />, width: '72px', sortKey: 'EarlyRetentionRate',
+      { key: 'early', header: '초반 잔류', aside: <FootnoteRef id="early" n={3} />, width: '70px', sortKey: 'EarlyRetentionRate',
         render: (n: ContestNovel) => strongIf(['EarlyRetentionRate'], formatRatio(n.EarlyRetentionRate ?? null, 0)) },
-      { key: 'recent', header: '최신 잔류', aside: <FootnoteRef id="recent" n={4} />, width: '72px', sortKey: 'RecentRetentionRate',
+      { key: 'recent', header: '최신 잔류', aside: <FootnoteRef id="recent" n={4} />, width: '70px', sortKey: 'RecentRetentionRate',
         render: (n: ContestNovel) => strongIf(['RecentRetentionRate'], formatRatio(n.RecentRetentionRate ?? null, 0)) },
     ] as RankColumn<ContestNovel>[] : []),
     // 2026 은 열이 셋(구분·잔류 둘) 늘어 태그 폭을 줄여 제목이 덜 잘리게 한다.
@@ -281,7 +284,7 @@ export default function ContestPage() {
         {error ? <p className="empty-line">{error}</p>
           : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
           : (
-            <RankTable ariaLabel="공모전 작품 순위" compactBelow={992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
+            <RankTable ariaLabel="공모전 작품 순위" /* 2026 은 열이 12개라 992~1100px 에서 제목 칸이 114px 까지 준다 — 그 폭부터 모바일 행 */ compactBelow={daily ? 1100 : 992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
               sort={sort} onSort={k => setSort(s => nextContestSort(s, k as ContestSortKey))}
               renderMobileRow={mobileRow}
               emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 공모전 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
