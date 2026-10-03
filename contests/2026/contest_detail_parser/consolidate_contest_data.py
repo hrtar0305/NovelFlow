@@ -21,7 +21,9 @@ class Config:
     SQS_RESULT_QUEUE_URL = os.environ.get('SQS_RESULT_QUEUE_URL')
     LOOP_TIMEOUT_SECONDS = 480  # Lambda 제한(600초)보다 짧게 — 루프가 먼저 끝나야 원인이 로그에 남는다
     # 기록 날짜 D 의 수집 = D+1 00:00 KST. 그 뒤 이만큼 안에 수집기가 처음 찾은 번호까지 D 의 작품으로 친다(`_found_after_date`).
-    LATE_FOUND_GRACE_HOURS = 2
+    # 자정 수집기는 길어야 12분(ID 수집 마감) — 그 뒤(손 실행 등)에 찾은 번호는 그 날짜의 작품이 아니다(그림자 실행 2026-10-03 실측:
+    # 2시간 여유면 00:38 손 실행이 찾은 자정 뒤 등록작 20편이 전날로 들어갔다).
+    LATE_FOUND_GRACE_HOURS = 0.25
 
 if not Config.DYNAMODB_TABLE_NAME or not Config.SQS_RESULT_QUEUE_URL:
     raise ValueError("DYNAMODB_TABLE_NAME and SQS_RESULT_QUEUE_URL env vars must be set.")
