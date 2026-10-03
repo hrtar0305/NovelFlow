@@ -26,6 +26,10 @@ class Config:
     RAW_BUCKET = os.environ.get('RAW_HTML_BUCKET')
     RAW_PREFIX = os.environ.get('RAW_HTML_PREFIX', 'raw')
     CREDENTIAL_PARAM_NAMES = ["/NP-Trend/NOVELPIA_ID", "/NP-Trend/NOVELPIA_PASS"]
+    # 로그인 쿠키를 상세 파서에 넘기는 곳. 상태 머신 입출력에 싣지 않는다 — Standard 실행 이력은
+    # 90일 남고 읽기 권한만 있어도 보여서, 거기 실린 세션 쿠키는 크롤링 계정 로그인과 같다.
+    # 상태 머신에는 이 파라미터의 버전 번호만 흐른다.
+    AUTH_COOKIE_PARAM_NAME = "/NP-Trend/AUTH_COOKIES"
     AWS_REGION = "ap-northeast-2"
 
     # Playwright & Browser
@@ -43,6 +47,10 @@ class Config:
     EPISODE_LIST_URL = "https://novelpia.com/proc/episode_list"
     NOVEL_PROC_URL = "https://novelpia.com/proc/novel"
     MAX_INTERNAL_RETRIES = 10
+    # 회차 목록 요청의 자체 재시도. 바깥(Step Functions) 재시도는 상세 전체를 다시 받으므로
+    # 회차 목록 한 장의 일시 오류는 여기서 짧게 다시 받는다.
+    EPISODE_LIST_ATTEMPTS = 3
+    EPISODE_LIST_RETRY_DELAY_SECONDS = 1.5
     SEOUL_TIMEZONE = timezone('Asia/Seoul')
 
     # CSS Selectors
@@ -106,14 +114,25 @@ def get_credentials(execution_id):
 
 # --- Playwright Helpers for get_ranking_list ---
 def _perform_login(page, username, password, execution_id):
-    """Handles the login process on Novelpia."""
+    """Handles the login process on Novelpia.
+
+    여기서는 제출까지만 한다. **로그인 성공 판정은 `_ensure_adult_mode` 가 한다** — 성인 스위치는
+    서버가 그리는 값이라 로그인한 성인 인증 세션에서만 '성인'이 되고, 비로그인 세션에서 켜려고 하면
+    로그인 창이 뜰 뿐 '성인'이 되지 않는다(`adt_mode` → `/proc/member_adt_mode` 가 'login').
+    """
     _log(logging.INFO, execution_id, "Performing login...")
     page.goto(Config.BASE_URL, wait_until="commit")
     page.locator(Config.Selectors.LOGIN_EMAIL).fill(username)
     page.locator(Config.Selectors.LOGIN_PASSWORD).fill(password)
-    page.on("dialog", lambda dialog: dialog.accept())
+
+    # 경고창은 닫되 문구는 남긴다. 로그인 실패 경고가 조용히 닫히면 원인을 알 수 없다.
+    def _on_dialog(dialog):
+        _log(logging.WARNING, execution_id, "Dialog during setup.", dialog_type=dialog.type,
+             dialog_message=(dialog.message or "")[:200])
+        dialog.accept()
+    page.on("dialog", _on_dialog)
     page.locator(Config.Selectors.LOGIN_SUBMIT).click()
-    _log(logging.INFO, execution_id, "Login successful.")
+    _log(logging.INFO, execution_id, "Login submitted. Verified by the adult mode check.")
 
 def _ensure_adult_mode(page, execution_id):
     """Checks and enables adult mode if it's off."""
@@ -131,7 +150,13 @@ def _ensure_adult_mode(page, execution_id):
         except PlaywrightTimeoutError:
             pass # Banner not found, which is fine.
 
-    if adult_switch_locator.get_attribute('alt') == '일반':
+    # '성인'임을 **확인했을 때만** 통과한다. 예전에는 '일반'이 아니면 모두 켜진 것으로 봤는데,
+    # 라벨이 바뀌거나 값을 못 읽으면 성인 모드가 꺼진 채 진행돼 랭킹에서 성인작이 통째로 빠졌다
+    # (docs/DECISIONS.md 「인증 쿠키 도입 목적」 — 로그인 실패는 즉시 실패해야 한다).
+    alt = adult_switch_locator.get_attribute('alt')
+    if alt == '성인':
+        _log(logging.INFO, execution_id, "Adult mode is already ON.")
+    elif alt == '일반':
         _log(logging.INFO, execution_id, "Adult mode is OFF. Enabling via UI click...")
         page.locator(Config.Selectors.TOGGLE_MENU).click()
         adult_switch_locator.click()
@@ -139,7 +164,7 @@ def _ensure_adult_mode(page, execution_id):
         expect(page.locator(Config.Selectors.ADULT_SWITCH)).to_have_attribute('alt', '성인', timeout=20000)
         _log(logging.INFO, execution_id, "Verification successful. Adult mode is now ON.")
     else:
-        _log(logging.INFO, execution_id, "Adult mode is already ON.")
+        raise RuntimeError(f"Unexpected adult switch alt={alt!r}; cannot confirm adult mode.")
 
 def _parse_score(score_text):
     """Converts score text to an integer."""
@@ -209,12 +234,18 @@ def _fetch_rankings_with_requests(session, target_novel_count, today, execution_
     return novels
 
 def _serialize_auth_cookies(cookies):
-    """Keep only the cookie fields needed to recreate an authenticated requests session."""
+    """Keep only the cookie fields needed to recreate an authenticated requests session.
+
+    노벨피아 도메인 쿠키만 남긴다. 광고·분석 도메인 쿠키는 상세 파싱에 쓰이지 않는다.
+    """
     serialized = []
     for cookie in cookies:
         name = cookie.get('name')
         value = cookie.get('value')
         if not name or value is None:
+            continue
+        domain = (cookie.get('domain') or '.novelpia.com').lstrip('.')
+        if domain != 'novelpia.com' and not domain.endswith('.novelpia.com'):
             continue
         serialized.append({
             'name': name,
@@ -246,6 +277,49 @@ def _apply_auth_cookies(session, cookies, execution_id):
             _log(logging.WARNING, execution_id, f"Skipped malformed auth cookie: {type(e).__name__}")
     if applied_count:
         _log(logging.INFO, execution_id, "Applied auth cookies to detail parser session.", cookie_count=applied_count)
+
+def _store_auth_cookies(cookies, execution_id):
+    """쿠키를 Parameter Store(SecureString)에 덮어쓰고 그 버전 번호를 돌려준다.
+
+    상세 파서는 이 번호로 **이번 실행이 쓴 값**을 정확히 읽는다(다음 날 실행이 덮어써도 섞이지 않는다).
+    크기 한도(Standard 4KB)를 넘으면 Intelligent-Tiering 이 Advanced 로 올린다.
+    """
+    client = boto3.client('ssm', region_name=Config.AWS_REGION)
+    response = client.put_parameter(
+        Name=Config.AUTH_COOKIE_PARAM_NAME,
+        Value=json.dumps(cookies, ensure_ascii=False, separators=(',', ':')),
+        Type='SecureString', Overwrite=True, Tier='Intelligent-Tiering',
+    )
+    version = response['Version']
+    _log(logging.INFO, execution_id, "Stored auth cookies in Parameter Store.",
+         cookie_count=len(cookies), version=version)
+    return version
+
+
+# 컨테이너가 살아 있는 동안 버전별로 한 번만 읽는다. 동시 20개 Map 이 500번 부르지만
+# 대부분은 웜 컨테이너라 Parameter Store 호출은 콜드 스타트 수 정도다.
+_AUTH_COOKIE_CACHE: dict = {}
+
+
+def _load_auth_cookies(version, execution_id):
+    """`_store_auth_cookies` 가 쓴 쿠키를 읽는다. 실패하면 예외를 그대로 던진다.
+
+    여기서 삼키면 비로그인 세션으로 파싱하게 된다 — 상세 파싱은 성공하지만 성인작 표지 등
+    로그인에 기대는 값이 조용히 바뀐다. 던지면 Step Functions 가 이 작품을 재시도한다.
+    """
+    if version is not None and str(version) in _AUTH_COOKIE_CACHE:
+        return _AUTH_COOKIE_CACHE[str(version)]
+    name = Config.AUTH_COOKIE_PARAM_NAME
+    if version is None:
+        # 버전 없는 호출(수동 시험 등)은 최신 값을 읽고 캐시하지 않는다 — 웜 컨테이너가 지난 쿠키를 붙들지 않게.
+        _log(logging.WARNING, execution_id, "auth_cookies_version is missing; reading the latest cookies.")
+    else:
+        name = f"{name}:{version}"
+    client = boto3.client('ssm', region_name=Config.AWS_REGION)
+    cookies = json.loads(client.get_parameter(Name=name, WithDecryption=True)['Parameter']['Value'])
+    if version is not None:
+        _AUTH_COOKIE_CACHE[str(version)] = cookies
+    return cookies
 
 # =====================================================================================
 # LAMBDA HANDLER 1: Get Ranking List
@@ -331,7 +405,8 @@ def get_ranking_list(event, context):
                         "novels": novels,
                         "target_novel_count": target_novel_count,
                         "date": today,
-                        "auth_cookies": auth_cookies,
+                        # 쿠키 자체가 아니라 Parameter Store 버전만 넘긴다(Config.AUTH_COOKIE_PARAM_NAME).
+                        "auth_cookies_version": _store_auth_cookies(auth_cookies, execution_id),
                     }
 
                 except (ValueError, requests.exceptions.RequestException) as e:
@@ -360,8 +435,19 @@ def _get_episode_list_html(session, novel_id, sort_order, page=0, pages=None):
     """
     payload = {"novel_no": novel_id, "sort": sort_order, "page": page}
     headers = {"Referer": Config.NOVEL_URL_TEMPLATE.format(novel_id), "X-Requested-With": "XMLHttpRequest"}
-    response = session.post(Config.EPISODE_LIST_URL, data=payload, headers=headers, timeout=10)
-    response.raise_for_status()
+    # 일시 오류(연결·타임아웃·5xx·429)는 짧게 다시 받는다. 호출부는 이 예외를 삼키고 부분 값으로
+    # 진행하므로(잔류율 원재료가 -1 로 굳는다), 여기서 다시 받지 않으면 재시도 기회가 없다.
+    for attempt in range(1, Config.EPISODE_LIST_ATTEMPTS + 1):
+        try:
+            response = session.post(Config.EPISODE_LIST_URL, data=payload, headers=headers, timeout=10)
+            response.raise_for_status()
+            break
+        except requests.exceptions.RequestException as e:
+            status = getattr(getattr(e, 'response', None), 'status_code', None)
+            retriable = status is None or status >= 500 or status == 429
+            if not retriable or attempt == Config.EPISODE_LIST_ATTEMPTS:
+                raise
+            time.sleep(Config.EPISODE_LIST_RETRY_DELAY_SECONDS)
     if pages is not None:
         pages.append({
             "kind": "episode_list", "url": Config.EPISODE_LIST_URL, "method": "POST",
@@ -403,7 +489,8 @@ def _get_episode_view_counts(session, novel_id, episode_ids, execution_id):
     try:
         data = response.json()
         return {item['episode_no']: int(item['count_view'].replace(',', '')) for item in data.get('list', [])}
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
+    # TypeError·AttributeError: `list` 가 null·응답이 배열·`count_view` 가 숫자처럼 모양이 다른 응답(2026 extract.py 와 같은 규칙)
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError, AttributeError) as e:
         _log(logging.WARNING, execution_id, f"Failed to parse /proc/novel response: {e}", novel_id=novel_id)
         return {}
 
@@ -572,6 +659,12 @@ def parse_novel_details(event, context):
     if not novel_id:
         raise ValueError("Novel ID is missing from the event.")
 
+    # 쿠키는 아래 try 밖에서 읽는다. 안에서 실패하면 '파싱 실패' placeholder 가 되는데,
+    # 이건 작품 문제가 아니라 다시 하면 되는 일이라 예외를 Step Functions 재시도로 넘긴다.
+    auth_cookies = None
+    if not event.get('is_placeholder', False):
+        auth_cookies = _load_auth_cookies(event.get('auth_cookies_version'), execution_id)
+
     try:
         if event.get('is_placeholder', False):
             _log(logging.WARNING, execution_id, "Final retry failed. Creating placeholder.", novel_id=novel_id)
@@ -580,7 +673,7 @@ def parse_novel_details(event, context):
         else:
             session = requests.Session()
             session.headers.update({"User-Agent": Config.USER_AGENT})
-            _apply_auth_cookies(session, event.get("auth_cookies", []), execution_id)
+            _apply_auth_cookies(session, auth_cookies, execution_id)
 
             novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
             response = session.get(novel_url, timeout=10)
@@ -629,6 +722,9 @@ def parse_novel_details(event, context):
 
                 # Fetch episode data for retention rate calculation
                 if item["Eps"] > 0:
+                    # 회차 목록을 끝내 못 받은 창. 그 결과 -1 로 남은 값을 '30화 미만이라 계산 안 함'과
+                    # 구별하려고 항목에 싣는다(정상이면 필드 자체가 없다).
+                    retention_fetch_errors = []
                     early_valid_eps = []   # (ep_id_str, ep_num_int), sort=DOWN order (oldest first)
                     recent_valid_eps = []  # (ep_id_str, ep_num_int), sort=UP order (newest first)
 
@@ -654,6 +750,7 @@ def parse_novel_details(event, context):
                                 break
                     except requests.exceptions.RequestException as ep_e:
                         _log(logging.WARNING, execution_id, f"Failed to fetch early episode list: {ep_e}", novel_id=novel_id)
+                        retention_fetch_errors.append("early")
 
                     # --- Recent window: sort=UP, 최대 5페이지 ---
                     # Early의 2.5배 탐색: 최신화 앞에 BONUS + 역순 30개 확보.
@@ -676,6 +773,7 @@ def parse_novel_details(event, context):
                                 break
                     except requests.exceptions.RequestException as ep_e:
                         _log(logging.WARNING, execution_id, f"Failed to fetch recent episode list: {ep_e}", novel_id=novel_id)
+                        retention_fetch_errors.append("recent")
 
                     # --- 수집된 에피소드로 요청할 ID 목록 결정 ---
                     first_ep_id = early_valid_eps[0][0] if early_valid_eps else None
@@ -716,6 +814,9 @@ def parse_novel_details(event, context):
                             if recent_base_id_int in view_counts:
                                 item["RecentBaseView"] = view_counts[recent_base_id_int]
                                 item["RecentBaseNum"] = recent_valid_eps[29][1]
+
+                    if retention_fetch_errors:
+                        item["RetentionFetchError"] = retention_fetch_errors
                 else:
                     _log(logging.INFO, execution_id, "Novel has 0 episodes. Skipping retention data.", novel_id=novel_id)
 

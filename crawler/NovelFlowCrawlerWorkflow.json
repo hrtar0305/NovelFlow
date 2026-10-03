@@ -1,7 +1,110 @@
 {
   "Comment": "Crawl Novelpia daily rankings, parse details in parallel, and handle errors.",
-  "StartAt": "PurgeQueue",
+  "StartAt": "ResolveRunDate",
   "States": {
+    "ResolveRunDate": {
+      "Type": "Pass",
+      "QueryLanguage": "JSONata",
+      "Comment": "Run date for the lock: Seoul date of the execution start (get_ranking_list uses the same Seoul 'today'). Input passes through unchanged.",
+      "Assign": {
+        "runDate": "{% $fromMillis($toMillis($states.context.Execution.StartTime), '[Y0001]-[M01]-[D01]', '+0900') %}"
+      },
+      "Output": "{% $states.input %}",
+      "Next": "UseRunLock?"
+    },
+    "UseRunLock?": {
+      "Type": "Choice",
+      "QueryLanguage": "JSONata",
+      "Comment": "Only the 21:00 schedule takes the lock: it sends {\"target_novel_count\": 500, \"scheduled\": true}. Manual runs (no 'scheduled') neither take nor hit the lock, so a same-day manual check cannot make that night's schedule skip, and a rerun after the schedule needs no extra flag.",
+      "Choices": [
+        {
+          "Condition": "{% $states.input.scheduled = true %}",
+          "Next": "AcquireRunLock"
+        }
+      ],
+      "Default": "PurgeQueue"
+    },
+    "AcquireRunLock": {
+      "Type": "Task",
+      "QueryLanguage": "JSONata",
+      "Comment": "EventBridge Scheduler is at-least-once. Two runs share one SQS queue: the later purge deletes the earlier run's results and each consolidate sees a mixed count, so both fail. One run per date takes the lock before the purge; the lock item has no Ranking, so it stays out of DateRankIndex, and no Title, so the Algolia stream ignores it. 잠금은 보조 장치다 — 조건 실패(이미 잠김)가 아닌 오류(권한·서비스 오류)는 입력을 그대로 들고 수집을 계속한다(fail-open, 최종 검증 2026-10-03).",
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Arguments": {
+        "TableName": "NovelRanks",
+        "Item": {
+          "ID": {
+            "S": "{% 'RUN_LOCK#' & $runDate %}"
+          },
+          "Date": {
+            "S": "LOCK"
+          },
+          "ExecutionArn": {
+            "S": "{% $states.context.Execution.Id %}"
+          },
+          "StartedAt": {
+            "S": "{% $states.context.Execution.StartTime %}"
+          }
+        },
+        "ConditionExpression": "attribute_not_exists(ID)"
+      },
+      "Output": "{% $states.input %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "DynamoDB.ProvisionedThroughputExceededException",
+            "DynamoDB.InternalServerErrorException",
+            "DynamoDB.ThrottlingException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "DynamoDB.ConditionalCheckFailedException"
+          ],
+          "Next": "NotifyDuplicateRun"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Output": "{% $states.input %}",
+          "Next": "PurgeQueue"
+        }
+      ],
+      "Next": "PurgeQueue"
+    },
+    "NotifyDuplicateRun": {
+      "Type": "Task",
+      "QueryLanguage": "JSONata",
+      "Comment": "Report the duplicate without a mention and end as success; a Fail would page like a real failure.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
+        "InvocationType": "Event",
+        "Payload": {
+          "content": "{% '데일리 ' & $runDate & ' 수집: 같은 날짜의 실행이 이미 잠금을 잡아 이 실행(' & $states.context.Execution.Name & ')은 건너뛰었습니다. 다시 돌리려면 \"scheduled\" 없이 수동 실행하세요.' %}",
+          "mention": false
+        }
+      },
+      "Output": "{% $states.input %}",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "DuplicateSkipped"
+        }
+      ],
+      "Next": "DuplicateSkipped"
+    },
+    "DuplicateSkipped": {
+      "Type": "Succeed",
+      "Comment": "A run for this date already holds the lock."
+    },
     "PurgeQueue": {
       "Type": "Task",
       "Comment": "Clears leftover results from previous runs. Must be followed by WaitForPurgeToFinish.",
@@ -72,7 +175,7 @@
         "Input": {
           "novels.$": "$.getRankingOutput.novels",
           "date.$": "$.getRankingOutput.date",
-          "auth_cookies.$": "$.getRankingOutput.auth_cookies",
+          "auth_cookies_version.$": "$.getRankingOutput.auth_cookies_version",
           "execution_id.$": "$$.Execution.Id"
         }
       },
