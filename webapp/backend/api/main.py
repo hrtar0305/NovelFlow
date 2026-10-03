@@ -752,8 +752,6 @@ class NovelRankingShowcaseResponse(BaseModel):
 class ContestShowcaseResponse(BaseModel):
     latest_date: str
     items: List[ContestNovelData] = Field(default_factory=list)
-    # 2026~(수상 발표 전): 급상승 — 직전 수집일 대비 일간 순위가 가장 많이 오른 작품들. 2025 는 비어 있다.
-    movers: List[ContestNovelData] = Field(default_factory=list)
 
 @app.get("/")
 def read_root(response: Response):
@@ -1203,28 +1201,10 @@ def get_contest_showcase(year: int, response: Response):
             raise HTTPException(status_code=404, detail="No latest date found for contest.")
 
         if year != 2025:
-            # 수상작 발표 전: 일간 랭킹 쇼케이스와 같은 '상위 + 급상승'을 **늘 최신 수집일**로 낸다(일간 랭킹과 같은 규칙 —
-            # 과거 날짜의 표를 볼 때는 화면이 '기준일'을 붙인다). 급상승에는 직전 수집일의 일간 순위가 필요하다.
-            items = _fetch_all_contest_items(latest_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl=tbl)
-            # 정책(성인작 제외)을 **고르기 전에** 지난다 — 고른 뒤에 빼면 상위·급상승이 5칸을 못 채운다.
-            items = _apply_content_policy_all([i for i in items if (i.get('View') or 0) >= 0])
-            previous_date = _get_previous_contest_date(latest_date, tbl)
-            prev = _fetch_all_contest_items(previous_date, 'ID, DailyRank', None, tbl=tbl) if previous_date else []
-            prev_by_id = {p['ID']: p for p in prev}
-            prev_ranked = any(p.get('DailyRank') is not None for p in prev)
-            for i in items:
-                _decorate_contest_item(i, year, prev_by_id.get(i['ID']), prev_ranked)
-                # 카드의 '+증가'는 그날 일간 순위의 조회 증가(적재가 저장).
-                i['view_change'] = i.get('ViewDelta', 0)
-            ranked = sorted((i for i in items if i.get('DailyRank') is not None), key=lambda i: i['DailyRank'])
-            top = ranked[:11] or sorted(items, key=lambda i: -(i.get('View') or 0))[:11]   # 순위가 없는 날(첫날)은 누적 조회 상위
-            movers = sorted((i for i in ranked if isinstance(i.get('daily_rank_change'), int) and i['daily_rank_change'] > 0),
-                            key=lambda i: (-i['daily_rank_change'], i['DailyRank']))[:5]
+            # 2026~ 쇼케이스는 프론트가 고른 날짜의 목록(`/api/contests/{year}/{date}`)에서 바로 고른다(일간 순위·변동이 다 있다 —
+            # DECISIONS 2026-10-03). 수상작이 발표되면 그날 목록의 award 로 시상대를 그린다. 이 API 는 2025 수상작 전용이다.
             response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300"
-            # 표지가 없는 작품만 일간 테이블의 표지로 채운다(고른 몇 편만 — 작품마다 조회가 한 번 든다).
-            return {"latest_date": latest_date,
-                    "items": _apply_daily_thumbnail_fallback_to_contest_items(top),
-                    "movers": _apply_daily_thumbnail_fallback_to_contest_items(movers)}
+            return {"latest_date": latest_date, "items": []}
 
         configured_showcase_ids = get_contest_showcase_ids_2025()
 
@@ -1310,7 +1290,8 @@ def get_contest_data_by_date(year: int, date: str, response: Response):
         # 현재 날짜 + 전날 DynamoDB 쿼리 병렬 실행 (리스트 뷰에 필요한 필드만 투영)
         with ThreadPoolExecutor(max_workers=2) as executor:
             future_current = executor.submit(_fetch_all_contest_items, date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl)
-            future_prev = executor.submit(_fetch_all_contest_items, previous_date, _CONTEST_LIST_PROJ, _CONTEST_LIST_NAMES, tbl) if previous_date else None
+            # 직전일은 변동 계산에 쓰는 세 값만 읽는다(누적 순위·조회수 — 2025, 일간 순위 — 2026). 전 속성을 읽으면 2천여 편 × 이틀이 된다.
+            future_prev = executor.submit(_fetch_all_contest_items, previous_date, 'ID, #vw, #rk, DailyRank', {'#vw': 'View', '#rk': 'Rank'}, tbl) if previous_date else None
             current_day_items = future_current.result()
             previous_day_items = future_prev.result() if future_prev else []
 

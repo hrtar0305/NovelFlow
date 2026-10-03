@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, ty
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
 import { Search as SearchIcon } from 'react-bootstrap-icons';
-import { getAvailableDates, getNovelRankingShowcase, getNovelRankingsByDate } from '../services/api';
+import { getAvailableDates, getNovelRankingsByDate } from '../services/api';
 import PageTitle from '../components/ui/PageTitle';
 import DateNav from '../components/ui/DateNav';
 import TagLinks from '../components/ui/TagLinks';
@@ -39,7 +39,6 @@ export default function NovelRankingsPage() {
 
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<RankingNovel[]>([]);
-  const [showcase, setShowcase] = useState<{ date?: string; top: RankingNovel[]; movers: RankingNovel[] }>({ top: [], movers: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<RankingFilter>(() => {
@@ -54,9 +53,6 @@ export default function NovelRankingsPage() {
     getAvailableDates()
       .then(r => setDates(new Set<string>(r.data.available_dates || [])))
       .catch(() => { setError('수집일 목록을 불러오지 못했습니다.'); setLoading(false); });
-    getNovelRankingShowcase()
-      .then(r => setShowcase({ date: r.data.latest_date, top: normalizeNovels(r.data.topThree || []), movers: normalizeNovels(r.data.movers || []) }))
-      .catch(() => setShowcase({ top: [], movers: [] }));
   }, []);
 
   useEffect(() => {
@@ -91,6 +87,18 @@ export default function NovelRankingsPage() {
   const statusBlocked = (filter.statuses ?? []).length > 0 && !statusAvailable && rows.length > 0;
   const hit = useMemo(() => new Set(filter.rule ? [] : filter.tags), [filter]);
   const onTag = useCallback((t: string) => update(toggleTag(filter, t)), [filter, update]);
+
+  // 쇼케이스는 고른 날짜의 표에서 바로 고른다 — 날짜 선택이 쇼케이스 위에 있어 날짜를 바꾸면 쇼케이스도 바뀌길 기대한다
+  // (사용자 검토 2026-10-03). 목록 응답에 순위·변동이 다 있어 따로 부를 API 도 없다(전에는 최신일 쇼케이스 API 를 따로 불렀다).
+  const showcase = useMemo(() => {
+    const byRank = [...rows].sort((a, b) => a.Ranking - b.Ranking);
+    const movers = rows.filter(n => typeof n.rank_change === 'number' && n.rank_change > 0)
+      .sort((a, b) => (b.rank_change as number) - (a.rank_change as number) || a.Ranking - b.Ranking);
+    return {
+      top: byRank.slice(0, 5).map(n => toShowcase(n, <>점수 {formatInt(n.Score)}</>)),
+      movers: movers.slice(0, 5).map(n => toShowcase(n, null, n.rank_change as number)),
+    };
+  }, [rows]);
 
   const strongIf = (keys: SortKey[], v: ReactNode) => (keys.includes(sort.key) ? <b className="rank-strong">{v}</b> : v);
 
@@ -151,9 +159,7 @@ export default function NovelRankingsPage() {
         nav={<DateNav value={dateParam ?? null} availableDates={dates} onChange={d => navigate(`/novels/rankings/${d}`)} />}
         meta={`노벨피아 7일 조회순 상위 ${rows.length || 500}작품`} />
 
-      <Showcase top={showcase.top.map(n => toShowcase(n, <>점수 {formatInt(n.Score)}</>))}
-        movers={showcase.movers.map(n => toShowcase(n, null, typeof n.rank_change === 'number' ? n.rank_change : null))}
-        showcaseDate={showcase.date} tableDate={dateParam ?? null} />
+      {!loading && !error ? <Showcase top={showcase.top} movers={showcase.movers} tableDate={dateParam ?? null} /> : null}
 
       {/* 급상승·신규 진입 탭은 두지 않는다 — 변동 열 내림차순이 곧 NEW → 상승 폭 순이다. */}
       <div className="rank-toolbar" ref={toolbarRef}>
