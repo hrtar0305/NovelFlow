@@ -95,14 +95,33 @@
     },
     "CheckIfDone": {
       "Type": "Task",
-      "Comment": "Checks if the number of messages in the Result Queue matches the number of fanned-out tasks.",
+      "Comment": "Checks if the number of messages in the Result Queue matches the number of fanned-out tasks. Retried because one transient Lambda error here would otherwise fail the run and the collected results would be purged the next day. Safe to re-run: it only peeks at the result queue and restores visibility.",
       "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:np-trend-contest-check-completion",
       "Parameters": {
         "execution_id.$": "$$.Execution.Name",
         "fanned_out_count.$": "$.FanOutResult.fanned_out_count"
       },
       "ResultPath": "$.CompletionCheck",
-      "Next": "IsParsingComplete?"
+      "Next": "IsParsingComplete?",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 4,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "PipelineFail"
+        }
+      ]
     },
     "IsParsingComplete?": {
       "Type": "Choice",

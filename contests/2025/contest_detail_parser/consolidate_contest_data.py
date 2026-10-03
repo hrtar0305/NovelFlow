@@ -16,6 +16,10 @@ class Config:
     DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
     SQS_RESULT_QUEUE_URL = os.environ.get('SQS_RESULT_QUEUE_URL')
     LOOP_TIMEOUT_SECONDS = 600  # 10 minutes
+    # ParsingFailed 자리표시가 이 비율을 넘으면 쓰지 않고 실패한다(데일리 consolidate 의 5% 게이트와 같은 취지).
+    # Inaccessible(삭제·비공개)은 1년째 추적 중이라 평소에도 절반이 넘으므로 세지 않는다 — 실측 2026-10-02 2,570/4,719,
+    # ParsingFailed 는 표본 12일 모두 0건.
+    MAX_PARSING_FAILED_RATIO = 0.05
 
 if not Config.DYNAMODB_TABLE_NAME or not Config.SQS_RESULT_QUEUE_URL:
     raise ValueError("DYNAMODB_TABLE_NAME and SQS_RESULT_QUEUE_URL env vars must be set.")
@@ -55,8 +59,14 @@ def _collect_all_messages(sqs_client, execution_id):
     
     return all_messages, receipt_handles_to_delete
 
+def _is_placeholder(item):
+    return int(item.get('View', -1)) < 0
+
 def _deduplicate_items(messages, execution_id):
-    """Deduplicates items based on 'ID', keeping the one with the earliest SentTimestamp."""
+    """Deduplicates items based on 'ID': real data over placeholders, then the earliest SentTimestamp.
+
+    배치 재시도로 1회차의 자리표시와 2회차의 실데이터가 함께 남을 수 있다. 2026 판 `_dedupe_prefer_real`과 같은 원칙.
+    """
     if not messages:
         return []
     _log(logging.INFO, execution_id, f"Deduplicating {len(messages)} messages based on earliest timestamp...")
@@ -74,8 +84,11 @@ def _deduplicate_items(messages, execution_id):
                 _log(logging.WARNING, execution_id, "Message found without a novel ID.", body=msg['Body'])
                 continue
 
-            # 새로운 아이템이거나, 기존 아이템보다 더 먼저 보내진 경우에만 저장/덮어쓰기
-            if novel_id not in unique_items_map or sent_timestamp < unique_items_map[novel_id][1]:
+            # 새로운 아이템이거나, 자리표시를 실데이터로 바꾸거나, 같은 종류끼리 더 먼저 보내진 경우에만 저장/덮어쓰기
+            cur = unique_items_map.get(novel_id)
+            if (cur is None
+                    or (_is_placeholder(cur[0]) and not _is_placeholder(item))
+                    or (_is_placeholder(cur[0]) == _is_placeholder(item) and sent_timestamp < cur[1])):
                 unique_items_map[novel_id] = (item, sent_timestamp)
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             _log(logging.ERROR, execution_id, f"Failed to process a message during deduplication: {e}", body=msg.get('Body'))
@@ -95,6 +108,19 @@ def _validate_data(execution_id, items, expected_count):
         _log(logging.ERROR, execution_id, error_message)
         raise ValueError(error_message)
     _log(logging.INFO, execution_id, f"Validation successful: {collected_data_count}/{expected_count} unique items collected.")
+
+def _check_quality(execution_id, items):
+    """수량은 맞아도 셀렉터가 깨진 날(전 건 ParsingFailed)은 쓰지 않는다.
+
+    commit 전에 올려야 DynamoDB 쓰기와 SQS 삭제가 둘 다 막히고, 실행이 실패해 알림이 간다.
+    """
+    if not items:
+        return
+    failed = sum(1 for i in items if str(i.get('Title', '')).startswith('N/A (ParsingFailed'))
+    if failed / len(items) > Config.MAX_PARSING_FAILED_RATIO:
+        error_message = f"Quality gate failed: {failed}/{len(items)} ParsingFailed placeholders."
+        _log(logging.ERROR, execution_id, error_message)
+        raise ValueError(error_message)
 
 def _calculate_and_store_tag_stats(dynamodb_table, execution_id, items):
     """Calculates tag statistics from all items and stores them in a single DynamoDB item."""
@@ -191,7 +217,9 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
         _log(logging.INFO, execution_id, f"Successfully added {latest_date} to CONTEST_AVAILABLE_DATES.")
     except Exception as e:
         _log(logging.ERROR, execution_id, f"Failed to update CONTEST_AVAILABLE_DATES item: {e}")
-        # This is not a critical failure, so we don't re-raise the exception.
+        # 백엔드는 날짜 목록·직전 수집일을 이 항목에서만 읽으므로 사실상 커밋의 일부다. 다시 던져 SQS 삭제를 막고
+        # 실행을 실패시킨다(행 쓰기·집합 ADD 모두 멱등이라 재시도·재실행으로 복구된다).
+        raise
 
 def _delete_messages_from_sqs(sqs_client, execution_id, receipt_handles):
     """Deletes messages from SQS in batches of 10."""
@@ -226,6 +254,7 @@ def handler(event, context):
     # 2. Deduplicate and Validate
     unique_items = _deduplicate_items(all_messages, execution_id)
     _validate_data(execution_id, unique_items, expected_count)
+    _check_quality(execution_id, unique_items)
 
     # 3. Commit Phase: Process, Upload, then Delete
     try:

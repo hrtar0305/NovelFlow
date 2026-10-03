@@ -138,8 +138,10 @@ def get_previous_ids_from_s3(s3_client, execution_id):
         _log(logging.INFO, execution_id, "S3 object not found. Assuming first run.")
         return set()
     except Exception as e:
-        _log(logging.ERROR, execution_id, f"Failed to retrieve or parse IDs from S3: {e}. Starting with an empty set.")
-        return set()
+        # 빈 집합으로 넘어가면 handler 의 finally 가 이번 실행분만으로 마스터 목록을 덮어쓴다.
+        # 이 호출은 try 밖이라 여기서 올리면 SSM·S3 어느 쪽도 쓰지 않고 실패한다.
+        _log(logging.ERROR, execution_id, f"Failed to retrieve or parse IDs from S3: {e}. Aborting without writing.")
+        raise
 
 # =====================================================================================
 # LAMBDA HANDLER: Get Contest Novel IDs by Incrementing
