@@ -68,3 +68,32 @@ export function nextContestSort(current: ContestSort, key: ContestSortKey): Cont
 
 /** 수상 표시 순서(쇼케이스 배치). 순서에 없는 작품(본선·수상 없음)은 그 뒤에 조회수 순으로 선다. */
 export const AWARD_ORDER: Record<string, number> = { 대상: 0, 최우수상: 1, 탑툰상: 2, 우수상: 3, 특별상: 4 };
+
+/** 공모전 추이 API(`/api/trends/contests/:year/novels/:id/...`)의 한 행. */
+export interface ContestTrendRow {
+  Date: string;
+  Rank?: number | null;
+  DailyRank?: number | null;
+  View?: number | null;
+  Like?: number | null;
+  Fav?: number | null;
+  Eps?: number | null;
+  Alr?: number | null;
+  Synopsis?: string | null;
+}
+
+/**
+ * 공모전 추이 한 행 → 지표 계열(`MetricRow`) 모양. 대표 순위는 2025 누적(`Rank`), 2026~ 일간(`DailyRank`).
+ * **삭제·비공개 자리표시(View = -1)는 '기록 없음'으로 바꾼다** — 그대로 두면 -1 이 실제 값으로 들어가 그날과 다음 날의
+ * 증가량이 수천만으로 튄다(공모전은 일시 비공개 뒤 재공개가 실제로 있다).
+ */
+export function contestTrendRow(d: ContestTrendRow, daily: boolean) {
+  const placeholder = typeof d.View === 'number' && d.View < 0;
+  const v = (x: number | null | undefined) => (placeholder || x == null || x < 0 ? null : x);
+  return {
+    ...d,
+    Ranking: placeholder ? null : (daily ? (d.DailyRank ?? null) : (d.Rank ?? null)),
+    Score: null,
+    View: v(d.View), Like: v(d.Like), Fav: v(d.Fav), Eps: v(d.Eps), Alr: v(d.Alr),
+  };
+}

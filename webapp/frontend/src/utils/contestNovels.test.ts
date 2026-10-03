@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sortContestNovels, nextContestSort, CONTEST_DEFAULT_SORT, type ContestNovel, CONTEST_DAILY_SORT } from './contestNovels';
+import { sortContestNovels, nextContestSort, contestTrendRow, CONTEST_DEFAULT_SORT, type ContestNovel, CONTEST_DAILY_SORT } from './contestNovels';
 
 const c = (ID: string, Rank: number, o: Partial<ContestNovel> = {}): ContestNovel =>
   ({ ID, Rank, Title: ID, AuthorName: 'a', View: 1000 - Rank, view_change: 10, like_to_view_ratio: 0.05, Eps: 10, Tags: [], Date: 'd', ...o });
@@ -44,5 +44,17 @@ describe('2026 일간 순위 정렬', () => {
   });
   it('일간 순위 열은 처음 누르면 1위부터', () => {
     expect(nextContestSort({ key: 'View', direction: 'descending' }, 'daily_rank')).toEqual({ key: 'daily_rank', direction: 'ascending' });
+  });
+});
+
+describe('contestTrendRow', () => {
+  it('2026 은 일간 순위, 2025 는 누적 순위', () => {
+    expect(contestTrendRow({ Date: '2026-10-02', Rank: 30, DailyRank: 4, View: 100 }, true).Ranking).toBe(4);
+    expect(contestTrendRow({ Date: '2025-10-02', Rank: 30, View: 100 }, false).Ranking).toBe(30);
+    expect(contestTrendRow({ Date: '2026-10-01', Rank: 30, View: 100 }, true).Ranking).toBeNull();   // 일간 순위가 없는 날
+  });
+  it('자리표시(View -1)는 기록 없음', () => {
+    const r = contestTrendRow({ Date: '2026-10-05', Rank: 900, DailyRank: 3, View: -1, Like: -1, Fav: -1, Eps: -1 }, true);
+    expect(r).toMatchObject({ Ranking: null, View: null, Like: null, Fav: null, Eps: null });
   });
 });

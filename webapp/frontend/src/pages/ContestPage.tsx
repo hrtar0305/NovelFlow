@@ -12,6 +12,7 @@ import FilterDrawer from '../components/ranking/FilterDrawer';
 import Showcase, { type ShowcaseItem } from '../components/ranking/Showcase';
 import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
+import NovelRowExpand from '../components/ranking/NovelRowExpand';
 import { EMPTY_FILTER, activeFilterCount, applyRankingFilter, tagCounts, toggleTag, type RankingFilter } from '../utils/rankingQuery';
 import {
   AWARD_ORDER, CONTEST_DAILY_SORT, CONTEST_DEFAULT_SORT, isDeletedContestNovel, nextContestSort, sortContestNovels,
@@ -81,6 +82,7 @@ export default function ContestPage() {
   const [career, setCareer] = useState<Career>('all');
   useEffect(() => { setSort(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT); setCareer('all'); setWinnersOnly(false); }, [daily]);
   const [drawer, setDrawer] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const toolbarRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +109,7 @@ export default function ContestPage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setOpenId(null);
     getContestDataByDate(parseInt(year, 10), dateParam)
       .then(r => { if (!cancelled) setRows(mapRows(r.data || [])); })
       .catch(() => { if (!cancelled) { setRows([]); setError('공모전 랭킹을 불러오지 못했습니다.'); } })
@@ -286,6 +289,10 @@ export default function ContestPage() {
           : (
             <RankTable ariaLabel="공모전 작품 순위" /* 2026 은 열이 12개라 992~1100px 에서 제목 칸이 114px 까지 준다 — 그 폭부터 모바일 행 */ compactBelow={daily ? 1100 : 992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
               sort={sort} onSort={k => setSort(s => nextContestSort(s, k as ContestSortKey))}
+              expandedKey={openId}
+              onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}
+              renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} status={n.serial_status}
+                contest={{ year, daily }} />}
               renderMobileRow={mobileRow}
               emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 공모전 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
           )}
