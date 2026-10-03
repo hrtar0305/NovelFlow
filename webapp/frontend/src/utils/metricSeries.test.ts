@@ -44,6 +44,19 @@ describe('summarizeMetrics', () => {
     expect(s.ratio).toBeCloseTo(0.1);
   });
   it('기록이 없으면 null', () => expect(summarizeMetrics(buildMetricPoints([out('2026-09-01')], 'calendar'))).toBeNull());
+  it('공모전: 순위 없는 기록(수집 첫날 등)은 순위 요약에서 빼고, 증가량에는 쓴다', () => {
+    const s = summarizeMetrics(buildMetricPoints([rec('2026-10-01', null, 1000), rec('2026-10-02', 12, 3000), rec('2026-10-03', 5, 6000)], 'collection'))!;
+    expect(s.first.date).toBe('2026-10-01');          // 증가량의 시작은 첫 기록
+    expect(s.rankFirst?.rank).toBe(12);                // 순위 요약의 시작은 첫 순위
+    expect(s.rankLast?.rank).toBe(5);
+    expect(s.best.rank).toBe(5);
+    expect(s.d.view).toBe(5000);
+  });
+  it('순위가 하루도 없으면 순위 요약이 없다', () => {
+    const s = summarizeMetrics(buildMetricPoints([rec('2026-10-01', null, 1000)], 'collection'))!;
+    expect(s.rankFirst).toBeNull();
+    expect(s.rankLast).toBeNull();
+  });
 });
 
 describe('signed / rankTicks', () => {

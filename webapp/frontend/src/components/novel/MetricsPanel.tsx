@@ -87,10 +87,11 @@ export default function MetricsPanel({ points, kind, status }: Props) {
     });
     const idx = (p: MetricPoint) => points.indexOf(p);
     const marks = new Map<number, string>();
-    if (summary) {
-      marks.set(idx(summary.first), `${summary.first.rank}위`);
-      if (summary.best !== summary.first && summary.best !== summary.last) marks.set(idx(summary.best), `최고 ${summary.best.rank}위`);
-      marks.set(idx(summary.last), `${summary.last.rank}위`);
+    const { rankFirst: rf, rankLast: rl } = summary ?? { rankFirst: null, rankLast: null };
+    if (summary && rf && rl) {
+      marks.set(idx(rf), `${rf.rank}위`);
+      if (summary.best !== rf && summary.best !== rl && summary.best.rank != null) marks.set(idx(summary.best), `최고 ${summary.best.rank}위`);
+      marks.set(idx(rl), `${rl.rank}위`);
     }
     const lonely = (i: number) => points[i].rec && !(points[i - 1]?.rec) && !(points[i + 1]?.rec);
     return (
@@ -229,12 +230,18 @@ export default function MetricsPanel({ points, kind, status }: Props) {
     <div className="mx">
       {summary ? (
         <p className="mx-sum">
-          {summary.first === summary.last
-            ? <>{formatDateKo(summary.last.date)} <b>{summary.last.rank}위</b></>
-            : <>{formatDateKo(summary.first.date)} <b>{summary.first.rank}위</b> → {formatDateKo(summary.last.date)} <b>{summary.last.rank}위</b></>}
-          {summary.best !== summary.first && summary.best !== summary.last ? <> · 최고 <b>{summary.best.rank}위</b>({formatDateKo(summary.best.date)})</> : null}
-          {kind === 'daily' && summary.days < summary.total ? <> · 순위권 <b>{summary.days}일</b>/{summary.total}일</> : null}
-          <i>|</i>조회 <b>+{formatMan(summary.d.view)}</b>
+          {/* 순위는 순위가 있는 날로만 요약한다(공모전은 순위 없는 기록이 있다 — rankFirst 설명). 하루도 없으면 순위 부분을 뺀다. */}
+          {summary.rankFirst && summary.rankLast ? (
+            <>
+              {summary.rankFirst === summary.rankLast
+                ? <>{formatDateKo(summary.rankLast.date)} <b>{summary.rankLast.rank}위</b></>
+                : <>{formatDateKo(summary.rankFirst.date)} <b>{summary.rankFirst.rank}위</b> → {formatDateKo(summary.rankLast.date)} <b>{summary.rankLast.rank}위</b></>}
+              {summary.best !== summary.rankFirst && summary.best !== summary.rankLast ? <> · 최고 <b>{summary.best.rank}위</b>({formatDateKo(summary.best.date)})</> : null}
+              {kind === 'daily' && summary.days < summary.total ? <> · 순위권 <b>{summary.days}일</b>/{summary.total}일</> : null}
+              <i>|</i>
+            </>
+          ) : null}
+          조회 <b>+{formatMan(summary.d.view)}</b>
           <i>|</i>추천 <b>{signed(summary.d.like)}</b>
           <i>|</i>선호 <b>{signed(summary.d.fav)}</b>
           <i>|</i>회차 <b>{signed(summary.d.eps)}</b>

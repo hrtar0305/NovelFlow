@@ -82,8 +82,16 @@ export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowSta
 }
 
 export interface MetricSummary {
+  /** 기간 증가량의 처음·끝 기록 */
   first: MetricPoint;
   last: MetricPoint;
+  /**
+   * 순위 요약의 처음·끝 — 순위가 있는 기록만. 일간은 기록 = 순위권이라 first/last 와 같지만, 공모전은 순위 없는 기록
+   * (수집 첫날·직전 기준값이 없는 날)이 있어 그 날을 '시작 순위'로 쓰면 'null위'가 됐다. 순위가 하루도 없으면 null.
+   */
+  rankFirst: MetricPoint | null;
+  rankLast: MetricPoint | null;
+  /** 최고 순위 기록(순위가 하루도 없으면 last — rank 가 null 이다) */
   best: MetricPoint;
   /** 기록이 있는 날 수 / 표에 오른 날 수 */
   days: number;
@@ -106,7 +114,7 @@ export function summarizeMetrics(points: MetricPoint[]): MetricSummary | null {
     view: sub(last.view, base('view', first.view)), like: sub(last.like, base('like', first.like)),
     fav: sub(last.fav, base('fav', first.fav)), eps: sub(last.eps, base('eps', first.eps)),
   };
-  return { first, last, best, days: recs.length, total: points.length, d, ratio: d.view && d.view > 0 && d.like != null ? d.like / d.view : null };
+  return { first, last, rankFirst: ranked[0] ?? null, rankLast: ranked[ranked.length - 1] ?? null, best, days: recs.length, total: points.length, d, ratio: d.view && d.view > 0 && d.like != null ? d.like / d.view : null };
 }
 
 /** 부호를 붙인 증감(+1,234 / −207 / ±0). */

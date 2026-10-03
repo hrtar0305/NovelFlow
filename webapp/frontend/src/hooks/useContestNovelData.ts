@@ -134,7 +134,9 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
             setLoading(false);
         }
     }).catch((err) => {
-        setError(err.response?.data?.detail || '해당 소설을 찾을 수 없습니다.');
+        // 백엔드의 영문 detail('Contest novel not found' 등)을 그대로 보이지 않는다 — 설계 §8(내부 메시지 비노출).
+        // 404 는 '아직 수집되지 않았거나 공모전 작품이 아님'이다(자정 뒤 등록된 작품은 다음 자정까지 기록이 없다).
+        setError(err.response?.status === 404 ? '이 작품의 공모전 기록이 아직 없습니다. 새로 등록된 작품은 다음 자정 수집 뒤에 보입니다.' : '작품 정보를 불러오지 못했습니다.');
         setLoading(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
