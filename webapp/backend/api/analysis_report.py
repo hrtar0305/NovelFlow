@@ -41,6 +41,13 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
 
     표본을 뽑지 않는다 — 기간 안의 **모든 수집일**이 들어온다. 그래서 최고 순위와
     평균 순위가 실제 값이 된다(표본 4개만 보던 때는 알 수 없었다).
+
+    **자리표시(placeholder) 행은 순위로만 센다.** 크롤러가 상세를 못 읽은 작품은
+    순위는 정상이고 회차·조회·추천이 0으로 실린다(스냅샷에는 표시가 따로 없다). 그 값을
+    관측으로 쓰면 첫날이 자리표시인 작품은 `added_eps` 가 전체 회차가, `delta_view` 가 누적
+    조회 전체가 된다. 랭킹에 든 실제 작품은 조회가 0일 수 없으므로 `view == 0 and eps == 0`
+    을 결손으로 보고, `first_*`/`last_*`(값과 그 날짜)는 정상 행에서만 잡는다. 정상 행이
+    하나도 없는 작품은 기간 증가량이 전부 None 이다. 순위 기준 마지막 날은 `dates[-1]`.
     """
     out: dict[str, dict] = {}
     for idx, s in enumerate(snaps):
@@ -50,18 +57,25 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
             if w is None:
                 w = out[nid] = {
                     'ranks': [], 'dates': [], 'first_idx': idx, 'last_idx': idx,
-                    'first_eps': s['eps'][i], 'last_eps': s['eps'][i],
-                    'first_view': s['view'][i], 'last_view': s['view'][i],
-                    'first_like': s['like'][i], 'last_like': s['like'][i],
-                    'first_date': date, 'last_date': date,
+                    'value_obs': 0,
+                    'first_eps': None, 'last_eps': None,
+                    'first_view': None, 'last_view': None,
+                    'first_like': None, 'last_like': None,
+                    'first_date': None, 'last_date': None,
                 }
             w['ranks'].append(s['rank'][i])
             w['dates'].append(date)
             w['last_idx'] = idx
+            if s['view'][i] == 0 and s['eps'][i] == 0:   # 자리표시: 값은 모른다
+                continue
+            if w['first_eps'] is None:
+                w['first_eps'], w['first_view'] = s['eps'][i], s['view'][i]
+                w['first_like'], w['first_date'] = s['like'][i], date
             w['last_eps'] = s['eps'][i]
             w['last_view'] = s['view'][i]
             w['last_like'] = s['like'][i]
             w['last_date'] = date
+            w['value_obs'] += 1
 
     for w in out.values():
         rs = w['ranks']
@@ -69,6 +83,10 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
         w['worst_rank'] = max(rs)
         w['avg_rank'] = sum(rs) / len(rs)
         w['observations'] = len(rs)
+        if w['first_eps'] is None:
+            w['added_eps'] = w['per_week'] = None
+            w['delta_view'] = w['delta_like'] = w['period_ratio'] = None
+            continue
         w['added_eps'] = w['last_eps'] - w['first_eps']
         span = _day_gap(w['first_date'], w['last_date'])
         w['per_week'] = (w['added_eps'] / span) * 7 if span else 0.0
@@ -210,11 +228,12 @@ def pace_distribution(works: dict[str, dict], end_ids: set[str]) -> dict:
     보여주고 작품에 대한 판단은 하지 않는다. 그래서 순위표를 없애고 분포와
     분위수만 둔다. 특정 작품이 분포에서 어디인지는 '같은 순위대와 견주기'가 답한다.
     """
-    rows = [w for nid, w in works.items() if nid in end_ids and w['observations'] >= 2]
+    # 관측 횟수는 **값을 읽은 날**(자리표시 제외, `value_obs`)로 센다 — 순위만 있는 날로는 페이스를 잴 수 없다.
+    rows = [w for nid, w in works.items() if nid in end_ids and w['value_obs'] >= 2]
     growing = [w for w in rows if w['added_eps'] > 0]
     flat = [w for w in rows if w['added_eps'] == 0]
     weird = [w for w in rows if w['added_eps'] < 0]
-    few = [w for nid, w in works.items() if nid in end_ids and w['observations'] < 2]
+    few = [w for nid, w in works.items() if nid in end_ids and w['value_obs'] < 2]
 
     vals = sorted(w['per_week'] for w in growing)
     hist = []
