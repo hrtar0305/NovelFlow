@@ -89,13 +89,7 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
       <header className="detail-head">
         <div className="detail-head__cover"><NovelCover url={details.ThumbnailURL} title={details.Title} imageClassName="detail-head__cover-img" /></div>
         <div className="detail-head__body">
-          {/* 노벨피아 링크는 작품(제목)의 것이라 제목 끝에 작게 붙인다(작가 줄에 있으면 작가 페이지 링크로 읽힌다). */}
-          <h1 className="detail-head__title">
-            {details.Title || '(제목 없음)'}
-            <a href={novelUrl} target="_blank" rel="noopener noreferrer" className="detail-head__ext" aria-label="노벨피아에서 보기" title="노벨피아에서 보기">
-              <BoxArrowUpRight size={15} aria-hidden="true" />
-            </a>
-          </h1>
+          <h1 className="detail-head__title">{details.Title || '(제목 없음)'}</h1>
           <p className="detail-head__by">
             {details.AuthorID ? <Link to={`/authors/${details.AuthorID}`}>{details.AuthorName}</Link> : <span>{details.AuthorName}</span>}
             {byExtra ? <span className="detail-head__extra">{byExtra}</span> : null}
@@ -123,6 +117,11 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
           </div>
           <InlineNums items={popularity} />
           {ratios ? <InlineNums items={ratios} /> : null}
+          {/* 노벨피아 링크: PC 는 제목 줄 오른쪽 끝 버튼(위치는 CSS), 모바일은 머리 맨 아래. 작가 줄에 두면 작가 링크로,
+              제목 끝 아이콘은 제목 글자에 비해 작아 어색했다(2026-10-04 사용자 선택). */}
+          <a href={novelUrl} target="_blank" rel="noopener noreferrer" className="detail-head__ext">
+            노벨피아에서 보기 <BoxArrowUpRight size={12} aria-hidden="true" />
+          </a>
         </div>
         {/* 작품 소개는 표지 아래부터 전체 폭으로(표지 옆에 두면 표지 아래가 비었다). 제목 없이 옅은 바탕 한 덩어리로 소개글임을 드러낸다. */}
         {details.Synopsis ? <section className="detail-intro" aria-label="작품 소개"><Synopsis text={details.Synopsis} /></section> : null}

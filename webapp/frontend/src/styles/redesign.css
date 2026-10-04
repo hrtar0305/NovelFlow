@@ -141,9 +141,11 @@
 .detail-head__by { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; margin: 0; font-size: 0.9375rem; color: var(--np-text-secondary); }
 .detail-head__by > a:first-child, .detail-head__by > span:first-child { color: var(--np-text-heading); font-weight: 700; text-decoration: none; }
 .detail-head__extra::before { content: "·"; margin-right: 0.6rem; color: var(--np-text-faint); }
-.detail-head__ext { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: 0.3rem; vertical-align: 0.15em; border-radius: 50%; color: var(--np-text-faint); }
-.detail-head__ext svg { display: block; }
-.detail-head__ext:hover, .detail-head__ext:focus-visible { color: var(--np-text-heading); background: var(--np-surface-alt); }
+/* 노벨피아 링크 버튼: PC 는 제목 줄 오른쪽 끝(제목은 그만큼 오른쪽을 비운다), 모바일은 머리 맨 아래 한 줄. */
+.detail-head__body { position: relative; }
+.detail-head__ext { position: absolute; top: 0.45rem; right: 0; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 0.95rem; border: 1.5px solid var(--np-text-heading); border-radius: 17px; color: var(--np-text-heading); font-size: 0.8125rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.detail-head__ext:hover, .detail-head__ext:focus-visible { background: var(--np-surface-alt); color: var(--np-text-heading); }
+.detail-head__title { padding-right: 172px; }
 .detail-head__facts { display: flex; flex-wrap: wrap; margin: 0.45rem 0 0; font-size: 0.875rem; color: var(--np-text-secondary); }
 .detail-head__status { font-weight: 700; color: var(--np-text-primary); }
 .detail-head__status.is-done { color: var(--np-text-heading); }
@@ -180,6 +182,8 @@
   .detail-head__body { display: contents; }
   .detail-head__title { margin: 0; }
   .detail-head__now, .detail-head .inline-nums, .detail-head__body > .tag-links { grid-column: 1 / -1; }
+  .detail-head__title { padding-right: 0; }
+  .detail-head__ext { position: static; grid-column: 1 / -1; justify-self: start; margin-top: 0.4rem; }
   .detail-head__now { margin: 0.9rem 0 0.4rem; }
 }
 

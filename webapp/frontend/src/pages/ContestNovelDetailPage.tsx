@@ -17,8 +17,9 @@ import { buildMetricPoints } from '../utils/metricSeries';
  * 2026~ 은 목록 표처럼 초반·최신 잔류를 근거 조회수와 함께 붙인다.
  * 전일 대비는 실제 직전 수집일 기준이다(DECISIONS 2026-07-01).
  */
-/** 참가작이 모두 다는 배지 — 공모전 상세에서는 걸러 낸다(배지 이름은 백엔드 `_badge_labels`). */
-const CONTEST_COMMON_BADGES = new Set(['우주최강', '자유연재']);
+/** 이 공모전 참가작이면 모두 다는 배지 — 공모전 상세에서는 걸러 낸다(배지 이름은 백엔드 `_badge_labels`).
+ *  '자유연재'는 지금은 모두에게 있지만 PLUS 로 옮기는 작품이 생기면 갈라지는 값이라 남긴다(2026-10-04 사용자). */
+const CONTEST_COMMON_BADGES = new Set(['우주최강']);
 
 const ok = (v?: number | null): v is number => typeof v === 'number' && v >= 0;
 /** 잔류율 옆 근거 '1화 6,609 → 30화 2,223' — 일간 상세 머리(NovelHeader)와 같은 표기. */
@@ -96,7 +97,7 @@ const ContestNovelDetailBody = () => {
     // 최신 수집이 자리표시(삭제·비공개 등)면 알린다 — 수치는 직전 정상 수집일 것이거나 비어 있다.
     details.is_unavailable ? `최근 수집에서 열리지 않음${details.values_date ? `(수치는 ${formatDateKo(details.values_date)} 기준)` : ''}` : null,
   ].filter(Boolean);
-  // 참가작이면 모두 다는 배지(공모전·자유연재)는 이 화면에서 정보가 아니다.
+  // 참가작이면 모두 다는 공모전 배지는 이 화면에서 정보가 아니다.
   const headDetails = { ...details, badges: (details.badges ?? []).filter(b => !CONTEST_COMMON_BADGES.has(b)) };
 
   return (
