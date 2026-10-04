@@ -69,6 +69,11 @@ export function nextContestSort(current: ContestSort, key: ContestSortKey): Cont
 /** 수상 표시 순서(쇼케이스 배치). 순서에 없는 작품(본선·수상 없음)은 그 뒤에 조회수 순으로 선다. */
 export const AWARD_ORDER: Record<string, number> = { 대상: 0, 최우수상: 1, 탑툰상: 2, 우수상: 3, 특별상: 4 };
 
+/** 수상 단계(표기 굵기·밝기). 대상만 강조색 — 모르는 상 이름은 가운데 단계. */
+export type AwardTier = 'grand' | 'top' | 'mid' | 'minor';
+export const awardTier = (award: string): AwardTier =>
+  (award === '대상' ? 'grand' : award === '최우수상' ? 'top' : award === '본선' ? 'minor' : 'mid');
+
 /** 공모전 추이 API(`/api/trends/contests/:year/novels/:id/...`)의 한 행. */
 export interface ContestTrendRow {
   Date: string;

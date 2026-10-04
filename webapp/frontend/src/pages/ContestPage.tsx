@@ -13,9 +13,10 @@ import Showcase, { type ShowcaseItem } from '../components/ranking/Showcase';
 import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import NovelRowExpand from '../components/ranking/NovelRowExpand';
+import AwardText from '../components/contest/AwardText';
 import { EMPTY_FILTER, activeFilterCount, applyRankingFilter, tagCounts, toggleTag, type RankingFilter } from '../utils/rankingQuery';
 import {
-  AWARD_ORDER, CONTEST_DAILY_SORT, CONTEST_DEFAULT_SORT, isDeletedContestNovel, nextContestSort, sortContestNovels,
+  AWARD_ORDER, awardTier, CONTEST_DAILY_SORT, CONTEST_DEFAULT_SORT, isDeletedContestNovel, nextContestSort, sortContestNovels,
   type ContestNovel, type ContestSort, type ContestSortKey,
 } from '../utils/contestNovels';
 import { formatInt, formatRatio } from '../utils/format';
@@ -58,8 +59,6 @@ const mapRows = (items: ContestNovel[]) => items.map(n => ({
   like_to_view_ratio: n.View && n.View > 0 ? (n.Like ?? 0) / n.View : 0,
 }));
 
-const AwardText = ({ award }: { award?: string | null }) =>
-  award ? <span className={`award-text${award === '본선' ? ' award-text--minor' : ''}`}>{award}</span> : null;
 
 export default function ContestPage() {
   const { year = LATEST_CONTEST_YEAR, date: dateParam } = useParams<{ year: string; date?: string }>();
@@ -207,7 +206,8 @@ export default function ContestPage() {
     { key: 'vchg', header: '일간 조회', aside: <FootnoteRef id="cview" n={2} />, width: '70px', sortKey: 'view_change',
       // 2026: 비교할 직전 기록이 없으면(일간 순위 없음) 0 이 아니라 '알 수 없음'이다.
       render: n => (isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : strongIf(['view_change'], formatInt(n.view_change))) },
-    { key: 'view', header: '누적 조회', width: daily ? '72px' : '80px', sortKey: 'View',
+    // 2025 는 누적이 천만 단위(16,731,510)라 80px 에서 줄바꿈됐다(1920 폭 실측).
+    { key: 'view', header: '누적 조회', width: daily ? '72px' : '96px', sortKey: 'View',
       render: n => (isDeletedContestNovel(n) ? dash : strongIf(['View'], formatInt(n.View))) },
     { key: 'ratio', header: '추천비', width: '56px', sortKey: 'like_to_view_ratio',
       render: n => (isDeletedContestNovel(n) ? dash : strongIf(['like_to_view_ratio'], formatRatio(n.like_to_view_ratio, 2))) },
@@ -255,7 +255,7 @@ export default function ContestPage() {
                 aria-label={`${n.Title || '공모전 작품'} 상세 보기`}>
                 <div className="media-rank-card__cover">
                   <NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="media-rank-card__cover-image" />
-                  {n.award ? <div className="media-rank-card__rank contest-award-chip">{n.award}</div> : null}
+                  {n.award ? <div className={`media-rank-card__rank contest-award-chip contest-award-chip--${awardTier(n.award)}`}>{n.award}</div> : null}
                 </div>
                 <div className="media-rank-card__overlay">
                   <div className="media-rank-card__title">{n.Title || '(제목 없음)'}</div>

@@ -323,13 +323,19 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .text-toggle__item { display: inline-flex; align-items: flex-start; }
 
 /* ── 공모전: 수상은 강조색 글자 하나(여러 색 칩 대신) ── */
-.award-text { font-size: 0.8125rem; font-weight: 700; color: var(--np-accent); white-space: nowrap; }
-.award-text--minor { font-weight: 600; color: var(--np-text-secondary); }
+/* 수상: 강조색은 대상에만(표에서 빨강 = 맨 위 — 1~3위와 같은 뜻). 나머지는 굵기·밝기 단계(AwardText). */
+.award-text { font-size: 0.8125rem; white-space: nowrap; }
+.award-text--grand { font-weight: 800; color: var(--np-accent); }
+.award-text--top { font-weight: 700; color: var(--np-text-heading); }
+.award-text--mid { font-weight: 600; color: var(--np-text-primary); }
+.award-text--minor { font-weight: 500; color: var(--np-text-secondary); }
 .rank-title--muted { color: var(--np-text-faint); font-weight: 500; }
 .contest-award-poster .media-rank-card__rank.contest-award-chip {
   display: inline-flex; align-items: center; height: 1.65rem; padding: 0 0.6rem; border-radius: 13px;
   border: 1px solid rgba(255, 255, 255, 0.14); background-color: rgba(10, 11, 14, 0.66); color: var(--np-on-image); font-size: 0.75rem; font-weight: 800;
 }
+/* 대상 칩만 강조색으로 채운다 — 나머지 상은 같은 어두운 칩(상끼리의 단계는 표·상세의 글자 굵기로). */
+.contest-award-poster .media-rank-card__rank.contest-award-chip--grand { border-color: transparent; background-color: var(--np-accent); color: var(--np-on-accent); }
 .detail-head__contest { color: var(--np-text-secondary); }
 .detail-head__contest b { font-weight: 700; }
 

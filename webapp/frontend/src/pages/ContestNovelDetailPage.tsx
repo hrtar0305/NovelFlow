@@ -4,6 +4,7 @@ import { format, parseISO, subDays } from 'date-fns';
 import { useContestNovelData } from '../hooks/useContestNovelData';
 import { getContestNovelTrend } from '../services/api';
 import NovelHeader from '../components/novel/NovelHeader';
+import AwardText from '../components/contest/AwardText';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { describeContestRank } from '../utils/currentRank';
 import { formatDateKo, formatInt, formatMan, formatRatio } from '../utils/format';
@@ -92,7 +93,7 @@ const ContestNovelDetailBody = () => {
   const award = details.award;
   const veteran = (details as { is_veteran?: boolean | null }).is_veteran;
   const byExtraParts: ReactNode[] = [
-    award ? <b className={award === '본선' ? undefined : 'award-text'}>{award}</b> : null,
+    award ? <AwardText award={award} /> : null,
     veteran === true ? '기성 작가' : veteran === false ? '신인 작가' : null,
     // 최신 수집이 자리표시(삭제·비공개 등)면 알린다 — 수치는 직전 정상 수집일 것이거나 비어 있다.
     details.is_unavailable ? `최근 수집에서 열리지 않음${details.values_date ? `(수치는 ${formatDateKo(details.values_date)} 기준)` : ''}` : null,
