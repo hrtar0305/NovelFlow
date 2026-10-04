@@ -15,7 +15,7 @@
 (원본 버킷 `contest/2026/{date}/` 는 원본 재계산이 읽으므로 쓰지 않는다).
 
     python scripts/capture_official_top100.py                 # 지금 한 번
-    python scripts/capture_official_top100.py --at 23:50 00:00:30 00:05 00:15 00:30 01:00   # 그 시각마다(KST, 다음 도래)
+    python scripts/capture_official_top100.py --auth --at 00:00:30 00:03 00:06 --until-success   # 자정 직후 한 번(실패할 때만 다음 시각)
     python scripts/capture_official_top100.py --no-s3         # 로컬에만
     python scripts/capture_official_top100.py --auth          # 로그인·성인 모드(성인작 포함)
 
@@ -164,6 +164,7 @@ def main():
     ap.add_argument('--at', nargs='*', help='KST 시각(HH:MM[:SS]) — 다음에 오는 그 시각마다 받는다')
     ap.add_argument('--no-s3', action='store_true')
     ap.add_argument('--auth', action='store_true', help='로그인·성인 모드 세션(데일리 크롤러의 SSM 쿠키)')
+    ap.add_argument('--until-success', action='store_true', help='--at 의 시각 중 처음 성공하면 끝낸다(나머지는 재시도용)')
     a = ap.parse_args()
     if not a.at:
         capture(not a.no_s3, a.auth)
@@ -177,6 +178,8 @@ def main():
             time.sleep(wait)
         try:
             capture(not a.no_s3, a.auth)
+            if a.until_success:
+                return
         except Exception as e:  # noqa: BLE001 — 한 번 실패해도 다음 시각은 받는다
             print(json.dumps({'failed_at': datetime.now(KST).isoformat(), 'error': repr(e)[:300]}), flush=True)
 
