@@ -131,7 +131,18 @@
         "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
         "InvocationType": "Event",
         "Payload": {
-          "content.$": "States.Format('2026 공모전 {} 수집: 같은 날짜의 예약 실행이 이미 있어 이 실행({})은 건너뛰었습니다.', $.Resolved.date, $$.Execution.Name)",
+          "notice": {
+            "level": "info",
+            "pipeline": "2026 공모전",
+            "date.$": "$.Resolved.date",
+            "title": "중복 실행이라 건너뜀",
+            "lines": [
+              "같은 날짜의 실행이 이미 날짜 잠금을 잡아서 이 실행은 아무것도 하지 않고 끝냈습니다.",
+              "예약이 두 번 전달됐거나, 입력 없이 손으로 돌린 실행이 먼저 잠금을 잡은 경우입니다. 잠금은 풀리지 않으므로, 잠금을 잡은 실행은 아직 도는 중일 수도, 이미 끝났거나 실패했을 수도 있습니다."
+            ],
+            "action.$": "States.Format('잠금을 잡은 실행이 성공했는지 확인하세요 — 잠금 항목 NovelFlowContest2026 테이블 ID=RUN_LOCK#{}, Date=LOCK 의 ExecutionArn. 그 실행이 실패했고 아직 01:00 전이면 입력 {}\"target_date\": \"{}\"{} 로 다시 받을 수 있습니다(잠금을 잡지 않습니다).', $.Resolved.date, '{', $.Resolved.date, '}')",
+            "run.$": "$$.Execution.Name"
+          },
           "mention": false
         }
       },
@@ -545,7 +556,7 @@
                 "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
                 "InvocationType": "Event",
                 "Payload": {
-                  "content.$": "$.Result.notice",
+                  "notice.$": "$.Result.notice",
                   "mention": false
                 }
               },

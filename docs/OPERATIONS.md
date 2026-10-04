@@ -145,7 +145,7 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 |---|---|---|
 | EventBridge 규칙 `novelflow-pipeline-failure` | 두 상태 머신의 `FAILED`·`TIMED_OUT`·`ABORTED` | Discord(멘션) + 이메일 |
 | 알람 `novelflow-daily-no-success-26h`, `novelflow-contest-no-success-26h` | `ExecutionsSucceeded` 가 26시간 연속 0 — **실행 자체가 없는 날**(스케줄 비활성·시작 실패)까지 | 이메일(알람 액션) + Discord(아래 규칙) |
-| 알람 `np-trend-crawler-dlq-alarm` (기존) | 데일리 크롤러 DLQ 에 메시지 | 이메일 + Discord |
+| 알람 `np-trend-crawler-dlq-alarm` (기존) | 스케줄러가 데일리 상태 머신을 시작하지 못해 DLQ 에 남김(그날 수집이 아예 안 돌았을 수 있음) | 이메일 + Discord |
 | EventBridge 규칙 `novelflow-alarm-state` | 위 세 알람의 상태 변경 | Discord — ALARM 은 멘션, ALARM→OK 는 멘션 없이, 그 외(생성 직후 등)는 보내지 않음 |
 
 ### Discord 알림 Lambda `novelflow-discord-notify`
@@ -153,7 +153,16 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 코드 `utils/discord_notify.py`(표준 라이브러리만, 파일 하나). 역할 `novelflow-discord-notify-role`
 (로그 권한만). 환경변수 `DISCORD_WEBHOOK_URL`(비밀 — 커밋 금지), `DISCORD_MENTION_USER_ID`.
 
-- **자동화 메시지(CI/CD 등)도 이 Lambda 로 보냅니다.** 입구를 하나로 모읍니다.
+- **알림은 카드(embed) 한 장**입니다 — 색 띠(빨강 실패 · 주황 확인 필요 · 파랑 참고 · 초록 해제 · 회색 시험), 제목
+  `파이프라인 · 날짜 · 무슨 일`, 쉬운 말 설명, 원문 오류(인용), `👉 해야 할 일`. 파이프라인이 보내는 알림은
+  `{"notice": {"level", "pipeline", "date", "title", "lines", "fields", "errors", "action", "test", "run"}, "mention"}` 형식이고
+  (필드 설명은 `utils/discord_notify.py` 머리말), 실패·알람 이벤트도 Lambda 가 같은 카드로 바꿉니다. 오류 이름별 설명과
+  해야 할 일은 `ERROR_HELP`·`DEFAULT_ACTION`·`ALARMS` 에 있습니다 — 새 오류·알람을 만들면 여기도 한 줄 더하세요.
+- **시험 실행(입력에 `dry_run`·`test_mode`)은 회색 카드 + 🧪 표시**입니다. 결과 알림은 "실제로는 아무것도 저장하지 않았습니다"를 먼저 쓰고
+  멘션하지 않지만, **시험 실행의 실패는 운영과 똑같이 멘션합니다** — 운영도 같은 코드를 쓰므로 같은 오류가 납니다.
+- **배포 순서: 알림 Lambda 먼저.** 새 Lambda 는 옛 형식(`content`)도 받지만, 옛 Lambda 는 새 형식(`notice`)을 `Unsupported event` 로
+  버립니다. 비동기 호출이라 어디에도 실패가 남지 않습니다(성인작 0편 멘션 포함). 알림 Lambda 를 되돌릴 때도 같은 이유로 조심하세요.
+- **자동화 메시지(CI/CD 등)도 이 Lambda 로 보냅니다.** 입구를 하나로 모읍니다. 텍스트(`content`)도 그대로 받습니다.
 
       aws lambda invoke --function-name novelflow-discord-notify --cli-binary-format raw-in-base64-out \
         --payload '{"content":"배포 완료: crawler 1.5.0","mention":false}' /dev/stdout
@@ -207,7 +216,7 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 | 알람 | 무엇을 잡나 |
 |---|---|
 | `novelflow-daily-no-success-26h` / `novelflow-contest-no-success-26h` | 하루 넘게 성공한 실행이 없음 |
-| `np-trend-crawler-dlq-alarm` | 데일리 DLQ 에 메시지가 쌓임 |
+| `np-trend-crawler-dlq-alarm` | 데일리 예약 실행이 시작되지 못해 스케줄러 DLQ 에 남음 |
 | `novelflow-contest-2026-collector-errors` | 2026 ID 수집기(준비 실행·자정) 오류 |
 | `novelflow-daily-ingestion-errors` | 데일리 적재 Lambda 오류 — S3 트리거(비동기)는 2번 재시도 뒤 조용히 버리고, 상태 머신은 이미 성공이라 실패 알림이 없다 |
 

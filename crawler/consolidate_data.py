@@ -176,9 +176,14 @@ def _notify_adult_zero(execution_id, date, real_count):
     try:
         boto3.client('lambda').invoke(
             FunctionName=NOTIFY_FUNCTION, InvocationType='Event',
-            Payload=json.dumps({'content': f"데일리 {date} 수집: 성인작이 0편입니다(실데이터 {real_count}편). "
-                                           f"로그인·성인 모드가 풀렸을 수 있습니다 — 그날 랭킹을 확인해 주세요. (실행 {execution_id})",
-                                'mention': True}).encode())
+            Payload=json.dumps({'notice': {
+                'level': 'warn', 'pipeline': '데일리 랭킹', 'date': date, 'title': '성인작이 0편 — 로그인 확인 필요',
+                'lines': [f"받은 작품 {real_count}편 중 성인작이 **한 편도 없습니다**. 평소에는 22~27% 입니다.",
+                          "로그인이나 성인 모드가 풀려 성인작이 랭킹에서 통째로 빠졌을 가능성이 큽니다.",
+                          "데이터는 그대로 저장했습니다(막지 않음)."],
+                'action': "사이트의 그날 랭킹에 성인작이 빠졌는지 보고, 노벨피아 로그인 계정(Parameter Store "
+                          "`/NP-Trend/NOVELPIA_ID`·`/NP-Trend/NOVELPIA_PASS`) 상태를 확인하세요.",
+                'run': execution_id}, 'mention': True}).encode())
     except Exception as e:  # noqa: BLE001
         _log(logging.ERROR, execution_id, f"Failed to send adult-zero warning: {e}")
 
