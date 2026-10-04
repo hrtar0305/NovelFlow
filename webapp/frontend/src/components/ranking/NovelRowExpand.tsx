@@ -8,9 +8,10 @@ import { buildMetricPoints, summarizeMetrics, type MetricRow } from '../../utils
 import { contestTrendRow, type ContestTrendRow } from '../../utils/contestNovels';
 
 const WINDOW = 30;
-const W = 300;
-const H = 48;
-const P = 5;
+// 펼침 높이를 줄이려고 선은 넓고 낮게, 제목·기간은 선 왼쪽 작은 이름표로 접었다(2026-10-04).
+const W = 260;
+const H = 40;
+const P = 6;
 
 interface Props {
   novelId: string;
@@ -27,7 +28,7 @@ interface Props {
 
 /**
  * 랭킹 표의 행 펼침. **표에 없는 것 두 가지만** 둔다(2026-10-04 축소 — 자세한 것은 작품 상세에서):
- * 최근 30일 순위선(지금·최고) / 작품 소개 3줄 + 작품 정보 보기. 연재 줄·기간 증가량·연재 상태는 상세로 옮겼다.
+ * 최근 30일 순위선(지금·최고) / 작품 소개 2줄 / 작품 정보 보기 — 한 줄로 늘어놓아 높이를 줄인다. 연재 줄·기간 증가량·연재 상태는 상세로 옮겼다.
  * 펼칠 때 30일 + 기준일 하루치를 한 번 받는다. 공모전 표도 같은 펼침을 쓴다(`contest`).
  * 위치는 표가 정한다 — RankTable `expandFrom="title"` 이 제목 칸 왼쪽에 맞춘다.
  */
@@ -82,31 +83,32 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
   // 끝 표지는 순위가 있는 마지막 날(공모전은 순위 없는 날이 있다 — MetricSummary.rankFirst 설명).
   const bestI = s && s.best.rank != null ? points.indexOf(s.best) : -1;
   const lastI = s?.rankLast ? points.indexOf(s.rankLast) : -1;
-  const label = (i: number, text: string, anchor: 'middle' | 'end') => {
+  // 마지막 순위는 끝점 오른쪽(선과 겹치지 않게 — 펼침 격자의 간격 안), 최고 순위는 점 위(위쪽 끝이면 아래).
+  const label = (i: number, text: string, anchor: 'middle' | 'start') => {
     const y = Y(ranks[i]!);
-    return <text x={anchor === 'end' ? X(i) - 8 : Math.min(W - 30, Math.max(24, X(i)))} y={y < 16 ? y + (anchor === 'end' ? 4 : 16) : y - 8} textAnchor={anchor} className="novel-expand__label">{text}</text>;
+    return <text x={anchor === 'start' ? X(i) + 8 : Math.min(W - 30, Math.max(24, X(i)))} y={anchor === 'start' ? y + 4 : (y < 16 ? y + 15 : y - 7)} textAnchor={anchor} className="novel-expand__label">{text}</text>;
   };
   const lonely = (i: number) => ranks[i] != null && ranks[i - 1] == null && ranks[i + 1] == null;
   const text = synopsis ?? (typeof state === 'object' ? [...state.rows].reverse().find(r => r.Synopsis)?.Synopsis ?? null : null);
 
   return (
     <div className="novel-expand">
-      <div className="novel-expand__charts">
-        <div className="novel-expand__h">{n}일 순위</div>
+      <div className="novel-expand__trend">
+        <div className="novel-expand__meta">
+          <b>{n}일 순위</b>
+          <span>{formatDateKo(points[0]?.date ?? start)} – {formatDateKo(date)}</span>
+        </div>
         {vals.length > 0 ? (
-          <svg width={W} height={H + 4} className="mx-svg" role="img" aria-label={`${n}일 순위 추이`}>
+          <svg width={W} height={H} className="mx-svg novel-expand__svg" role="img" aria-label={`${n}일 순위 추이`}>
             <path d={d} className="mx-rankline" />
             {ranks.map((r, i) => (lonely(i) ? <circle key={i} cx={X(i)} cy={Y(r!)} r={2.6} className="mx-rankdot" /> : null))}
             {bestI >= 0 && bestI !== lastI ? <><circle cx={X(bestI)} cy={Y(ranks[bestI]!)} r={3} className="mx-rankdot" />{label(bestI, `최고 ${ranks[bestI]}위`, 'middle')}</> : null}
-            {lastI >= 0 ? <><circle cx={X(lastI)} cy={Y(ranks[lastI]!)} r={4} className="mx-mark" />{label(lastI, `${ranks[lastI]}위`, 'end')}</> : null}
+            {lastI >= 0 ? <><circle cx={X(lastI)} cy={Y(ranks[lastI]!)} r={4} className="mx-mark" />{label(lastI, `${ranks[lastI]}위`, 'start')}</> : null}
           </svg>
         ) : <p className="novel-expand__none">{contest ? '이 기간에 순위가 매겨진 날이 없습니다.' : '이 기간에 순위권 기록이 없습니다.'}</p>}
-        <div className="novel-expand__cap"><span>{formatDateKo(points[0]?.date ?? start)}</span><span>{formatDateKo(date)}</span></div>
       </div>
       {text ? <p className="novel-expand__synopsis">{text}</p> : <p className="novel-expand__synopsis is-empty">작품 소개가 없습니다.</p>}
-      <div className="novel-expand__side">
-        <Link to={contest ? `/contests/${contest.year}/novels/${novelId}` : `/novels/${novelId}`} className="novel-expand__go" onClick={e => e.stopPropagation()}>작품 정보 보기</Link>
-      </div>
+      <Link to={contest ? `/contests/${contest.year}/novels/${novelId}` : `/novels/${novelId}`} className="novel-expand__go" onClick={e => e.stopPropagation()}>작품 정보 보기</Link>
     </div>
   );
 }
