@@ -127,10 +127,38 @@ def extract_is_adult(payload: dict) -> bool | None:
     return soup.select_one('p.in-badge span.b_19') is not None
 
 
+def info_value(soup: BeautifulSoup, label: str) -> str | None:
+    """작품 정보 영역(`div.epnew-novel-info`)의 `span.category-title` 이 `label` 인 칸의 값 원문.
+    크롤러 `_info_value()` 와 같은 규칙이어야 한다. 영역 밖(후원 순위 'N위' 등)은 보지 않는다."""
+    root = soup.select_one('div.epnew-novel-info')
+    if root is None:
+        return None
+    for t in root.select('span.category-title'):
+        if t.get_text(strip=True) == label:
+            v = t.find_next_sibling('span')
+            return (v.get_text(strip=True) or None) if v else None
+    return None
+
+
+def extract_life_pick(payload: dict) -> str | None:
+    """인생픽 칸 원문('9위' / '공개전'). 순위 해석은 백엔드(`_life_pick_rank`)가 한다."""
+    soup = _detail_soup(payload)
+    return None if soup is None else info_value(soup, '인생픽')
+
+
+def extract_serial_days(payload: dict) -> str | None:
+    """작가가 정한 연재 요일 원문('월/화/수' / '비정기'). 칸이 없으면(2026-09-30 실측 500편 중 249편)
+    `None` 이고 필드를 쓰지 않는다."""
+    soup = _detail_soup(payload)
+    return None if soup is None else info_value(soup, '연재')
+
+
 EXTRACTORS = {
     'Badges': extract_badges,
     'SerialStatus': extract_serial_status,
     'IsAdult': extract_is_adult,
+    'LifePick': extract_life_pick,
+    'SerialDays': extract_serial_days,
 }
 
 

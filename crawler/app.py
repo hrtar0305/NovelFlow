@@ -566,6 +566,23 @@ def _serial_status_from_badges(spans):
     return None
 
 
+def _info_value(soup, label):
+    """작품 정보 영역(`div.epnew-novel-info`)에서 `span.category-title` 이 `label` 인 칸의 값 원문.
+
+    '인생픽'(`9위` / `공개전`)과 '연재'(`월/화/수` / `비정기`)를 이것으로 싣는다. 해석은 하지 않는다 —
+    숫자 추출·표기는 백엔드가 한다(ELT). '연재' 칸은 작가가 요일을 정했을 때만 있어서(2026-09-30 실측
+    500편 중 251편) 없으면 `None` 이고 항목에 싣지 않는다. 영역 밖(회차 목록·후원 순위의 'N위')은 보지 않는다.
+    """
+    root = soup.select_one("div.epnew-novel-info")
+    if root is None:
+        return None
+    for t in root.select("span.category-title"):
+        if t.get_text(strip=True) == label:
+            v = t.find_next_sibling("span")
+            return (v.get_text(strip=True) or None) if v else None
+    return None
+
+
 def _get_html_title(soup):
     """Returns the document title for diagnostics without logging response bodies."""
     if not soup.title:
@@ -714,6 +731,8 @@ def parse_novel_details(event, context):
                     # 없어 사라졌을 것이다 — NDJSON 이라 그대로 실린다.
                     # `SerialStatus` 는 상태 배지가 있을 때만 아래에서 덧붙인다.
                     "Badges": badge_spans if badge_spans is not None else [],
+                    # 인생픽 칸 원문('9위' / '공개전'). 순위 해석은 백엔드가 한다.
+                    "LifePick": _info_value(soup, "인생픽"),
                     "FirstEpView": -1, "FirstEpNum": -1,
                     "Ep30View": -1, "Ep30Num": -1,
                     "RecentBaseView": -1, "RecentBaseNum": -1,
@@ -822,6 +841,10 @@ def parse_novel_details(event, context):
 
                 if serial_status:
                     item["SerialStatus"] = serial_status
+                serial_days = _info_value(soup, "연재")
+                if serial_days:
+                    # 작가가 정한 연재 요일 원문('월/화/수' / '비정기'). 없으면 싣지 않는다.
+                    item["SerialDays"] = serial_days
 
                 _validate_item(item, novel_id)
                 item_to_send = item
