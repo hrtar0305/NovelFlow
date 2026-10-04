@@ -125,6 +125,7 @@ python scripts/backfill_ranking_snapshots.py --dry-run
   있어 데일리에 한 번도 실리지 않았다). 파이프라인 변경은 main 에서 딴 짧은 브랜치로 따로 합칩니다.
 - 합치기는 로컬에서, 이력은 일직선:
   `git rebase main` → `git switch main && git merge --ff-only <branch>` → `git push origin main` → `git branch -d <branch>`.
-- **이미지 배포에는 태그**(`crawler-v1.5.0` 처럼 컴포넌트-버전)를 겁니다. ECR 은 최신 이미지만 남기므로 롤백은 태그에서
-  다시 빌드하는 것입니다.
+- **배포에는 태그**(`crawler-v1.6.1` · `contest2026-v1.0.0` 처럼 컴포넌트-버전)를 겁니다. ECR 은 비용 때문에 최신 이미지만 남기므로
+  롤백은 태그에서 다시 빌드하는 것입니다. 2026 공모전은 zip·이미지를 `deploy.sh code` 가 한꺼번에 올리므로 스택 하나에 태그 하나이고,
+  배포한 버전(`git describe`)이 이미지 태그와 Lambda 설명에 남습니다 — 태그를 먼저 걸고 배포하면 설명에 깔끔한 버전이 찍힙니다.
 - 커밋 메시지는 한국어 한 줄 요약 + 본문에 "왜". 커밋/푸시는 사용자가 요청할 때만.

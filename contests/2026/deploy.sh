@@ -11,8 +11,15 @@
 #   bash contests/2026/deploy.sh schedule        # 자정 수집·준비 실행 스케줄 + 수집기 알람
 #   bash contests/2026/deploy.sh alarm           # 수집기 오류 알람만
 # 계정 ID 는 실행 시 조회한다(공개 리포라 박지 않는다).
+#
+# 버전: 배포한 변경을 main 에 합칠 때 `contest2026-vX.Y.Z` git 태그를 건다(데일리 `crawler-vX.Y.Z` 와 같은 규칙).
+# ECR 은 최신 이미지만 남기는 운영이라(비용) 되돌리기는 태그에서 다시 배포하는 것이다. `code` 는 그 버전을
+# (git describe — 태그 뒤 커밋이 있으면 `-N-g<sha>`, 커밋 안 한 변경이 있으면 `-dirty`) 파서 이미지 태그와
+# 2026 Lambda 4개의 설명(description)에 남긴다 — 콘솔에서 지금 무엇이 배포돼 있는지 보인다.
 set -euo pipefail
 cd "$(dirname "$0")"
+VERSION=$(git describe --tags --match 'contest2026-v*' --dirty --always 2>/dev/null || echo unknown)
+DESC="NovelFlow contest 2026 $VERSION"
 
 R=ap-northeast-2
 ACC=$(aws sts get-caller-identity --query Account --output text)
@@ -73,11 +80,15 @@ code() {
   zip -qj "$BUILD/fanout.zip" contest_detail_parser/app.py
   zip -qj "$BUILD/consolidate.zip" contest_detail_parser/consolidate_contest_data.py
 
-  echo "== 파서 이미지"
+  echo "== 파서 이미지 ($VERSION)"
+  case "$VERSION" in *-dirty|unknown) echo "   ⚠ 커밋되지 않은 변경(또는 버전 모름)으로 배포합니다 — 이 배포는 git 에서 다시 만들 수 없습니다." ;; esac
   aws ecr get-login-password --region $R | docker login --username AWS --password-stdin $ACC.dkr.ecr.$R.amazonaws.com >/dev/null
   IMG=$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO:latest
   docker build --platform linux/amd64 --provenance=false -q -t "$IMG" contest_detail_parser >/dev/null
   docker push -q "$IMG" >/dev/null
+  # 같은 이미지에 버전 태그도 단다(추가 저장 비용 없음 — 같은 다이제스트). 'latest' 만으로는 어느 커밋인지 모른다.
+  docker tag "$IMG" "$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO:$VERSION"
+  docker push -q "$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO:$VERSION" >/dev/null
   DIGEST=$(aws ecr describe-images --region $R --repository-name $ECR_REPO --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' --output text)
 
   upsert_zip $F_COLLECTOR "$BUILD/collector.zip" app.handler 900 256 \
@@ -98,12 +109,12 @@ code() {
     # EXPRESS 자식은 5분이 한도다 — 파서가 그보다 오래 살면 Step Functions 가 끊은 뒤에도 Lambda 가 계속 돈다(리뷰 #36).
     # 파서는 시간 예산(남은 작품은 failed 로 돌려 재시도 라운드가 받는다) 안에서 끝나고, Lambda 는 290초에서 끊는다.
     aws lambda update-function-configuration --region $R --function-name $F_PARSER --timeout 290 --memory-size 512 \
-      --image-config 'Command=["parser.parse_dmap_batch"]' --environment "$PENV" >/dev/null
+      --image-config 'Command=["parser.parse_dmap_batch"]' --environment "$PENV" --description "$DESC" >/dev/null
     aws lambda wait function-updated --region $R --function-name $F_PARSER
   else
     aws lambda create-function --region $R --function-name $F_PARSER --package-type Image \
       --code ImageUri="$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" --role $LAMBDA_ROLE \
-      --image-config 'Command=["parser.parse_dmap_batch"]' --timeout 290 --memory-size 512 --environment "$PENV" >/dev/null
+      --image-config 'Command=["parser.parse_dmap_batch"]' --timeout 290 --memory-size 512 --environment "$PENV" --description "$DESC" >/dev/null
     aws lambda wait function-active --region $R --function-name $F_PARSER
   fi
 
@@ -116,10 +127,11 @@ upsert_zip() {  # name zip handler timeout memory env
   if exists aws lambda get-function --region $R --function-name $1; then
     aws lambda update-function-code --region $R --function-name $1 --zip-file "fileb://$2" >/dev/null
     aws lambda wait function-updated --region $R --function-name $1
-    aws lambda update-function-configuration --region $R --function-name $1 --handler $3 --timeout $4 --memory-size $5 --environment "$6" >/dev/null
+    aws lambda update-function-configuration --region $R --function-name $1 --handler $3 --timeout $4 --memory-size $5 --environment "$6" \
+      --description "$DESC" >/dev/null
   else
     aws lambda create-function --region $R --function-name $1 --runtime python3.13 --role $LAMBDA_ROLE \
-      --handler $3 --timeout $4 --memory-size $5 --environment "$6" --zip-file "fileb://$2" >/dev/null
+      --handler $3 --timeout $4 --memory-size $5 --environment "$6" --description "$DESC" --zip-file "fileb://$2" >/dev/null
   fi
   aws lambda wait function-updated --region $R --function-name $1 2>/dev/null || aws lambda wait function-active --region $R --function-name $1
 }
@@ -246,4 +258,4 @@ case "${1:-all}" in
   all) infra; code; orchestration ;;   # 스케줄은 시험 실행이 통과한 뒤 따로 켠다
   *) echo "usage: $0 [all|infra|code|orchestration|dmap|schedule|alarm]"; exit 1 ;;
 esac
-echo "done: ${1:-all}"
+echo "done: ${1:-all} ($VERSION)"
