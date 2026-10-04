@@ -1,12 +1,12 @@
 {
-  "Comment": "2026 공모전 수집 — Distributed Map 판. 실패를 가정한다: ID 수집 실패·지연(실행 시작 12분 뒤로는 다시 부르지 않음)은 직전 목록으로 진행, 작품 실패는 묶음 안에 가두고 빠진 것만 다시 받으며(최대 2라운드), 남은 결손은 placeholder + 실패 장부(failures/{date}.json) + 경고 알림. 결손이 5%를 넘으면 쓰지 않고 실패. 그림자 실행: {\"skip_discovery\": true, \"raw\": false, \"dry_run\": true, \"target_date\": \"YYYY-MM-DD\"}. 재시도 경로 시험: 그림자 실행에 \"inject_fail_mod\": N 을 주면 첫 라운드에서 번호 % N == 0 인 작품을 네트워크 실패로 친다(dry_run 일 때만). 예약 실행은 날짜 잠금(RUN_LOCK#{date})을 잡아 중복 전달을 건너뛴다 — 같은 날짜를 입력 없이 다시 돌리려면 잠금 항목을 지우거나 target_date 를 준다.",
+  "Comment": "2026 공모전 수집 — Distributed Map 판. 하루의 값은 자정 값이다(사용자 결정 2026-10-04): 노벨피아에서 다시 받아 기록 날짜 D 로 쓰는 시도는 D+1 00:00 KST + 1시간 안에 시작해야 하고(넘으면 LateRefetchRefused), 자정 실행이 실패하면 그 안에서 한 번 자동 재실행한다(Run 의 Retry). 실행 제한 105분 = 재실행 마감 60분 + 시도 하나의 최악 45분. 실패를 가정한다: ID 수집 실패·지연(시도 시작 12분 뒤로는 다시 부르지 않음)은 직전 목록으로 진행, 작품 실패는 묶음 안에 가두고 빠진 것만 다시 받으며(최대 2라운드), 남은 결손은 placeholder + 실패 장부(failures/{date}.json) + 경고 알림. 결손이 5%를 넘으면 쓰지 않고 그 시도를 실패시킨다. 그림자 실행: {\"skip_discovery\": true, \"raw\": false, \"dry_run\": true, \"target_date\": \"YYYY-MM-DD\"}(마감 없음, 원본은 raw 와 무관하게 올리지 않음). 재시도 경로 시험: 그림자 실행에 \"inject_fail_mod\": N 을 주면 첫 라운드에서 번호 % N == 0 인 작품을 네트워크 실패로 친다. 자동 재실행 시험: 그림자 실행에 \"fail_first_attempt\": true(dry_run 일 때만). 원본 재계산(받기는 끝났는데 적재가 실패한 날): {\"reprocess\": true, \"target_date\": \"YYYY-MM-DD\"} — 그 날짜 자정에 저장한 원본 묶음에서 다시 해석해 적재한다(마감 없음, 잠금 없음, 장부 failures/{date}-reprocess.json). 자정 기대 목록에 견줘 원본에 없는 작품이 5%를 넘으면(받기가 끊긴 날) 쓰지 않는다 — 확인했으면 \"accept_partial\": true. 다시 계산하지 못한 작품에 기존 실데이터 행이 있으면 그 행을 유지한다. 먼저 \"dry_run\": true 로 운영 행과 견줄 것. 예약 실행은 날짜 잠금(RUN_LOCK#{date})을 잡아 중복 전달을 건너뛴다. 시도가 실패하면 그 상태(오류·어디까지 했나)를 runs/{date}/{exec}/attempt-errors/ 에 남긴다 — 재실행의 시작 단계가 읽어 거절 문구·알림에 싣는다.",
   "StartAt": "Defaults",
-  "TimeoutSeconds": 2700,
+  "TimeoutSeconds": 6300,
   "States": {
     "Defaults": {
       "Type": "Pass",
       "Parameters": {
-        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false, \"inject_fail_mod\": 0}'), $$.Execution.Input, false)",
+        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false, \"inject_fail_mod\": 0, \"reprocess\": false, \"fail_first_attempt\": false, \"accept_partial\": false}'), $$.Execution.Input, false)",
         "Discover": {
           "done": true,
           "fallback": false,
@@ -21,124 +21,16 @@
       },
       "Next": "ResolveDate"
     },
-    "SkipDiscovery?": {
-      "Type": "Choice",
-      "Comment": "그림자 실행은 운영 수집기 상태(S3)를 건드리지 않도록 건너뛴다.",
-      "Choices": [
-        {
-          "Variable": "$.args.skip_discovery",
-          "BooleanEquals": true,
-          "Next": "FirstRound"
-        }
-      ],
-      "Default": "DiscoverIds"
-    },
-    "DiscoverIds": {
-      "Type": "Task",
-      "Comment": "수집기 응답(done·total_contest·alive_contest·listed_total…)을 통째로 $.Discover 에 둔다. ResultSelector 로 필드를 고르면 수집기·상태 머신 배포 순서가 어긋날 때(새 필드가 없는 옛 수집기) 경로 오류로 자정 실행이 실패했다(최종 검증 2026-10-03).",
-      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-id-collector",
-      "Parameters": {
-        "execution_id.$": "$$.Execution.Name"
-      },
-      "ResultPath": "$.Discover",
-      "TimeoutSeconds": 900,
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException"
-          ],
-          "IntervalSeconds": 10,
-          "MaxAttempts": 2,
-          "BackoffRate": 2
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "ResultPath": "$.DiscoverError",
-          "Next": "WaitAfterDiscoverError"
-        }
-      ],
-      "Next": "IsDiscoveryDone?"
-    },
-    "IsDiscoveryDone?": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.Discover.done",
-          "BooleanEquals": true,
-          "Next": "FirstRound"
-        }
-      ],
-      "Default": "DiscoverAgain?"
-    },
-    "WaitAfterDiscoverError": {
-      "Type": "Wait",
-      "Comment": "수집기 실패 뒤 순간 장애를 넘길 시간.",
-      "Seconds": 30,
-      "Next": "DiscoverAgain?"
-    },
-    "DiscoverAgain?": {
-      "Type": "Choice",
-      "Comment": "수집기를 다시 부를지 — 횟수가 아니라 시각으로 끊는다. 호출 하나가 최대 15분이라 횟수(예전 4번)로는 45분 실행 제한 안에 대체 경로에 닿지 못했다. ResolveDate 가 정한 마감(실행 시작 + 12분, 팬아웃 DISCOVERY_RECALL_MINUTES)이 지났으면 직전 목록으로 진행 — 수집 단계는 최악 27분에 끝난다. 마감이 없는 입력(옛 팬아웃)이면 횟수만 본다.",
-      "Choices": [
-        {
-          "Variable": "$.DiscoverRounds.n",
-          "NumericGreaterThanEquals": 4,
-          "Next": "DiscoveryFallback"
-        },
-        {
-          "Not": {
-            "Variable": "$.Resolved.discovery_deadline",
-            "IsPresent": true
-          },
-          "Next": "CountDiscoverRound"
-        },
-        {
-          "Variable": "$$.State.EnteredTime",
-          "TimestampGreaterThanEqualsPath": "$.Resolved.discovery_deadline",
-          "Next": "DiscoveryFallback"
-        }
-      ],
-      "Default": "CountDiscoverRound"
-    },
-    "CountDiscoverRound": {
-      "Type": "Pass",
-      "Comment": "수집기를 다시 부른다(시간 예산으로 끊겼거나 실패). 언제 멈출지는 DiscoverAgain? 가 시각으로 정하고, 횟수(4번)는 마지막 안전장치다.",
-      "Parameters": {
-        "n.$": "States.MathAdd($.DiscoverRounds.n, 1)"
-      },
-      "ResultPath": "$.DiscoverRounds",
-      "Next": "DiscoverIds"
-    },
-    "DiscoveryFallback": {
-      "Type": "Pass",
-      "Comment": "ID 수집은 부가 단계다 — 실패해도 S3 에 남은 직전 목록(23:30 준비 실행 등)으로 그날 수집을 한다. 장부·알림에 남는다.",
-      "Result": {
-        "done": true,
-        "fallback": true,
-        "skipped": false,
-        "total_contest": null,
-        "listed_total": null,
-        "alive_contest": null
-      },
-      "ResultPath": "$.Discover",
-      "Next": "FirstRound"
-    },
     "ResolveDate": {
       "Type": "Task",
-      "Comment": "기록 날짜(실행 시작 − 12시간, 또는 target_date). 팬아웃 함수의 같은 규칙을 쓴다.",
+      "Comment": "기록 날짜(실행 시작 − 12시간, 또는 target_date). 팬아웃 함수의 같은 규칙을 쓴다. reprocess 인데 target_date 가 없으면 여기서 실패한다.",
       "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-fanout",
       "Parameters": {
         "resolve_only": true,
         "execution_id.$": "$$.Execution.Name",
         "date.$": "$$.Execution.StartTime",
-        "target_date.$": "$.args.target_date"
+        "target_date.$": "$.args.target_date",
+        "reprocess.$": "$.args.reprocess"
       },
       "ResultPath": "$.Resolved",
       "Retry": [
@@ -163,7 +55,7 @@
     },
     "Scheduled?": {
       "Type": "Choice",
-      "Comment": "예약 실행(입력 없음)만 날짜 잠금을 건다. target_date 재실행·그림자 실행은 일부러 같은 날짜를 다시 도는 것이라 막지 않는다.",
+      "Comment": "예약 실행(입력 없음)만 날짜 잠금을 건다. target_date 재실행·그림자 실행·원본 재계산은 일부러 같은 날짜를 다시 도는 것이라 막지 않는다(늦은 다시 받기는 StartAttempt 가 거절한다).",
       "Choices": [
         {
           "And": [
@@ -174,12 +66,16 @@
             {
               "Variable": "$.args.dry_run",
               "BooleanEquals": false
+            },
+            {
+              "Variable": "$.args.reprocess",
+              "BooleanEquals": false
             }
           ],
           "Next": "AcquireRunLock"
         }
       ],
-      "Default": "SkipDiscovery?"
+      "Default": "Run"
     },
     "AcquireRunLock": {
       "Type": "Task",
@@ -225,7 +121,7 @@
           "Next": "NotifyDuplicateRun"
         }
       ],
-      "Next": "SkipDiscovery?"
+      "Next": "Run"
     },
     "NotifyDuplicateRun": {
       "Type": "Task",
@@ -254,167 +150,611 @@
     "DuplicateSkipped": {
       "Type": "Succeed"
     },
-    "FirstRound": {
-      "Type": "Pass",
-      "Comment": "첫 라운드: 전체 목록, 20편 묶음, 동시 10. 묶음은 EXPRESS 자식(최대 5분) 안에 끝나야 한다 — 처리량은 동시 수가 정하고 묶음 크기는 자식 하나의 소요만 정하므로 줄여도 느려지지 않는다(파서 시간 예산 170초 + ParseBatch 280초 제한).",
-      "Result": {
-        "round": 0,
-        "missing_key": "contest_novel_ids_2026.json",
-        "batch": 20,
-        "concurrency": 10
-      },
-      "ResultPath": "$.Work",
-      "Next": "ParseMap"
-    },
-    "ParseMap": {
-      "Type": "Map",
-      "ItemReader": {
-        "Resource": "arn:aws:states:::s3:getObject",
-        "ReaderConfig": {
-          "InputType": "JSON"
-        },
-        "Parameters": {
-          "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
-          "Key.$": "$.Work.missing_key"
-        }
-      },
-      "ItemBatcher": {
-        "MaxItemsPerBatchPath": "$.Work.batch",
-        "BatchInput": {
-          "execution_id.$": "$$.Execution.Name",
-          "date.$": "$.Resolved.date",
-          "raw.$": "$.args.raw",
-          "round.$": "$.Work.round",
-          "dry_run.$": "$.args.dry_run",
-          "inject_fail_mod.$": "$.args.inject_fail_mod"
-        }
-      },
-      "MaxConcurrencyPath": "$.Work.concurrency",
-      "ToleratedFailurePercentage": 100,
-      "ItemProcessor": {
-        "ProcessorConfig": {
-          "Mode": "DISTRIBUTED",
-          "ExecutionType": "EXPRESS"
-        },
-        "StartAt": "ParseBatch",
-        "States": {
-          "ParseBatch": {
-            "Type": "Task",
-            "Comment": "EXPRESS 자식은 최대 5분이다. 파서가 시간 예산(170초)을 넘기면 남은 작품을 failed(TimeBudget)로 돌려주고, 이 단계는 280초에서 끊는다. 자식 안에서는 호출 직후 나는 Lambda 서비스 오류만 다시 부른다 — 오래 돈 뒤의 실패(TaskFailed·Unknown·Timeout)를 다시 돌리면 5분을 넘겨 받은 것까지 버린다. 그런 묶음은 Reconcile 이 빠진 작품만 다시 받는다.",
-            "Resource": "arn:aws:states:::lambda:invoke",
-            "Parameters": {
-              "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap",
-              "Payload.$": "$"
+    "Run": {
+      "Type": "Parallel",
+      "Comment": "한 시도 = 이 가지 하나(마감 확인 → ID 수집 → 받기·대조·재시도 라운드 → 적재 → 알림). 시도가 실패하면 60초 뒤 처음부터 한 번 더 한다(자동 재실행 — 사용자 결정 2026-10-04). 날짜 잠금은 이 앞에서 한 번만 잡으므로 재실행이 잠금에 걸리지 않는다. 재실행도 자정 + 1시간 안에 시작해야 한다(StartAttempt). 결정적 거절(LateRefetchRefused·ReprocessNoRaw·ReprocessIncomplete)은 다시 하지 않는다(원본 재계산의 자식 실패 ReprocessBatchFailed 는 일시적이라 다시 한다). 출력은 가지 출력 배열이라 [0]만 남긴다.",
+      "Branches": [
+        {
+          "StartAt": "BeginAttempt",
+          "States": {
+            "BeginAttempt": {
+              "Type": "Pass",
+              "Comment": "시도 표지: 이 단계에 들어온 시각이 시도의 이름(token)이다. 병렬 단계 Run 이 다시 돌면 새로 정해지고, StartAttempt 의 Lambda 재시도에서는 같아 같은 시도를 두 번 세지 않는다.",
+              "Parameters": {
+                "token.$": "$$.State.EnteredTime"
+              },
+              "ResultPath": "$.AttemptToken",
+              "Next": "StartAttempt"
             },
-            "OutputPath": "$.Payload",
-            "TimeoutSeconds": 280,
-            "Retry": [
-              {
-                "ErrorEquals": [
-                  "Lambda.TooManyRequestsException",
-                  "Lambda.ServiceException",
-                  "Lambda.AWSLambdaException",
-                  "Lambda.SdkClientException"
-                ],
-                "IntervalSeconds": 10,
-                "MaxAttempts": 2,
-                "BackoffRate": 2
-              }
-            ],
-            "End": true
+            "StartAttempt": {
+              "Type": "Task",
+              "Comment": "받기 전에 마감을 본다 — 노벨피아에서 다시 받아 기록 날짜 D 로 쓰는 시도는 D+1 00:00 KST + 1시간 안에 시작해야 한다(첫 시도든 재실행이든 그 시도의 시작 = BeginAttempt 진입 시각 기준). 넘으면 LateRefetchRefused(재시도 없음). 그림자 실행·원본 재계산은 예외. 시도 번호(runs/{date}/{exec}/attempts/)·앞선 시도의 오류 요약(attempt-errors/)· 수집기 재호출 마감(시도 시작 + 12분)을 돌려준다. 시험: fail_first_attempt(dry_run 전용)면 첫 시도를 여기서 실패시킨다.",
+              "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-fanout",
+              "Parameters": {
+                "action": "attempt_start",
+                "execution_id.$": "$$.Execution.Name",
+                "execution_start.$": "$$.Execution.StartTime",
+                "token.$": "$.AttemptToken.token",
+                "date.$": "$.Resolved.date",
+                "target_date.$": "$.args.target_date",
+                "dry_run.$": "$.args.dry_run",
+                "reprocess.$": "$.args.reprocess",
+                "fail_first_attempt.$": "$.args.fail_first_attempt",
+                "state_bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID"
+              },
+              "ResultPath": "$.Attempt",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.Err",
+                  "Next": "NormalizeErr"
+                }
+              ],
+              "Next": "Reprocess?"
+            },
+            "Reprocess?": {
+              "Type": "Choice",
+              "Comment": "원본 재계산(reprocess)은 노벨피아에서 받지 않는다 — ID 수집·재시도 라운드 없이, 그 날짜 자정에 저장한 원본 묶음을 다시 해석한다.",
+              "Choices": [
+                {
+                  "Variable": "$.args.reprocess",
+                  "BooleanEquals": true,
+                  "Next": "ReprocessIndex"
+                }
+              ],
+              "Default": "SkipDiscovery?"
+            },
+            "SkipDiscovery?": {
+              "Type": "Choice",
+              "Comment": "그림자 실행은 운영 수집기 상태(S3)를 건드리지 않도록 건너뛴다.",
+              "Choices": [
+                {
+                  "Variable": "$.args.skip_discovery",
+                  "BooleanEquals": true,
+                  "Next": "FirstRound"
+                }
+              ],
+              "Default": "DiscoverIds"
+            },
+            "DiscoverIds": {
+              "Type": "Task",
+              "Comment": "수집기 응답(done·total_contest·alive_contest·listed_total…)을 통째로 $.Discover 에 둔다. ResultSelector 로 필드를 고르면 수집기·상태 머신 배포 순서가 어긋날 때(새 필드가 없는 옛 수집기) 경로 오류로 자정 실행이 실패했다(최종 검증 2026-10-03).",
+              "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-id-collector",
+              "Parameters": {
+                "execution_id.$": "$$.Execution.Name"
+              },
+              "ResultPath": "$.Discover",
+              "TimeoutSeconds": 900,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException"
+                  ],
+                  "IntervalSeconds": 10,
+                  "MaxAttempts": 2,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.DiscoverError",
+                  "Next": "WaitAfterDiscoverError"
+                }
+              ],
+              "Next": "IsDiscoveryDone?"
+            },
+            "IsDiscoveryDone?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.Discover.done",
+                  "BooleanEquals": true,
+                  "Next": "FirstRound"
+                }
+              ],
+              "Default": "DiscoverAgain?"
+            },
+            "WaitAfterDiscoverError": {
+              "Type": "Wait",
+              "Comment": "수집기 실패 뒤 순간 장애를 넘길 시간.",
+              "Seconds": 30,
+              "Next": "DiscoverAgain?"
+            },
+            "DiscoverAgain?": {
+              "Type": "Choice",
+              "Comment": "수집기를 다시 부를지 — 횟수가 아니라 시각으로 끊는다. 호출 하나가 최대 15분이라 횟수(예전 4번)로는 45분 실행 제한 안에 대체 경로에 닿지 못했다. StartAttempt 가 정한 마감(이 시도의 시작 + 12분, 팬아웃 DISCOVERY_RECALL_MINUTES — 자동 재실행이 첫 시도의 마감을 물려받지 않게)이 지났으면 직전 목록으로 진행 — 수집 단계는 최악 27분에 끝난다. 마감이 없는 입력(옛 팬아웃)이면 횟수만 본다.",
+              "Choices": [
+                {
+                  "Variable": "$.DiscoverRounds.n",
+                  "NumericGreaterThanEquals": 4,
+                  "Next": "DiscoveryFallback"
+                },
+                {
+                  "Not": {
+                    "Variable": "$.Attempt.discovery_deadline",
+                    "IsPresent": true
+                  },
+                  "Next": "CountDiscoverRound"
+                },
+                {
+                  "Variable": "$$.State.EnteredTime",
+                  "TimestampGreaterThanEqualsPath": "$.Attempt.discovery_deadline",
+                  "Next": "DiscoveryFallback"
+                }
+              ],
+              "Default": "CountDiscoverRound"
+            },
+            "CountDiscoverRound": {
+              "Type": "Pass",
+              "Comment": "수집기를 다시 부른다(시간 예산으로 끊겼거나 실패). 언제 멈출지는 DiscoverAgain? 가 시각으로 정하고, 횟수(4번)는 마지막 안전장치다.",
+              "Parameters": {
+                "n.$": "States.MathAdd($.DiscoverRounds.n, 1)"
+              },
+              "ResultPath": "$.DiscoverRounds",
+              "Next": "DiscoverIds"
+            },
+            "DiscoveryFallback": {
+              "Type": "Pass",
+              "Comment": "ID 수집은 부가 단계다 — 실패해도 S3 에 남은 직전 목록(23:30 준비 실행 등)으로 그날 수집을 한다. 장부·알림에 남는다.",
+              "Result": {
+                "done": true,
+                "fallback": true,
+                "skipped": false,
+                "total_contest": null,
+                "listed_total": null,
+                "alive_contest": null
+              },
+              "ResultPath": "$.Discover",
+              "Next": "FirstRound"
+            },
+            "FirstRound": {
+              "Type": "Pass",
+              "Comment": "첫 라운드: 전체 목록, 20편 묶음, 동시 10. 묶음은 EXPRESS 자식(최대 5분) 안에 끝나야 한다 — 처리량은 동시 수가 정하고 묶음 크기는 자식 하나의 소요만 정하므로 줄여도 느려지지 않는다(파서 시간 예산 170초 + ParseBatch 280초 제한).",
+              "Result": {
+                "round": 0,
+                "missing_key": "contest_novel_ids_2026.json",
+                "batch": 20,
+                "concurrency": 10
+              },
+              "ResultPath": "$.Work",
+              "Next": "ParseMap"
+            },
+            "ParseMap": {
+              "Type": "Map",
+              "ItemReader": {
+                "Resource": "arn:aws:states:::s3:getObject",
+                "ReaderConfig": {
+                  "InputType": "JSON"
+                },
+                "Parameters": {
+                  "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
+                  "Key.$": "$.Work.missing_key"
+                }
+              },
+              "ItemBatcher": {
+                "MaxItemsPerBatchPath": "$.Work.batch",
+                "BatchInput": {
+                  "execution_id.$": "$$.Execution.Name",
+                  "date.$": "$.Resolved.date",
+                  "raw.$": "$.args.raw",
+                  "round.$": "$.Work.round",
+                  "dry_run.$": "$.args.dry_run",
+                  "inject_fail_mod.$": "$.args.inject_fail_mod"
+                }
+              },
+              "MaxConcurrencyPath": "$.Work.concurrency",
+              "ToleratedFailurePercentage": 100,
+              "ItemProcessor": {
+                "ProcessorConfig": {
+                  "Mode": "DISTRIBUTED",
+                  "ExecutionType": "EXPRESS"
+                },
+                "StartAt": "ParseBatch",
+                "States": {
+                  "ParseBatch": {
+                    "Type": "Task",
+                    "Comment": "EXPRESS 자식은 최대 5분이다. 파서가 시간 예산(170초)을 넘기면 남은 작품을 failed(TimeBudget)로 돌려주고, 이 단계는 280초에서 끊는다. 자식 안에서는 호출 직후 나는 Lambda 서비스 오류만 다시 부른다 — 오래 돈 뒤의 실패(TaskFailed·Unknown·Timeout)를 다시 돌리면 5분을 넘겨 받은 것까지 버린다. 그런 묶음은 Reconcile 이 빠진 작품만 다시 받는다.",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap",
+                      "Payload.$": "$"
+                    },
+                    "OutputPath": "$.Payload",
+                    "TimeoutSeconds": 280,
+                    "Retry": [
+                      {
+                        "ErrorEquals": [
+                          "Lambda.TooManyRequestsException",
+                          "Lambda.ServiceException",
+                          "Lambda.AWSLambdaException",
+                          "Lambda.SdkClientException"
+                        ],
+                        "IntervalSeconds": 10,
+                        "MaxAttempts": 2,
+                        "BackoffRate": 2
+                      }
+                    ],
+                    "End": true
+                  }
+                }
+              },
+              "ResultWriter": {
+                "Resource": "arn:aws:states:::s3:putObject",
+                "Parameters": {
+                  "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
+                  "Prefix": "dmap-results"
+                }
+              },
+              "ResultSelector": {
+                "manifest.$": "$.ResultWriterDetails"
+              },
+              "ResultPath": "$.Map",
+              "Comment": "실패한 묶음이 있어도 Map 은 끝까지 간다(허용 100%) — 무엇이 빠졌는지는 Reconcile 이 기대 목록과 견줘 정한다. 그림자 실행(dry_run)은 raw 와 무관하게 원본을 올리지 않는다(파서) — 마감 면제라 늦게 받은 값이 그 날짜 원본 접두어에 섞이지 않게.",
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.Err",
+                  "Next": "NormalizeErr"
+                }
+              ],
+              "Next": "Reconcile"
+            },
+            "Reconcile": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-consolidate-dmap",
+              "Comment": "원본 재계산에서 자식(원본 묶음)이 통째로 실패했으면 ReprocessBatchFailed — 결손을 placeholder 로 채워 그날 정상 행을 덮지 않고 시도를 실패시킨다(같은 매니페스트라 여기서 다시 부르지 않고, 병렬 단계 Run 이 한 번 처음부터 다시 한다). 그림자 실행이면 보고만.",
+              "Parameters": {
+                "action": "reconcile",
+                "execution_id.$": "$$.Execution.Name",
+                "date.$": "$.Resolved.date",
+                "round.$": "$.Work.round",
+                "manifest.$": "$.Map.manifest",
+                "reprocess.$": "$.args.reprocess",
+                "dry_run.$": "$.args.dry_run"
+              },
+              "ResultPath": "$.Rec",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "ReprocessBatchFailed"
+                  ],
+                  "MaxAttempts": 0
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "IntervalSeconds": 15,
+                  "MaxAttempts": 2,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.Err",
+                  "Next": "NormalizeErr"
+                }
+              ],
+              "Next": "RetryMissing?"
+            },
+            "RetryMissing?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.Rec.retry",
+                  "BooleanEquals": true,
+                  "Next": "WaitBeforeRetry"
+                }
+              ],
+              "Default": "Consolidate"
+            },
+            "WaitBeforeRetry": {
+              "Type": "Wait",
+              "SecondsPath": "$.Rec.wait_seconds",
+              "Next": "NextRound"
+            },
+            "NextRound": {
+              "Type": "Pass",
+              "Comment": "빠진 작품만, 작게(10편) 천천히(동시 3) 다시 받는다.",
+              "InputPath": "$.Rec",
+              "ResultPath": "$.Work",
+              "Next": "ParseMap"
+            },
+            "Consolidate": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-consolidate-dmap",
+              "Parameters": {
+                "execution_id.$": "$$.Execution.Name",
+                "date.$": "$.Resolved.date",
+                "dry_run.$": "$.args.dry_run",
+                "discover.$": "$.Discover",
+                "reprocess.$": "$.args.reprocess",
+                "attempt.$": "$.Attempt"
+              },
+              "ResultPath": "$.Result",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "TooManyMissing"
+                  ],
+                  "MaxAttempts": 0
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "IntervalSeconds": 60,
+                  "MaxAttempts": 2,
+                  "BackoffRate": 1.5
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.Err",
+                  "Next": "NormalizeErr"
+                }
+              ],
+              "Next": "Degraded?",
+              "Comment": "최종 적재. attempt(StartAttempt 결과 통째로)가 2 이상이면 자동 재실행으로 적재한 날이라 알림(멘션 없음)에 얼마나 늦었는지 싣는다. TooManyMissing 은 여기서 다시 부르지 않고 시도 전체를 실패시킨다 — 병렬 단계 Run 이 마감 안이면 한 번 처음부터 다시 받는다."
+            },
+            "Degraded?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.Result.degraded",
+                  "BooleanEquals": true,
+                  "Next": "NotifyDegraded"
+                }
+              ],
+              "Default": "AttemptDone"
+            },
+            "NotifyDegraded": {
+              "Type": "Task",
+              "Comment": "적재는 했지만 결손이 있거나, 자동 재실행으로 적재했거나, 원본 재계산이다 — 실패 알림(멘션)과 구분해 멘션 없이 알린다. 알림 실패가 수집을 실패로 만들지 않는다.",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
+                "InvocationType": "Event",
+                "Payload": {
+                  "content.$": "$.Result.notice",
+                  "mention": false
+                }
+              },
+              "ResultPath": null,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": null,
+                  "Next": "AttemptDone"
+                }
+              ],
+              "Next": "AttemptDone"
+            },
+            "ReprocessIndex": {
+              "Type": "Task",
+              "Comment": "원본 재계산의 기대 목록: 그 날짜 원본 묶음(raw 버킷 contest/2026/{date}/)에 든 작품 번호 전부를 runs/{date}/{exec}/reprocess-index.json 에 쓰고, ItemReader 가 목록을 뽑을 bucket·prefix 를 돌려준다. 묶음이 없으면 ReprocessNoRaw, 읽을 수 없는 묶음이 있거나 자정 기대 목록(runs/{date}/*/expected.json) 중 원본에 없는 작품이 5%를 넘으면(받기가 끊긴 날 — 반쪽 하루를 완전한 날로 쓰지 않게) ReprocessIncomplete(둘 다 재시도 없음, dry_run 이면 보고만, accept_partial 이면 범위 검사만 건너뜀). D+1 02:45 KST(받기 마감 + 실행 제한) 뒤에 받은 줄은 자정 값이 아니라 버린다.",
+              "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap",
+              "Parameters": {
+                "action": "reprocess_index",
+                "execution_id.$": "$$.Execution.Name",
+                "date.$": "$.Resolved.date",
+                "dry_run.$": "$.args.dry_run",
+                "accept_partial.$": "$.args.accept_partial",
+                "state_bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID"
+              },
+              "ResultPath": "$.Index",
+              "TimeoutSeconds": 290,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.Err",
+                  "Next": "NormalizeErr"
+                }
+              ],
+              "Next": "ReprocessRound"
+            },
+            "ReprocessRound": {
+              "Type": "Pass",
+              "Comment": "원본 묶음 2개씩(묶음 하나가 10~40편) 동시 10. 재시도 라운드는 없다(같은 원본을 다시 읽어도 같다).",
+              "Result": {
+                "round": 0,
+                "batch": 2,
+                "concurrency": 10
+              },
+              "ResultPath": "$.Work",
+              "Next": "ReprocessMap"
+            },
+            "ReprocessMap": {
+              "Type": "Map",
+              "Comment": "그 날짜 원본 묶음 목록(S3 ListObjectsV2)을 나눠 같은 파서 Lambda 의 원본 재계산(reparse_raw_batch — _parse_one 을 저장된 응답으로 돌린다)에 넘긴다. 결과 모양·대조·적재는 수집과 같다.",
+              "ItemReader": {
+                "Resource": "arn:aws:states:::s3:listObjectsV2",
+                "Parameters": {
+                  "Bucket.$": "$.Index.bucket",
+                  "Prefix.$": "$.Index.prefix"
+                }
+              },
+              "ItemBatcher": {
+                "MaxItemsPerBatchPath": "$.Work.batch",
+                "BatchInput": {
+                  "execution_id.$": "$$.Execution.Name",
+                  "date.$": "$.Resolved.date",
+                  "reprocess": true,
+                  "dry_run.$": "$.args.dry_run"
+                }
+              },
+              "MaxConcurrencyPath": "$.Work.concurrency",
+              "ToleratedFailurePercentage": 100,
+              "ItemProcessor": {
+                "ProcessorConfig": {
+                  "Mode": "DISTRIBUTED",
+                  "ExecutionType": "EXPRESS"
+                },
+                "StartAt": "ReparseBatch",
+                "States": {
+                  "ReparseBatch": {
+                    "Type": "Task",
+                    "Comment": "원본 묶음을 읽어 다시 해석한다(노벨피아 요청 없음). 재해석은 결정적이고 멱등이라 어떤 실패든 다시 부른다(S3 일시 오류 등) — 받기 경로(ParseBatch)와 달리 다시 해도 버려지는 값이 없다. 끝내 실패한 자식은 Reconcile 이 시도 실패(ReprocessBatchFailed)로 올린다.",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap",
+                      "Payload.$": "$"
+                    },
+                    "OutputPath": "$.Payload",
+                    "TimeoutSeconds": 280,
+                    "Retry": [
+                      {
+                        "ErrorEquals": [
+                          "Lambda.TooManyRequestsException",
+                          "Lambda.ServiceException",
+                          "Lambda.AWSLambdaException",
+                          "Lambda.SdkClientException"
+                        ],
+                        "IntervalSeconds": 10,
+                        "MaxAttempts": 2,
+                        "BackoffRate": 2
+                      },
+                      {
+                        "ErrorEquals": [
+                          "States.ALL"
+                        ],
+                        "IntervalSeconds": 5,
+                        "MaxAttempts": 2,
+                        "BackoffRate": 2
+                      }
+                    ],
+                    "End": true
+                  }
+                }
+              },
+              "ResultWriter": {
+                "Resource": "arn:aws:states:::s3:putObject",
+                "Parameters": {
+                  "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
+                  "Prefix": "dmap-results"
+                }
+              },
+              "ResultSelector": {
+                "manifest.$": "$.ResultWriterDetails"
+              },
+              "ResultPath": "$.Map",
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.Err",
+                  "Next": "NormalizeErr"
+                }
+              ],
+              "Next": "Reconcile"
+            },
+            "NormalizeErr": {
+              "Type": "Pass",
+              "Comment": "잡힌 오류에 Cause 가 없을 수 있다(TimeoutSeconds 의 States.Timeout 등). 그대로 Fail 의 CausePath 에 넣으면 States.Runtime 이 나고, States.Runtime 은 Run 의 Retry·Catch(States.ALL)에 잡히지 않아 자동 재실행이 조용히 건너뛰어진다 — 기본값을 채운다.",
+              "Parameters": {
+                "e.$": "States.JsonMerge(States.StringToJson('{\"Error\": \"States.Unknown\", \"Cause\": \"(원인 없음)\"}'), $.Err, false)"
+              },
+              "ResultPath": "$.ErrN",
+              "Next": "StringifyErr"
+            },
+            "StringifyErr": {
+              "Type": "Pass",
+              "Comment": "Cause 가 null 이어도 문자열로(States.Format). Error·Cause 만 남긴다.",
+              "Parameters": {
+                "Error.$": "$.ErrN.e.Error",
+                "Cause.$": "States.Format('{}', $.ErrN.e.Cause)"
+              },
+              "ResultPath": "$.Err",
+              "Next": "RecordAttemptError"
+            },
+            "RecordAttemptError": {
+              "Type": "Task",
+              "Comment": "이 시도의 상태(오류 + 어디까지 했나: Work·Map·Rec·Result)를 상태 버킷에 남긴다. 다음 시도의 StartAttempt 가 읽어 마감 거절 문구와 적재 알림에 싣는다 — 실패 알림이 재실행의 오류만 보여 주면 첫 시도가 받기를 끝냈는지(원본 재계산을 해도 되는지) 알 수 없다. 시도 표지(attempts/)와 접두어를 나눈다. 못 남겨도 시도 실패는 그대로 올린다.",
+              "Resource": "arn:aws:states:::aws-sdk:s3:putObject",
+              "Parameters": {
+                "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
+                "Key.$": "States.Format('runs/{}/{}/attempt-errors/{}.json', $.Resolved.date, $$.Execution.Name, $.AttemptToken.token)",
+                "Body.$": "States.JsonToString($)",
+                "ContentType": "application/json"
+              },
+              "ResultPath": null,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": null,
+                  "Next": "AttemptFail"
+                }
+              ],
+              "Next": "AttemptFail"
+            },
+            "AttemptFail": {
+              "Type": "Fail",
+              "Comment": "시도 실패 — 원래 오류 이름을 그대로 올려 병렬 단계 Run 의 Retry 가 판단하게 한다(LateRefetchRefused 등은 다시 하지 않음). Error·Cause 는 NormalizeErr·StringifyErr 를 지나 늘 문자열이다.",
+              "ErrorPath": "$.Err.Error",
+              "CausePath": "$.Err.Cause"
+            },
+            "AttemptDone": {
+              "Type": "Succeed"
+            }
           }
         }
-      },
-      "ResultWriter": {
-        "Resource": "arn:aws:states:::s3:putObject",
-        "Parameters": {
-          "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
-          "Prefix": "dmap-results"
-        }
-      },
-      "ResultSelector": {
-        "manifest.$": "$.ResultWriterDetails"
-      },
-      "ResultPath": "$.Map",
-      "Comment": "실패한 묶음이 있어도 Map 은 끝까지 간다(허용 100%) — 무엇이 빠졌는지는 Reconcile 이 기대 목록과 견줘 정한다.",
-      "Catch": [
-        {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "PipelineFail"
-        }
       ],
-      "Next": "Reconcile"
-    },
-    "Reconcile": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-consolidate-dmap",
-      "Parameters": {
-        "action": "reconcile",
-        "execution_id.$": "$$.Execution.Name",
-        "date.$": "$.Resolved.date",
-        "round.$": "$.Work.round",
-        "manifest.$": "$.Map.manifest"
-      },
-      "ResultPath": "$.Rec",
+      "OutputPath": "$[0]",
       "Retry": [
         {
           "ErrorEquals": [
-            "States.ALL"
-          ],
-          "IntervalSeconds": 15,
-          "MaxAttempts": 2,
-          "BackoffRate": 2
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "PipelineFail"
-        }
-      ],
-      "Next": "RetryMissing?"
-    },
-    "RetryMissing?": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.Rec.retry",
-          "BooleanEquals": true,
-          "Next": "WaitBeforeRetry"
-        }
-      ],
-      "Default": "Consolidate"
-    },
-    "WaitBeforeRetry": {
-      "Type": "Wait",
-      "SecondsPath": "$.Rec.wait_seconds",
-      "Next": "NextRound"
-    },
-    "NextRound": {
-      "Type": "Pass",
-      "Comment": "빠진 작품만, 작게(10편) 천천히(동시 3) 다시 받는다.",
-      "InputPath": "$.Rec",
-      "ResultPath": "$.Work",
-      "Next": "ParseMap"
-    },
-    "Consolidate": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-consolidate-dmap",
-      "Parameters": {
-        "execution_id.$": "$$.Execution.Name",
-        "date.$": "$.Resolved.date",
-        "dry_run.$": "$.args.dry_run",
-        "discover.$": "$.Discover"
-      },
-      "ResultPath": "$.Result",
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "TooManyMissing"
+            "LateRefetchRefused",
+            "ReprocessNoRaw",
+            "ReprocessIncomplete"
           ],
           "MaxAttempts": 0
         },
@@ -423,8 +763,7 @@
             "States.ALL"
           ],
           "IntervalSeconds": 60,
-          "MaxAttempts": 2,
-          "BackoffRate": 1.5
+          "MaxAttempts": 1
         }
       ],
       "Catch": [
@@ -432,45 +771,61 @@
           "ErrorEquals": [
             "States.ALL"
           ],
-          "Next": "PipelineFail"
-        }
-      ],
-      "Next": "Degraded?"
-    },
-    "Degraded?": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.Result.degraded",
-          "BooleanEquals": true,
-          "Next": "NotifyDegraded"
-        }
-      ],
-      "Default": "PipelineSuccess"
-    },
-    "NotifyDegraded": {
-      "Type": "Task",
-      "Comment": "적재는 했지만 결손이 있다 — 실패 알림(멘션)과 구분해 멘션 없이 알린다. 알림 실패가 수집을 실패로 만들지 않는다.",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
-        "InvocationType": "Event",
-        "Payload": {
-          "content.$": "$.Result.notice",
-          "mention": false
-        }
-      },
-      "ResultPath": null,
-      "Catch": [
-        {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "ResultPath": null,
-          "Next": "PipelineSuccess"
+          "ResultPath": "$.RunError",
+          "Next": "NormalizeRunErr"
         }
       ],
       "Next": "PipelineSuccess"
+    },
+    "NormalizeRunErr": {
+      "Type": "Pass",
+      "Comment": "RunFailed·LateRefetchFail 의 CausePath 가 States.Runtime 으로 깨지지 않게 Cause 를 늘 채운다(NormalizeErr 와 같음).",
+      "Parameters": {
+        "e.$": "States.JsonMerge(States.StringToJson('{\"Error\": \"States.Unknown\", \"Cause\": \"(원인 없음)\"}'), $.RunError, false)"
+      },
+      "ResultPath": "$.RunErrN",
+      "Next": "StringifyRunErr"
+    },
+    "StringifyRunErr": {
+      "Type": "Pass",
+      "Parameters": {
+        "Error.$": "$.RunErrN.e.Error",
+        "Cause.$": "States.Format('{}', $.RunErrN.e.Cause)"
+      },
+      "ResultPath": "$.RunError",
+      "Next": "WhyFailed?"
+    },
+    "WhyFailed?": {
+      "Type": "Choice",
+      "Comment": "실행 실패에 시도의 원래 오류를 싣는다 — 실패 알림(EventBridge → Discord)이 오류·원인을 그대로 보여 준다. 늦은 다시 받기 거절은 읽을 수 있는 원인 문구로.",
+      "Choices": [
+        {
+          "Variable": "$.RunError.Error",
+          "StringEquals": "LateRefetchRefused",
+          "Next": "LateRefetchCause"
+        }
+      ],
+      "Default": "RunFailed"
+    },
+    "LateRefetchCause": {
+      "Type": "Pass",
+      "Comment": "읽을 수 있는 원인 문구 + StartAttempt 의 오류(마감 시각과 앞선 시도의 오류 요약 — 첫 시도가 받기를 끝냈는지)를 함께 싣는다.",
+      "Parameters": {
+        "Cause.$": "States.Format('기록 날짜의 자정 + 1시간이 지나 노벨피아에서 다시 받으려 해 받기 전에 거절했습니다. 하루의 값은 자정 값이어야 합니다 — 늦게 받은 누적을 그 날짜로 쓰면 일간 순위가 늦은 만큼 부풉니다. 받기는 끝났는데 적재가 실패했다면(상세의 앞선 시도 요약에 「받기 끝남」이 있으면) 원본 재계산(reprocess: true, target_date: 그 날짜)을 돌리고, 자정 수집 자체가 실패한 날은 비워 둡니다(다음 날 일간 순위는 실제 직전 수집일과 견줍니다). 상세: {}', $.RunError.Cause)"
+      },
+      "ResultPath": "$.LateCause",
+      "Next": "LateRefetchFail"
+    },
+    "LateRefetchFail": {
+      "Type": "Fail",
+      "Error": "LateRefetchRefused",
+      "CausePath": "$.LateCause.Cause"
+    },
+    "RunFailed": {
+      "Type": "Fail",
+      "Comment": "자동 재실행까지 실패 — 마지막 시도의 오류를 그대로 올린다.",
+      "ErrorPath": "$.RunError.Error",
+      "CausePath": "$.RunError.Cause"
     },
     "PipelineFail": {
       "Type": "Fail"
