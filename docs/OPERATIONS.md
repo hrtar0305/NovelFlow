@@ -7,7 +7,7 @@
 | 컴포넌트 | 방식 |
 |----------|------|
 | `crawler/`, `contests/2025/contest_detail_parser/` | Docker 이미지 → Amazon ECR → Lambda |
-| `contests/2026/` (수집기·팬아웃·파서·적재·상태 머신·스케줄) | `bash contests/2026/deploy.sh [infra\|code\|orchestration\|schedule\|alarm]` — 파서는 이미지, 나머지는 zip |
+| `contests/2026/` (수집기·팬아웃·파서·적재·상태 머신·스케줄) | `bash contests/2026/deploy.sh [infra\|code\|orchestration\|schedule\|alarm]` — 파서는 이미지, 나머지는 zip. 버전은 git 태그 `contest2026-vX.Y.Z`, `code` 가 이미지 태그·Lambda 설명에 남긴다 |
 | `data-pipeline/`, `contests/2025/contest_id_collector/` | zip 배포 (`package/`에 의존성 벤더링) |
 | `webapp/backend/` | Lambda (Mangum) — zip 또는 이미지 |
 | `webapp/frontend/` | `npm run build` → S3 → CloudFront |
