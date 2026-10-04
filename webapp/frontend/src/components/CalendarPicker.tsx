@@ -1,7 +1,7 @@
 import React, { useState, useCallback, forwardRef, useMemo } from 'react';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import type { DatePickerProps } from 'react-datepicker';
-import { offset } from '@floating-ui/react';
+import { offset, shift } from '@floating-ui/react';
 import { format, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { CalendarEvent } from 'react-bootstrap-icons';
@@ -39,7 +39,8 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
   const fixedBottomPopperProps = useMemo(() => ({
     // react-datepicker adds flip() by default. Override middleware so the
     // calendar keeps its top edge anchored and always expands downward.
-    middleware: [offset(10)],
+    // shift: 모바일(390)에서 달력이 오른쪽 화면 밖으로 잘렸다 — 옆으로만 밀어 넣는다(아래로 여는 것은 그대로).
+    middleware: [offset(10), shift({ padding: 16 })],
   }) as unknown as DatePickerProps['popperProps'], []);
 
   const maxDate = useMemo(() => {

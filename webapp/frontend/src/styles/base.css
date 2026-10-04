@@ -15,6 +15,9 @@ html {
 html body {
   font-family: var(--np-font-sans);
   font-feature-settings: "tnum" 1;
+  /* 글자색도 같은 이유로 여기서 — 아니면 Bootstrap 의 #212529 가 이겨, 색을 따로 주지 않은 글자가 다크에서 거의 안 보였다
+     (분석 화면 표의 굵지 않은 칸, 2026-10-05 라이트·다크 점검). */
+  color: var(--np-text-primary);
 }
 
 body {
@@ -297,3 +300,11 @@ p {
     --np-datepicker-day-margin: 0.1rem;
   }
 }
+
+/* 달력 팝업: 라이브러리 기본 z-index 1 이라 쇼케이스 카드(표지 띠·눈 버튼)와 표 고정 머리글 아래에 깔렸다. 카드(최대 3)·연도
+   메뉴(30)·표 머리글(2)보다 위, 사이트 머리(100)보다 아래. 라이브러리 CSS 가 컴포넌트 안에서 나중에 로드돼 !important. */
+.react-datepicker-popper { z-index: 40 !important; }
+.react-datepicker { font-family: inherit !important; }
+/* 이전·다음 달 화살표: 라이브러리 기본 #ccc 가 라이트 머리(#f5f6f8)에서 1.5:1 이라 비활성처럼 보였다. */
+.react-datepicker__navigation-icon::before { border-color: var(--np-text-secondary) !important; }
+.react-datepicker__navigation:hover .react-datepicker__navigation-icon::before { border-color: var(--np-text-heading) !important; }

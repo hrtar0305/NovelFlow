@@ -26,7 +26,7 @@
   --np-on-image: #ffffff;
   --np-on-image-soft: #eceef3;
   --np-chip-up: #d42a44;          /* 표지 위 상승 칩(▲135) */
-  --np-image-placeholder: #22242b; /* 표지가 오기 전 자리 */
+  --np-image-placeholder: #22242b; /* 표지가 오기 전·표지 없는 카드 자리(라이트는 아래에서 중간 회색으로 — 흰 화면에 검은 판이 떴다) */
   /* 공모전 수상 색 — 샴페인(대상)·플래티넘(최우수상)·로즈골드(탑툰상·우수상·특별상). 수상 표기에만 쓰는 예외 색이고,
      글자색이 아니라 표의 메달 점과 표지 위 칩 채움에만 쓴다(그래서 두 테마에서 같은 값). 칩 글자는 어두운 색(2026-10-04). */
   --np-award-1: #e6c27a;
@@ -36,6 +36,11 @@
 
   --np-border: #262930;
   --np-border-strong: #353942;
+  /* 차트 막대·표시(조회·추천 막대, 순위 밖 띠, 휴재·모름 표시)와 구분선 글리프. 테두리 토큰과 나눠 라이트에서만 진하게 한다(2026-10-05). */
+  --np-chart-bar: #353942;
+  --np-separator: #353942;
+  /* 불러오는 중 줄의 반짝임 */
+  --np-skeleton: #1b1e23;
 
   --np-text-primary: #eceef2;
   --np-text-secondary: #a0a6b1;
@@ -122,13 +127,17 @@
   --np-canvas: #ffffff;
   --np-canvas-elevated: #ffffff;
   --np-surface: #ffffff;
-  --np-surface-alt: #f7f8fa;
+  --np-surface-alt: #f5f6f8;
   --np-surface-raised: #f1f2f5;
   --np-surface-overlay: rgba(255, 255, 255, 0.97);
   --np-cover-bg: #d9dce1;
 
-  --np-border: #edeef1;
-  --np-border-strong: #dfe1e6;
+  --np-border: #e3e5e9;
+  --np-border-strong: #d5d8de;
+  --np-chart-bar: #c4c8cf;
+  --np-separator: #c3c7ce;
+  --np-skeleton: #eceef2;
+  --np-image-placeholder: #8b9099;
 
   --np-text-primary: #15171c;
   --np-text-secondary: #6a707b;
@@ -156,7 +165,7 @@
   --np-zone-mainstream: #6247d6;
   --np-zone-gem: #0f9a86;
   --np-zone-saturated: #d9820a;
-  --np-zone-cold: #a1a6af;
+  --np-zone-cold: #858b96;
   --np-zone-mainstream-text: #6247d6;
   --np-zone-gem-text: #0d7f6f;
   --np-zone-saturated-text: #a1600a;

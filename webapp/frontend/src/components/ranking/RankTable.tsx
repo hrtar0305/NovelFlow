@@ -59,6 +59,8 @@ export default function RankTable<T>(props: RankTableProps<T>) {
   const virtualizer = useWindowVirtualizer({
     count: rows.length,
     estimateSize: () => (isMobile ? 112 : rowHeight),
+    // 필터로 줄이 바뀌어도 잰 높이를 번호가 아니라 작품에 붙인다(앞 작품의 높이가 남아 줄 사이가 비었다).
+    getItemKey: i => rowKey(rows[i]),
     overscan: 8,
     scrollMargin,
   });

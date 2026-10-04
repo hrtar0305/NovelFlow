@@ -92,8 +92,15 @@ export default function MetricsPanel({ points, kind, status }: Props) {
     const { rankFirst: rf, rankLast: rl } = summary ?? { rankFirst: null, rankLast: null };
     if (summary && rf && rl) {
       marks.set(idx(rf), `${rf.rank}위`);
-      if (summary.best !== rf && summary.best !== rl && summary.best.rank != null) marks.set(idx(summary.best), `최고 ${summary.best.rank}위`);
       marks.set(idx(rl), `${rl.rank}위`);
+      const best = summary.best;
+      if (best !== rf && best !== rl && best.rank != null) {
+        // 최고 순위 점이 처음·마지막 점과 붙어 있으면 이름표가 겹쳐 '최고 1위1위'로 읽혔다 — 따로 달지 않고 가까운 쪽 이름표에 합친다.
+        const near = (p: MetricPoint) => Math.abs(X(idx(p)) - X(idx(best))) < 64 && Math.abs(Y(p.rank!) - Y(best.rank!)) < 20;
+        const host = near(rl) ? rl : near(rf) ? rf : null;
+        if (host) marks.set(idx(host), `${host.rank}위 · 최고 ${best.rank}위`);
+        else marks.set(idx(best), `최고 ${best.rank}위`);
+      }
     }
     const lonely = (i: number) => points[i].rec && !(points[i - 1]?.rec) && !(points[i + 1]?.rec);
     return (
@@ -204,7 +211,8 @@ export default function MetricsPanel({ points, kind, status }: Props) {
   const tip = (() => {
     if (hv == null || width === 0) return null;
     const p = points[hv];
-    const left = X(hv) + (X(hv) > width - 210 ? -196 : 14);
+    // 좁은 화면에서 왼쪽으로 넘기면 순위 눈금 위로 덮였다 — 그림 영역 안에 붙잡아 둔다.
+    const left = Math.min(Math.max(PL, X(hv) + (X(hv) > width - 210 ? -196 : 14)), Math.max(PL, width - 186));
     return (
       <div className="mx-tip" style={{ left }}>
         <div className="mx-tip__d">{formatDateKo(p.date)}</div>

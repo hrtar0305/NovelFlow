@@ -32,7 +32,7 @@
 /* 이름은 본문색(보통 굵기), 값은 제목색·굵게 — 이름이 흐리면 어떤 값인지 한눈에 안 들어온다. */
 .inline-nums { font-size: 0.9375rem; color: var(--np-text-primary); }
 .inline-nums__item b { margin-left: 0.25rem; color: var(--np-text-heading); font-weight: 700; }
-.inline-nums__item + .inline-nums__item::before { content: ""; display: inline-block; width: 1px; height: 12px; background: var(--np-border-strong); margin: 0 0.875rem; vertical-align: -1px; }
+.inline-nums__item + .inline-nums__item::before { content: ""; display: inline-block; width: 1px; height: 12px; background: var(--np-separator); margin: 0 0.875rem; vertical-align: -1px; }
 
 .footnotes { margin: 0; padding: 0.875rem 0 1.5rem; list-style: none; font-size: 0.78rem; line-height: 1.8; color: var(--np-text-secondary); }
 .footnotes__mark { margin-right: 0.35rem; font-size: 0.6875rem; vertical-align: super; line-height: 0; color: var(--np-text-faint); }
@@ -52,6 +52,8 @@
 .sparkline__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); }
 .sparkline--empty { font-size: var(--np-fs-meta); color: var(--np-text-faint); }
 .filter-drawer.offcanvas { width: 440px; background: var(--np-canvas); color: var(--np-text-primary); border-left: 1px solid var(--np-border); box-shadow: var(--np-shadow-lg); }
+/* Bootstrap 닫기(×)는 어두운 글리프라 다크 드로어에서 안 보였다 — 다크에서만 Bootstrap 자신의 반전 필터를 켠다. */
+[data-theme="dark"] .btn-close { --bs-btn-close-filter: invert(1) grayscale(100%) brightness(200%); }
 @media (max-width: 575.98px) { .filter-drawer.offcanvas { width: 100vw; } }
 .filter-drawer .offcanvas-header { padding: 1.5rem 1.75rem 0.5rem; }
 .filter-drawer__title { color: var(--np-text-heading); font-size: 1.25rem; font-weight: 800; }
@@ -122,7 +124,7 @@
 .rank-mrow__rank .rank-num { font-size: 1.1875rem; line-height: 1.1; white-space: nowrap; }
 .rank-mrow__main p { margin: 3px 0 0; font-size: 0.78rem; color: var(--np-text-secondary); } .rank-mrow__main b { color: var(--np-text-heading); font-weight: 600; }
 .rank-mrow__main .tag-links { margin-top: 4px; font-size: 0.8125rem; }
-.rank-skeleton div { height: 60px; border-bottom: 1px solid var(--np-border); background: linear-gradient(90deg, transparent, var(--np-surface-alt), transparent); background-size: 200% 100%; animation: rank-skel 1.2s linear infinite; }
+.rank-skeleton div { height: 60px; border-bottom: 1px solid var(--np-border); background: linear-gradient(90deg, transparent, var(--np-skeleton), transparent); background-size: 200% 100%; animation: rank-skel 1.2s linear infinite; }
 @keyframes rank-skel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .rank-skeleton div { animation: none; } }
 .is-pending { opacity: 0.7; transition: opacity var(--np-transition); }
@@ -210,6 +212,8 @@
 @media (max-width: 767.98px) { .rank-toolbar .toolbar-searchform { flex: 1; min-width: 0; } }
 .toolbar-searchform .toolbar-search:focus { outline: none; box-shadow: none; }
 .toolbar-searchform:focus-within { border-bottom-color: var(--np-accent); }
+/* 밑줄 입력칸의 초점: 사각 윤곽 대신 밑줄 색으로(키보드 초점이 보이게, 모든 밑줄 입력칸 공통). */
+.toolbar-search:focus { outline: none; box-shadow: none; border-bottom-color: var(--np-accent); }
 .filter-drawer__statuses { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }
 .filter-drawer__statuses button { display: inline-flex; align-items: baseline; gap: 0.3rem; padding: 0.2rem 0; border: 0; background: none; color: var(--np-text-primary); font-size: 0.9375rem; }
 .filter-drawer__statuses button i { font-style: normal; font-size: 0.8125rem; color: var(--np-text-faint); }
@@ -229,6 +233,7 @@
 .doc-record { margin: 1.5rem 0 0; }
 .doc-record__strip { display: block; width: 100%; height: 28px; border-radius: 3px; }
 .doc-record__day { fill: var(--np-surface-raised); }
+[data-theme="light"] .doc-record__day { fill: var(--np-border-strong); }   /* 라이트에서 수집 띠 바탕이 흰 화면에 묻혔다 */
 .doc-record__gap { fill: var(--np-accent); }
 .doc-record__caption { display: flex; justify-content: space-between; margin-top: 0.35rem; font-size: 0.75rem; color: var(--np-text-faint); }
 .doc-record__missing { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--np-text-secondary); }
@@ -452,7 +457,7 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 /* ── 작품 상세 지표(2026-09-30): 요약 한 줄 · 순위 선 · 증가량 묶음 · 날짜별 표 ── */
 .mx-sum { margin: 0 0 1.1rem; font-size: 0.9375rem; line-height: 1.75; color: var(--np-text-secondary); }
 .mx-sum b { color: var(--np-text-heading); font-weight: 700; }
-.mx-sum i { font-style: normal; margin: 0 0.6rem; color: var(--np-border-strong); }
+.mx-sum i { font-style: normal; margin: 0 0.6rem; color: var(--np-separator); }
 .mx-stack { position: relative; touch-action: pan-y; }
 .mx-svg { display: block; overflow: visible; }
 /* 지표 한 줄 = 제목 + 차트 한 덩어리. 덩어리 사이를 선과 여백으로 갈라, 제목이 위 차트의 꼬리처럼 읽히지 않게 한다. */
@@ -463,12 +468,12 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .mx-hl { fill: var(--np-surface-raised); }
 .mx-grid { stroke: var(--np-border); }
 .mx-tick { font-size: 11px; fill: var(--np-text-faint); }
-.mx-out { fill: var(--np-border-strong); }
+.mx-out { fill: var(--np-chart-bar); }
 .mx-rankline { fill: none; stroke: var(--np-accent); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
 .mx-rankdot { fill: var(--np-accent); }
 .mx-mark { fill: var(--np-canvas); stroke: var(--np-accent); stroke-width: 2; }
 .mx-marklabel { font-size: 12px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-canvas); stroke-width: 3px; stroke-linejoin: round; }
-.mx-bar { fill: var(--np-border-strong); }
+.mx-bar { fill: var(--np-chart-bar); }
 .mx-bar.is-on { fill: var(--np-text-heading); }
 .mx-bar.is-count { fill: var(--np-text-secondary); }
 .mx-bar.is-multi { fill: none; stroke: var(--np-text-secondary); stroke-dasharray: 3 2; }
@@ -496,14 +501,14 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 }
 /* 연재 줄: 올린 날은 채운 칸, 쉰 날은 빈 칸, 여러 날치는 점선. 두 화 이상 올린 날은 칸 안에 수. */
 .mx-day.is-up { fill: var(--np-accent); }
-.mx-day.is-rest { fill: none; stroke: var(--np-border-strong); stroke-width: 1.5; }
+.mx-day.is-rest { fill: none; stroke: var(--np-chart-bar); stroke-width: 1.5; }
 .mx-day.is-multi { fill: none; stroke-dasharray: 3 2; }
 .mx-day.is-up.is-multi { stroke: var(--np-accent); stroke-width: 1.5; }
 .mx-day.is-on { stroke: var(--np-text-heading); stroke-width: 2; }
 .mx-day__n { font-size: 11px; font-weight: 700; fill: var(--np-on-accent); pointer-events: none; }
 .mx-day__n.is-multi { fill: var(--np-accent); }
 .mx-rest { color: var(--np-warning) !important; }
-.mx-day__unknown { stroke: var(--np-border-strong); stroke-width: 2; stroke-linecap: round; }
+.mx-day__unknown { stroke: var(--np-chart-bar); stroke-width: 2; stroke-linecap: round; }
 
 /* ── 일간 랭킹 행 펼침(2026-10-01): 30일 순위선+연재 줄 / 작품 소개 / 수치. 제목 열(116px)에서 시작 ── */
 /* 행 펼침: [이름표 + 순위선] | 작품 소개 2줄 | 작품 정보 보기 — 한 줄, 세로 가운데. 왼쪽 끝은 표가 제목 칸에 맞춘다(RankTable expandFrom). */

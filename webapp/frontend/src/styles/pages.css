@@ -408,7 +408,7 @@
 .react-datepicker__day.np-date-range-start,
 .react-datepicker__day.np-date-range-end {
   background-color: var(--np-accent) !important;
-  color: var(--np-accent-contrast) !important;
+  color: var(--np-on-accent) !important;   /* --np-accent-contrast 는 정의된 적 없는 토큰이었다 */
   font-weight: 800 !important;
 }
 
