@@ -215,6 +215,16 @@ collector_alarm() {
     --namespace AWS/Lambda --metric-name Errors --dimensions Name=FunctionName,Value=$F_COLLECTOR \
     --statistic Sum --period 3600 --evaluation-periods 1 --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold \
     --treat-missing-data notBreaching --alarm-actions $TOPIC
+  # 성공 부재: 자정 예약이 아예 시작되지 않은 날(스케줄 비활성·시작 실패)은 실패 이벤트가 없어 실패 알림 규칙이 못 본다.
+  # 데일리·2025 의 *-no-success-26h 와 같은 설정(1시간 × 26 연속 성공 0, 데이터 없음 = 위반). 실행이 하루 한 번이라 26시간이면
+  # 하루를 놓친 뒤 2시간 안에 울린다. 시험 실행의 SUCCEEDED 도 성공으로 센다(그날 시험을 돌리면 늦게 울린다).
+  NOSUCCESS=novelflow-contest-$Y-no-success-26h
+  echo "== 알람 $NOSUCCESS (자정 수집 26시간 성공 없음 → 이메일 + Discord)"
+  aws cloudwatch put-metric-alarm --region $R --alarm-name $NOSUCCESS \
+    --alarm-description "2026 공모전 자정 수집($SM_NAME)이 26시간 동안 한 번도 성공하지 않음(스케줄 미실행 포함)" \
+    --namespace AWS/States --metric-name ExecutionsSucceeded --dimensions Name=StateMachineArn,Value=$SM_ARN \
+    --statistic Sum --period 3600 --evaluation-periods 26 --datapoints-to-alarm 26 --threshold 1 \
+    --comparison-operator LessThanThreshold --treat-missing-data breaching --alarm-actions $TOPIC --ok-actions $TOPIC
   # put-rule 은 패턴을 통째로 바꾼다 — 다른 알람(OPERATIONS 「실패 알림」, 데일리 적재 오류 포함)을 함께 적는다.
   aws events put-rule --region $R --name novelflow-alarm-state \
     --description "NovelFlow 알람 상태 변경 → Discord (ALARM 은 멘션)" --event-pattern "{
@@ -223,6 +233,7 @@ collector_alarm() {
       \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-contest-no-success-26h\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:np-trend-crawler-dlq-alarm\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-daily-ingestion-errors\",
+      \"arn:aws:cloudwatch:$R:$ACC:alarm:$NOSUCCESS\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:$ALARM\"]}" >/dev/null
 }
 
