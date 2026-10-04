@@ -7,7 +7,7 @@
 | 컴포넌트 | 방식 |
 |----------|------|
 | `crawler/`, `contests/2025/contest_detail_parser/` | Docker 이미지 → Amazon ECR → Lambda |
-| `contests/2026/` (수집기·팬아웃·파서·적재·상태 머신·스케줄) | `bash contests/2026/deploy.sh [infra\|code\|orchestration\|dmap\|schedule]` — 파서는 이미지, 나머지는 zip |
+| `contests/2026/` (수집기·팬아웃·파서·적재·상태 머신·스케줄) | `bash contests/2026/deploy.sh [infra\|code\|orchestration\|schedule\|alarm]` — 파서는 이미지, 나머지는 zip |
 | `data-pipeline/`, `contests/2025/contest_id_collector/` | zip 배포 (`package/`에 의존성 벤더링) |
 | `webapp/backend/` | Lambda (Mangum) — zip 또는 이미지 |
 | `webapp/frontend/` | `npm run build` → S3 → CloudFront |
@@ -189,8 +189,20 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 - 2026 공모전(이름은 `NovelFlowContest2026*`):
   - 준비 실행 `NovelFlowContest2026Prep`: 매일 11:30·23:30 — 수집기 Lambda 직접 호출(`mode: prep`). 새 번호 훑기 + 재확인(짝수 번호 = 오전, 홀수 = 밤) + 새 작가의 다른 작품.
   - 본 수집 `NovelFlowContest2026Daily`: 매일 00:00 → `NovelFlowContest2026DMapWorkflow`(기록 날짜 = 실행 시작 − 12시간). 날짜 잠금 `RUN_LOCK#{date}` 로 중복 전달을 건너뛴다.
-  - 되돌리기: `PIPELINE=sqs bash contests/2026/deploy.sh schedule`(SQS 판 상태 머신은 남아 있다). 재실행: 상태 머신 입력 `{"target_date": "YYYY-MM-DD"}`.
+  - SQS 판은 2026-10-04 삭제했다(DMap 판만 남음). 재실행: 상태 머신 입력 `{"target_date": "YYYY-MM-DD"}`.
   - 매일의 결과·결손 장부: 상태 버킷 `failures/{date}.json`. 결손이 있으면 Discord 로 멘션 없는 경고, 실패는 멘션.
+
+## 알람 (CloudWatch → 이메일 + Discord `novelflow-alarm-state`)
+
+| 알람 | 무엇을 잡나 |
+|---|---|
+| `novelflow-daily-no-success-26h` / `novelflow-contest-no-success-26h` | 하루 넘게 성공한 실행이 없음 |
+| `np-trend-crawler-dlq-alarm` | 데일리 DLQ 에 메시지가 쌓임 |
+| `novelflow-contest-2026-collector-errors` | 2026 ID 수집기(준비 실행·자정) 오류 |
+| `novelflow-daily-ingestion-errors` | 데일리 적재 Lambda 오류 — S3 트리거(비동기)는 2번 재시도 뒤 조용히 버리고, 상태 머신은 이미 성공이라 실패 알림이 없다 |
+
+`novelflow-alarm-state` 규칙은 알람 ARN 목록을 패턴으로 가진다 — `put-rule` 은 패턴을 통째로 바꾸므로, 알람을 더할 때는 목록 전체를 다시 적는다
+(`contests/2026/deploy.sh` 의 `collector_alarm` 이 그 목록을 가진다). 데일리 성인작 0편 경고는 알람이 아니라 consolidate 가 알림 Lambda 를 직접 부른다.
 
 ## 데이터 수집 안내 페이지의 수치
 
