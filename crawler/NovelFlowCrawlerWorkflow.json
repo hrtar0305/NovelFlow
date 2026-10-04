@@ -1,13 +1,16 @@
 {
-  "Comment": "Crawl Novelpia daily rankings, parse details in parallel, and handle errors.",
+  "Comment": "Crawl Novelpia daily rankings, parse details in parallel, and handle errors. 하루의 값은 제시간 값이다(사용자 결정 2026-10-04): 실행이 단계별 재시도를 다 쓰고도 실패하면 60초 뒤 purge 부터 한 번 더 한다(CrawlAttempt 자동 재시도, 날짜 잠금은 그 앞에서 한 번만). 어느 시도든 기록 날짜(실행 시작의 KST 날짜) 22:00 KST 이후에는 받지 않는다(LateRunRefused, 재시도 없음). 재시도로 복구하면 Discord 에 멘션 없이 알린다. 시험: {\"test_mode\": true} 는 마감·잠금·purge 없이 랭킹 목록만 받아 보고 끝난다(쓰기 없음). 여기에 \"fail_first_attempt\": true 를 더하면 첫 시도를 일부러 실패시켜 자동 재시도 경로를 태운다.",
   "StartAt": "ResolveRunDate",
   "States": {
     "ResolveRunDate": {
       "Type": "Pass",
       "QueryLanguage": "JSONata",
-      "Comment": "Run date for the lock: Seoul date of the execution start (get_ranking_list uses the same Seoul 'today'). Input passes through unchanged.",
+      "Comment": "Run date for the lock and the late-run deadline: Seoul date of the execution start (get_ranking_list uses the same Seoul 'today'). attempt 는 자동 재시도 횟수(1부터), lastError·firstError 는 시도 실패의 오류. Input passes through unchanged.",
       "Assign": {
-        "runDate": "{% $fromMillis($toMillis($states.context.Execution.StartTime), '[Y0001]-[M01]-[D01]', '+0900') %}"
+        "runDate": "{% $fromMillis($toMillis($states.context.Execution.StartTime), '[Y0001]-[M01]-[D01]', '+0900') %}",
+        "attempt": 1,
+        "lastError": null,
+        "firstError": null
       },
       "Output": "{% $states.input %}",
       "Next": "UseRunLock?"
@@ -15,14 +18,14 @@
     "UseRunLock?": {
       "Type": "Choice",
       "QueryLanguage": "JSONata",
-      "Comment": "Only the 21:00 schedule takes the lock: it sends {\"target_novel_count\": 500, \"scheduled\": true}. Manual runs (no 'scheduled') neither take nor hit the lock, so a same-day manual check cannot make that night's schedule skip, and a rerun after the schedule needs no extra flag.",
+      "Comment": "Only the 21:00 schedule takes the lock: it sends {\"target_novel_count\": 500, \"scheduled\": true}. Manual runs (no 'scheduled') neither take nor hit the lock, so a same-day manual check cannot make that night's schedule skip, and a rerun after the schedule needs no extra flag. test_mode 는 잠금을 잡지 않는다(시험이 DynamoDB 에 쓰지 않게).",
       "Choices": [
         {
-          "Condition": "{% $states.input.scheduled = true %}",
+          "Condition": "{% $states.input.scheduled = true and $not($states.input.test_mode = true) %}",
           "Next": "AcquireRunLock"
         }
       ],
-      "Default": "PurgeQueue"
+      "Default": "StartAttempt"
     },
     "AcquireRunLock": {
       "Type": "Task",
@@ -72,10 +75,10 @@
             "States.ALL"
           ],
           "Output": "{% $states.input %}",
-          "Next": "PurgeQueue"
+          "Next": "StartAttempt"
         }
       ],
-      "Next": "PurgeQueue"
+      "Next": "StartAttempt"
     },
     "NotifyDuplicateRun": {
       "Type": "Task",
@@ -105,139 +108,275 @@
       "Type": "Succeed",
       "Comment": "A run for this date already holds the lock."
     },
-    "PurgeQueue": {
-      "Type": "Task",
-      "Comment": "Clears leftover results from previous runs. Must be followed by WaitForPurgeToFinish.",
-      "Resource": "arn:aws:states:::aws-sdk:sqs:purgeQueue",
-      "Parameters": {
-        "QueueUrl": "https://sqs.YOUR_AWS_REGION.amazonaws.com/YOUR_AWS_ACCOUNT_ID/np-trend-crawler-queue"
+    "StartAttempt": {
+      "Type": "Pass",
+      "QueryLanguage": "JSONata",
+      "Comment": "시도 하나의 시작 시각. AttemptGate 의 마감 확인과 복구 알림의 '몇 분 늦었나'에 쓴다. 날짜 잠금은 이 앞이라 재시도가 다시 잡지 않는다.",
+      "Assign": {
+        "attemptStartedMs": "{% $millis() %}"
       },
-      "ResultPath": null,
-      "Retry": [
+      "Output": "{% $states.input %}",
+      "Next": "CrawlAttempt"
+    },
+    "CrawlAttempt": {
+      "Type": "Parallel",
+      "QueryLanguage": "JSONata",
+      "Comment": "한 시도 = 이 가지 하나(마감 확인 → purge → 65초 대기 → GetRanking → Express → Consolidate). 단계별 재시도·동작은 예전과 같고, 단계의 Catch → CrawlFail 은 이 병렬 단계의 Catch 하나로 모았다. 출력은 가지 출력 배열이라 [0](Consolidate 결과)만 남긴다.",
+      "Branches": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "IntervalSeconds": 65,
-          "MaxAttempts": 2,
-          "BackoffRate": 1
+          "StartAt": "AttemptGate",
+          "States": {
+            "AttemptGate": {
+              "Type": "Choice",
+              "QueryLanguage": "JSONata",
+              "Comment": "시도의 시작(StartAttempt 가 찍은 $attemptStartedMs)에서 본다. 하루의 값은 제시간 값이다(사용자 결정 2026-10-04): 기록 날짜(= 실행 시작의 KST 날짜, GetRanking 의 today 와 같다) 22:00 KST 를 넘긴 시도는 purge 도 받기도 하지 않고 LateRunRefused 로 끝난다(다시 하지 않음). test_mode 는 마감이 없고, purge·대기 없이 GetRanking 만 부른다(큐를 건드리지 않게). 시험 훅: test_mode 와 fail_first_attempt 를 함께 주면 첫 시도를 여기서 실패시켜 자동 재시도 경로를 태운다.",
+              "Choices": [
+                {
+                  "Condition": "{% $states.input.test_mode = true and $states.input.fail_first_attempt = true and $attempt = 1 %}",
+                  "Next": "FailFirstAttemptForTest"
+                },
+                {
+                  "Condition": "{% $states.input.test_mode = true %}",
+                  "Next": "GetRanking"
+                },
+                {
+                  "Condition": "{% $attemptStartedMs > $toMillis($runDate & 'T22:00:00.000+09:00') %}",
+                  "Next": "RefuseLateRun"
+                }
+              ],
+              "Default": "PurgeQueue"
+            },
+            "FailFirstAttemptForTest": {
+              "Type": "Fail",
+              "Comment": "시험 전용(test_mode + fail_first_attempt). 재시도 대상 오류다.",
+              "Error": "TestInducedFailure",
+              "Cause": "시험: fail_first_attempt 로 첫 시도를 일부러 실패시켰습니다(test_mode 전용, 아무것도 쓰지 않음)."
+            },
+            "PurgeQueue": {
+              "Type": "Task",
+              "Comment": "Clears leftover results from previous runs. Must be followed by WaitForPurgeToFinish.",
+              "Resource": "arn:aws:states:::aws-sdk:sqs:purgeQueue",
+              "Parameters": {
+                "QueueUrl": "https://sqs.YOUR_AWS_REGION.amazonaws.com/YOUR_AWS_ACCOUNT_ID/np-trend-crawler-queue"
+              },
+              "ResultPath": null,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "IntervalSeconds": 65,
+                  "MaxAttempts": 2,
+                  "BackoffRate": 1
+                }
+              ],
+              "Next": "WaitForPurgeToFinish"
+            },
+            "WaitForPurgeToFinish": {
+              "Type": "Wait",
+              "Comment": "PurgeQueue takes up to 60s and may delete messages sent while it runs (AWS recommends waiting 60s). Detail results used to arrive ~20s after the purge.",
+              "Seconds": 65,
+              "Next": "StampFetchTime"
+            },
+            "StampFetchTime": {
+              "Type": "Pass",
+              "QueryLanguage": "JSONata",
+              "Comment": "받기 직전 시각. purge 재시도·65초 대기 사이에 22:00 을 넘길 수 있어 받기 직전에 한 번 더 본다.",
+              "Assign": {
+                "fetchAtMs": "{% $millis() %}"
+              },
+              "Output": "{% $states.input %}",
+              "Next": "FetchWindowOpen?"
+            },
+            "FetchWindowOpen?": {
+              "Type": "Choice",
+              "QueryLanguage": "JSONata",
+              "Comment": "받기 시작이 기록 날짜 22:00 KST 를 넘기면 받지 않는다(AttemptGate 와 같은 마감).",
+              "Choices": [
+                {
+                  "Condition": "{% $fetchAtMs > $toMillis($runDate & 'T22:00:00.000+09:00') %}",
+                  "Next": "RefuseLateRun"
+                }
+              ],
+              "Default": "GetRanking"
+            },
+            "RefuseLateRun": {
+              "Type": "Fail",
+              "QueryLanguage": "JSONata",
+              "Comment": "늦은 받기 거절. 재시도하지 않는다(RetryOnce? 가 이 오류를 거른다).",
+              "Error": "LateRunRefused",
+              "Cause": "{% '데일리 ' & $runDate & ' 수집 거절: 이 시도는 ' & $fromMillis($millis(), '[H01]:[m01]', '+0900') & ' KST 에 받기를 시작하려 했습니다. 하루의 값은 제시간 값이어야 해서 기록 날짜 22:00 KST 이후에는 노벨피아에서 받지도 쓰지도 않습니다(사용자 결정 2026-10-04). 그날은 비워 둡니다.' & ($attempt > 1 ? ' 앞선 시도의 실패: ' & $firstError.Error & ' — ' & $substring($string($firstError.Cause), 0, 1500) : '') %}"
+            },
+            "GetRanking": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_GET_RANKING_LAMBDA_FUNCTION_NAME",
+              "Parameters": {
+                "input.$": "$",
+                "execution_id.$": "$$.Execution.Id"
+              },
+              "ResultPath": "$.getRankingOutput",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 5,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "TestModeDone?"
+            },
+            "TestModeDone?": {
+              "Type": "Choice",
+              "QueryLanguage": "JSONata",
+              "Comment": "test_mode 의 GetRanking 은 목록만 돌려주고(쿠키를 SSM 에 쓰지 않음) novels·date 가 없다. 병렬 받기·적재로 가지 않고 여기서 끝낸다(S3·DynamoDB·SQS 에 쓰지 않음).",
+              "Choices": [
+                {
+                  "Condition": "{% $states.input.test_mode = true %}",
+                  "Next": "TestRunDone"
+                }
+              ],
+              "Default": "CallExpressWorkflowForParallelProcessing"
+            },
+            "TestRunDone": {
+              "Type": "Succeed",
+              "Comment": "test_mode: 랭킹 목록만 받아 보고 끝낸다."
+            },
+            "CallExpressWorkflowForParallelProcessing": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::states:startExecution.sync:2",
+              "Parameters": {
+                "StateMachineArn": "arn:aws:states:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:stateMachine:NpTrendCrawlerExpressWorkflow",
+                "Input": {
+                  "novels.$": "$.getRankingOutput.novels",
+                  "date.$": "$.getRankingOutput.date",
+                  "auth_cookies_version.$": "$.getRankingOutput.auth_cookies_version",
+                  "execution_id.$": "$$.Execution.Id"
+                }
+              },
+              "ResultPath": null,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 5,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "ConsolidateAndSaveData"
+            },
+            "ConsolidateAndSaveData": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_CONSOLIDATE_DATA_LAMBDA_FUNCTION_NAME",
+              "Parameters": {
+                "execution_id.$": "$$.Execution.Id",
+                "target_novel_count.$": "$.getRankingOutput.target_novel_count",
+                "date.$": "$.getRankingOutput.date"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.TooManyRequestsException",
+                    "States.Timeout"
+                  ],
+                  "IntervalSeconds": 60,
+                  "MaxAttempts": 5,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
         }
       ],
+      "Output": "{% $states.result[0] %}",
       "Catch": [
         {
           "ErrorEquals": [
             "States.ALL"
           ],
-          "Next": "CrawlFail"
+          "Assign": {
+            "lastError": "{% $states.errorOutput %}"
+          },
+          "Output": "{% $states.input %}",
+          "Next": "RetryOnce?"
         }
       ],
-      "Next": "WaitForPurgeToFinish"
+      "Next": "RecoveredByRetry?"
     },
-    "WaitForPurgeToFinish": {
+    "RetryOnce?": {
+      "Type": "Choice",
+      "QueryLanguage": "JSONata",
+      "Comment": "첫 시도가 실패하면 한 번만 처음(purge)부터 다시 한다. 늦은 받기 거절(LateRunRefused)은 다시 하지 않는다. 그 밖(최종 실패)은 CrawlFail 로 — 실패 규칙이 한 번 알린다.",
+      "Choices": [
+        {
+          "Condition": "{% $attempt < 2 and $not($lastError.Error = 'LateRunRefused') %}",
+          "Assign": {
+            "attempt": "{% $attempt + 1 %}",
+            "firstError": "{% $lastError %}"
+          },
+          "Next": "WaitBeforeRetry"
+        }
+      ],
+      "Default": "CrawlFail"
+    },
+    "WaitBeforeRetry": {
       "Type": "Wait",
-      "Comment": "PurgeQueue takes up to 60s and may delete messages sent while it runs (AWS recommends waiting 60s). Detail results used to arrive ~20s after the purge.",
-      "Seconds": 65,
-      "Next": "GetRanking"
+      "Comment": "순간 장애를 넘길 시간. 다시 하는 시도는 PurgeQueue → 65초 대기부터라 앞 시도가 큐에 남긴 결과는 지워진다.",
+      "Seconds": 60,
+      "Next": "StartAttempt"
     },
-    "GetRanking": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_GET_RANKING_LAMBDA_FUNCTION_NAME",
-      "Parameters": {
-        "input.$": "$",
-        "execution_id.$": "$$.Execution.Id"
-      },
-      "ResultPath": "$.getRankingOutput",
-      "Retry": [
+    "RecoveredByRetry?": {
+      "Type": "Choice",
+      "QueryLanguage": "JSONata",
+      "Choices": [
         {
-          "ErrorEquals": [
-            "States.TaskFailed"
-          ],
-          "IntervalSeconds": 5,
-          "MaxAttempts": 5,
-          "BackoffRate": 2
+          "Condition": "{% $attempt > 1 %}",
+          "Next": "NotifyRecovered"
         }
       ],
+      "Default": "CrawlSuccess"
+    },
+    "NotifyRecovered": {
+      "Type": "Task",
+      "QueryLanguage": "JSONata",
+      "Comment": "자동 재시도로 복구한 날을 멘션 없이 알린다(값이 21:00 보다 몇 분 늦게 받은 것인지). 알림 실패는 실행을 실패시키지 않는다.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
+        "InvocationType": "Event",
+        "Payload": {
+          "content": "{% ($states.input.test_mode = true ? '[시험] ' : '') & '데일리 ' & $runDate & ' 수집: 첫 시도가 실패해(' & $firstError.Error & ') 자동 재시도로 복구했습니다. 다시 받기 시작 ' & $fromMillis($attemptStartedMs, '[H01]:[m01]', '+0900') & ' KST' & ($attemptStartedMs >= $toMillis($runDate & 'T21:00:00.000+09:00') ? ' — 21:00 기준 ' & $floor(($attemptStartedMs - $toMillis($runDate & 'T21:00:00.000+09:00')) / 60000) & '분 늦은 값' : '') & '. 실행: ' & $states.context.Execution.Name %}",
+          "mention": false
+        }
+      },
+      "Output": "{% $states.input %}",
       "Catch": [
         {
           "ErrorEquals": [
             "States.ALL"
           ],
-          "Next": "CrawlFail"
-        }
-      ],
-      "Next": "CallExpressWorkflowForParallelProcessing"
-    },
-    "CallExpressWorkflowForParallelProcessing": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::states:startExecution.sync:2",
-      "Parameters": {
-        "StateMachineArn": "arn:aws:states:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:stateMachine:NpTrendCrawlerExpressWorkflow",
-        "Input": {
-          "novels.$": "$.getRankingOutput.novels",
-          "date.$": "$.getRankingOutput.date",
-          "auth_cookies_version.$": "$.getRankingOutput.auth_cookies_version",
-          "execution_id.$": "$$.Execution.Id"
-        }
-      },
-      "ResultPath": null,
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "IntervalSeconds": 5,
-          "MaxAttempts": 5,
-          "BackoffRate": 2
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "CrawlFail"
-        }
-      ],
-      "Next": "ConsolidateAndSaveData"
-    },
-    "ConsolidateAndSaveData": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:YOUR_CONSOLIDATE_DATA_LAMBDA_FUNCTION_NAME",
-      "Parameters": {
-        "execution_id.$": "$$.Execution.Id",
-        "target_novel_count.$": "$.getRankingOutput.target_novel_count",
-        "date.$": "$.getRankingOutput.date"
-      },
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.TooManyRequestsException",
-            "States.Timeout"
-          ],
-          "IntervalSeconds": 60,
-          "MaxAttempts": 5,
-          "BackoffRate": 2
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "Next": "CrawlFail"
+          "Output": "{% $states.input %}",
+          "Next": "CrawlSuccess"
         }
       ],
       "Next": "CrawlSuccess"
     },
     "CrawlFail": {
       "Type": "Fail",
-      "Comment": "The entire crawl process failed."
+      "QueryLanguage": "JSONata",
+      "Comment": "The entire crawl process failed. 마지막 시도의 오류를 싣는다(재시도했으면 첫 시도의 오류도) — 실패 알림 규칙이 error·cause 를 보여 준다.",
+      "Error": "{% $lastError.Error ? $string($lastError.Error) : 'CrawlFailed' %}",
+      "Cause": "{% $attempt > 1 ? '자동 재시도(2번째 시도)도 실패했습니다. 2번째 시도: ' & ($exists($lastError.Error) ? $string($lastError.Error) : '(오류 이름 없음)') & ' — ' & ($exists($lastError.Cause) and $lastError.Cause != null ? $substring($string($lastError.Cause), 0, 3000) : '(원인 없음)') & ' / 1번째 시도: ' & ($exists($firstError.Error) ? $string($firstError.Error) : '(오류 이름 없음)') & ' — ' & ($exists($firstError.Cause) and $firstError.Cause != null ? $substring($string($firstError.Cause), 0, 3000) : '(원인 없음)') : ($exists($lastError.Cause) and $lastError.Cause != null ? $substring($string($lastError.Cause), 0, 3000) : '(원인 없음)') %}"
     },
     "CrawlSuccess": {
       "Type": "Succeed",
       "Comment": "The crawl process completed successfully."
     }
   },
-  "TimeoutSeconds": 3600
+  "TimeoutSeconds": 7200
 }
