@@ -3,7 +3,6 @@ import boto3
 from boto3.dynamodb.conditions import Key
 import logging
 import os
-import time
 from decimal import Decimal
 import math
 
@@ -18,15 +17,13 @@ class Config:
     # 작가 다른 작품 색인(ID 수집기가 유지). 비우면 붙이지 않는다.
     STATE_BUCKET = os.environ.get('STATE_BUCKET')
     AUTHOR_INDEX_KEY = 'state/author_works.json'
-    SQS_RESULT_QUEUE_URL = os.environ.get('SQS_RESULT_QUEUE_URL')
-    LOOP_TIMEOUT_SECONDS = 480  # Lambda 제한(600초)보다 짧게 — 루프가 먼저 끝나야 원인이 로그에 남는다
     # 기록 날짜 D 의 수집 = D+1 00:00 KST. 그 뒤 이만큼 안에 수집기가 처음 찾은 번호까지 D 의 작품으로 친다(`_found_after_date`).
     # 자정 수집기는 길어야 12분(ID 수집 마감) — 그 뒤(손 실행 등)에 찾은 번호는 그 날짜의 작품이 아니다(그림자 실행 2026-10-03 실측:
     # 2시간 여유면 00:38 손 실행이 찾은 자정 뒤 등록작 20편이 전날로 들어갔다).
     LATE_FOUND_GRACE_HOURS = 0.25
 
-if not Config.DYNAMODB_TABLE_NAME or not Config.SQS_RESULT_QUEUE_URL:
-    raise ValueError("DYNAMODB_TABLE_NAME and SQS_RESULT_QUEUE_URL env vars must be set.")
+if not Config.DYNAMODB_TABLE_NAME:
+    raise ValueError("DYNAMODB_TABLE_NAME env var must be set.")
 
 # --- Logging Helper ---
 def _log(level, execution_id, message, **kwargs):
@@ -35,68 +32,6 @@ def _log(level, execution_id, message, **kwargs):
     logger.log(level, json.dumps(log_data, ensure_ascii=False))
 
 # --- Helper Functions ---
-def _collect_all_messages(sqs_client, execution_id):
-    """Collects all available messages from the SQS queue until empty or timeout."""
-    all_messages = []
-    receipt_handles_to_delete = []
-    loop_start_time = time.time()
-
-    _log(logging.INFO, execution_id, "Starting to collect all messages from SQS.")
-
-    while time.time() - loop_start_time < Config.LOOP_TIMEOUT_SECONDS:
-        response = sqs_client.receive_message(
-            QueueUrl=Config.SQS_RESULT_QUEUE_URL,
-            MaxNumberOfMessages=10,
-            WaitTimeSeconds=5,
-            AttributeNames=['SentTimestamp']
-        )
-        messages = response.get('Messages', [])
-        if not messages:
-            _log(logging.INFO, execution_id, f"Queue is empty. Collected {len(all_messages)} messages in total.")
-            break
-
-        for message in messages:
-            all_messages.append(message)
-            receipt_handles_to_delete.append({'Id': message['MessageId'], 'ReceiptHandle': message['ReceiptHandle']})
-    else:
-        raise TimeoutError(f"Consolidation loop timed out after {Config.LOOP_TIMEOUT_SECONDS} seconds.")
-    
-    return all_messages, receipt_handles_to_delete
-
-def _deduplicate_items(messages, execution_id):
-    """Deduplicates items based on 'ID' — 실데이터(View ≥ 0)를 placeholder 보다, 같은 종류끼리는 earliest SentTimestamp.
-
-    파서가 다시 받아도 실패한 작품에 placeholder 를 보내므로(SQS_GIVE_UP_RECEIVE_COUNT), 같은 작품의 실데이터가 따로 오면
-    그쪽을 남긴다 — DMap 판 `_dedupe_prefer_real` 과 같은 원칙(DECISIONS 2026-10-02 「전달 보장」).
-    """
-    if not messages:
-        return []
-    _log(logging.INFO, execution_id, f"Deduplicating {len(messages)} messages based on earliest timestamp...")
-    
-    # novel_id -> (item_data, sent_timestamp)
-    unique_items_map = {}
-
-    for msg in messages:
-        try:
-            item = json.loads(msg['Body'])
-            novel_id = item.get('ID')
-            sent_timestamp = int(msg['Attributes']['SentTimestamp'])
-
-            if not novel_id:
-                _log(logging.WARNING, execution_id, "Message found without a novel ID.", body=msg['Body'])
-                continue
-
-            # 새로운 아이템이거나, (placeholder 여부, 보낸 시각) 순으로 앞서는 경우에만 저장/덮어쓰기
-            rank = (_is_placeholder(item), sent_timestamp)
-            if novel_id not in unique_items_map or rank < unique_items_map[novel_id][1]:
-                unique_items_map[novel_id] = (item, rank)
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            _log(logging.ERROR, execution_id, f"Failed to process a message during deduplication: {e}", body=msg.get('Body'))
-
-    final_items = [data for data, ts in unique_items_map.values()]
-    _log(logging.INFO, execution_id, f"Deduplication complete. {len(final_items)} unique items remaining.")
-    return final_items
-
 def _validate_data(execution_id, items, expected_count):
     """Validates that the count of unique collected items matches the target count."""
     collected_data_count = len(items)
@@ -403,54 +338,6 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
         _log(logging.ERROR, execution_id, f"Failed to update CONTEST_AVAILABLE_DATES item: {e}")
         raise
 
-def _delete_messages_from_sqs(sqs_client, execution_id, receipt_handles):
-    """Deletes messages from SQS in batches of 10."""
-    if not receipt_handles:
-        return
-    _log(logging.INFO, execution_id, f"Deleting {len(receipt_handles)} messages from SQS.")
-    for i in range(0, len(receipt_handles), 10):
-        batch = receipt_handles[i:i+10]
-        if batch:
-            sqs_client.delete_message_batch(QueueUrl=Config.SQS_RESULT_QUEUE_URL, Entries=batch)
-
-# --- Main Handler ---
-def handler(event, context):
-    execution_id = event.get('execution_id', 'N/A')
-    expected_count = event.get('fanned_out_count', 0)
-    
-    sqs_client = boto3.client('sqs')
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(Config.DYNAMODB_TABLE_NAME)
-
-    # 1. Collect all messages from SQS
-    try:
-        all_messages, receipt_handles = _collect_all_messages(sqs_client, execution_id)
-    except Exception as e:
-        _log(logging.ERROR, execution_id, f"Failed during SQS message retrieval: {e}", exc_info=True)
-        raise
-
-    if not all_messages:
-        _log(logging.INFO, execution_id, "No items to process. Exiting.")
-        return {'statusCode': 200, 'message': 'No items to process.'}
-
-    # 2. Deduplicate and Validate
-    unique_items = _deduplicate_items(all_messages, execution_id)
-    _validate_data(execution_id, unique_items, expected_count)
-
-    # 3. Commit Phase: Process, Upload, then Delete
-    try:
-        _process_and_upload_data(table, execution_id, unique_items)
-        _delete_messages_from_sqs(sqs_client, execution_id, receipt_handles)
-    except Exception as e:
-        critical_error_msg = f"CRITICAL: Failed during commit phase: {e}"
-        _log(logging.CRITICAL, execution_id, critical_error_msg, exc_info=True)
-        raise
-
-    return {
-        'statusCode': 200,
-        'processed_count': len(unique_items)
-    }
-
 # --- Distributed Map 경로 -----------------------------------------------------------
 # 흐름: ParseMap → reconcile(모으고 빠진 것 계산) ─┬→ 빠진 게 있으면 대기 → 빠진 것만 ParseMap → reconcile (최대 RETRY_ROUNDS)
 #                                                └→ consolidate(남은 결손은 placeholder + 실패 장부, 너무 많으면 쓰지 않고 실패)
@@ -514,7 +401,7 @@ def _is_placeholder(it):
 def _dedupe_prefer_real(items):
     """같은 ID 가 둘이면 실데이터(View ≥ 0)를 placeholder 보다, 실데이터끼리는 **먼저 받은 쪽**을 남긴다.
 
-    SQS 판의 '가장 이른 SentTimestamp' 와 같은 원칙 — 자정에 가까운 값이 24시간 주기에 맞다.
+    자정에 가까운 값이 24시간 주기에 맞다(걷어낸 SQS 판의 '가장 이른 SentTimestamp' 와 같은 원칙).
     """
     best = {}
     for it in items:

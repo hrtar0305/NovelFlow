@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD [ "parser.parse_contest_novel_details_batch" ]
+CMD [ "parser.parse_dmap_batch" ]

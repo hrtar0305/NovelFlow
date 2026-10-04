@@ -5,7 +5,6 @@ __pycache__/
 # Ignore other Python files
 app.py
 consolidate_contest_data.py
-check_completion.py
 
 # Ignore Step Functions Workflow JSON definitions
 *.json
