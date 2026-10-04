@@ -694,7 +694,7 @@ def handler_dmap(event, context):
     if event.get('dry_run'):
         mine = {str(i['ID']): i for i in unique}
         diff_view = [k for k in mine if k in prod and abs(int(prod[k].get('View', 0)) - int(mine[k].get('View', 0))) > max(50, int(prod[k].get('View', 0)) * 0.05)]
-        added_by_consolidate = {'Rank', 'DailyRank', 'ViewDelta', 'PrevDate', 'AuthorOtherNovels', 'AuthorOtherMore'}
+        added_by_consolidate = set(ADDED_BY_CONSOLIDATE)   # 비교 대상(unique)은 순위 계산 전 파서 출력이다
         missing_f, extra_f = {}, {}
         for k in set(mine) & set(prod):
             pk, mk = set(prod[k]) - added_by_consolidate, set(mine[k])
