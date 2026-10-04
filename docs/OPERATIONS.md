@@ -216,7 +216,7 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 
 | 알람 | 무엇을 잡나 |
 |---|---|
-| `novelflow-daily-no-success-26h` / `novelflow-contest-no-success-26h` | 하루 넘게 성공한 실행이 없음 |
+| `novelflow-daily-no-success-26h` / `novelflow-contest-no-success-26h`(2025) / `novelflow-contest-2026-no-success-26h` | 하루 넘게 성공한 실행이 없음 — 실행 자체가 시작되지 않은 날까지. 시험 실행의 성공도 성공으로 센다 |
 | `np-trend-crawler-dlq-alarm` | 데일리 예약 실행이 시작되지 못해 스케줄러 DLQ 에 남음 |
 | `novelflow-contest-2026-collector-errors` | 2026 ID 수집기(준비 실행·자정) 오류 |
 | `novelflow-daily-ingestion-errors` | 데일리 적재 Lambda 오류 — S3 트리거(비동기)는 2번 재시도 뒤 조용히 버리고, 상태 머신은 이미 성공이라 실패 알림이 없다 |
