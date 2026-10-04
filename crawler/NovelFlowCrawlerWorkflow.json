@@ -89,7 +89,18 @@
         "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
         "InvocationType": "Event",
         "Payload": {
-          "content": "{% '데일리 ' & $runDate & ' 수집: 같은 날짜의 실행이 이미 잠금을 잡아 이 실행(' & $states.context.Execution.Name & ')은 건너뛰었습니다. 다시 돌리려면 \"scheduled\" 없이 수동 실행하세요.' %}",
+          "notice": {
+            "level": "info",
+            "pipeline": "데일리 랭킹",
+            "date": "{% $runDate %}",
+            "title": "중복 실행이라 건너뜀",
+            "lines": [
+              "같은 날짜의 실행이 이미 날짜 잠금을 잡아서 이 실행은 아무것도 하지 않고 끝냈습니다.",
+              "예약이 두 번 전달됐거나, 입력 없이 손으로 돌린 실행이 먼저 잠금을 잡은 경우입니다. 잠금은 풀리지 않으므로, 잠금을 잡은 실행은 아직 도는 중일 수도, 이미 끝났거나 실패했을 수도 있습니다."
+            ],
+            "action": "{% '잠금을 잡은 실행이 성공했는지 확인하세요 — 잠금 항목 NovelRanks 테이블 ID=RUN_LOCK#' & $runDate & ', Date=LOCK. 그 실행이 실패했고 아직 22:00 전이면 입력에서 `scheduled` 를 빼고 수동 실행해 다시 받을 수 있습니다(잠금을 잡지 않습니다).' %}",
+            "run": "{% $states.context.Execution.Name %}"
+          },
           "mention": false
         }
       },
@@ -350,7 +361,16 @@
         "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-discord-notify",
         "InvocationType": "Event",
         "Payload": {
-          "content": "{% ($states.input.test_mode = true ? '[시험] ' : '') & '데일리 ' & $runDate & ' 수집: 첫 시도가 실패해(' & $firstError.Error & ') 자동 재시도로 복구했습니다. 다시 받기 시작 ' & $fromMillis($attemptStartedMs, '[H01]:[m01]', '+0900') & ' KST' & ($attemptStartedMs >= $toMillis($runDate & 'T21:00:00.000+09:00') ? ' — 21:00 기준 ' & $floor(($attemptStartedMs - $toMillis($runDate & 'T21:00:00.000+09:00')) / 60000) & '분 늦은 값' : '') & '. 실행: ' & $states.context.Execution.Name %}",
+          "notice": {
+            "level": "info",
+            "pipeline": "데일리 랭킹",
+            "date": "{% $runDate %}",
+            "title": "첫 시도 실패, 자동 재시도로 성공",
+            "lines": "{% [ '첫 시도가 실패해, 60초 뒤 처음부터 다시 실행했고 이번엔 성공' & ($states.input.test_mode = true ? '했습니다.' : '해 저장했습니다.'), '두 번째 시도 시작 ' & $fromMillis($attemptStartedMs, '[H01]:[m01]', '+0900') & ($attemptStartedMs >= $toMillis($runDate & 'T21:00:00.000+09:00') ? ' — 평소(21:00)보다 **' & $string($floor(($attemptStartedMs - $toMillis($runDate & 'T21:00:00.000+09:00')) / 60000)) & '분 늦은** 값입니다.' : '') ] %}",
+            "errors": "{% [ { 'label': '첫 시도에서 난 오류', 'error': $exists($firstError.Error) ? $string($firstError.Error) : null, 'cause': $exists($firstError.Cause) and $firstError.Cause != null ? $substring($string($firstError.Cause), 0, 3000) : null } ] %}",
+            "test": "{% $states.input.test_mode = true %}",
+            "run": "{% $states.context.Execution.Name %}"
+          },
           "mention": false
         }
       },

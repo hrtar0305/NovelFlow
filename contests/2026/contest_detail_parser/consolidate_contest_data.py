@@ -532,50 +532,83 @@ def _ledger_key(date, reprocess):
     return f'failures/{date}-reprocess.json' if reprocess else f'failures/{date}.json'
 
 
-def _notice(date, ledger):
-    """알릴 만한 일이 있으면 Discord 문구(멘션 없음). 없으면 None.
+def _hm(minutes):
+    """985 → '16시간 25분', 7 → '7분'."""
+    m = int(round(minutes))
+    if m < 1:
+        return '1분 미만'
+    return f"{m // 60}시간 {m % 60}분" if m >= 60 else f"{m}분"
+
+
+def _notice(date, ledger, test=False, run=None):
+    """알릴 만한 일이 있으면 Discord 카드(구조화된 알림 dict, 멘션 없음 — `utils/discord_notify.py`). 없으면 None.
 
     결손 외에 **자동 재실행으로 적재한 날**(시도 2 이상)도 알린다 — 값이 자정에서 몇 분 늦었는지와 함께. 원본 재계산은 늘 알린다
-    (운영자가 과거 날짜를 다시 쓴 기록).
+    (운영자가 과거 날짜를 다시 쓴 기록). 내부 용어(placeholder·장부·그림자) 대신 읽는 사람이 바로 알 말로 쓴다.
+    `test`(dry_run): 아무것도 쓰지 않았으므로 '저장했다'고 말하지 않고, 장부 위치도 싣지 않는다(쓰지 않았다).
     """
-    parts = []
+    reprocess = ledger.get('mode') == 'reprocess'
+    lines, actions, fields = [], [], []
+    warn = False
     attempt = ledger.get('attempt')
-    if ledger.get('mode') == 'reprocess':
-        parts.append(f"원본 재계산으로 {ledger.get('written_rows', ledger['expected'])}편을 다시 썼습니다(노벨피아에서 다시 받지 않음, 원본 묶음 기준)")
+    if reprocess:
+        n = ledger['expected'] - len(ledger['fetch_failed'])   # 원본으로 실제로 다시 계산한 수(기존 값 유지·수집 실패 제외)
+        lines.append(f"노벨피아에 다시 요청하지 않고, 그날 자정에 저장해 둔 **원본 HTML 로 {n:,}편을 다시 계산**해 "
+                     + ('덮어쓸 결과를 만들었습니다.' if test else '덮어썼습니다.'))
         if ledger.get('untouched_rows'):
-            parts.append(f"원본이 없는 그날 행 {len(ledger['untouched_rows'])}편은 그대로 둠")
+            lines.append(f"원본이 없는 {len(ledger['untouched_rows']):,}편(자정에 받지 못했거나 원본 저장에 실패한 작품)은 기존 행을 그대로 뒀습니다.")
         if ledger.get('kept_rows'):
-            parts.append(f"원본에서 다시 계산하지 못한 {len(ledger['kept_rows'])}편은 기존 행 유지")
+            lines.append(f"원본으로 다시 계산하지 못한 {len(ledger['kept_rows']):,}편은 기존 값을 그대로 뒀습니다.")
         if ledger.get('later_dates'):
-            parts.append(f"이 날짜가 새로 생겨 다음 수집일 {ledger['later_dates'][0]} 의 일간 순위 기준이 바뀝니다 — 그 날짜도 reprocess 하세요")
+            warn = True
+            nxt = ledger['later_dates'][0]
+            actions.append(f"이 날짜가 새로 생겨 다음 수집일 {nxt} 의 일간 순위 기준(전날 값)이 바뀌었습니다. 그 날짜도 다시 계산하세요: "
+                           f"`{{\"reprocess\": true, \"target_date\": \"{nxt}\"}}`")
     elif isinstance(attempt, int) and attempt > 1:
+        warn = True
         late = ledger.get('late_minutes')
-        parts.append(f"첫 시도가 실패해 자동 재실행(시도 {attempt})으로 적재"
-                     + (f" — 값은 자정 {late:g}분 뒤부터 받은 것" if isinstance(late, (int, float)) else ""))
-        for e in (ledger.get('previous_errors') or [])[:2]:
-            parts.append(f"앞선 시도 오류 {str(e)[:200]}")
+        lines.append("첫 시도가 실패해 **자동으로 한 번 더 실행**" + ("했습니다." if test else "해서 저장했습니다.")
+                     + (f" 값은 자정보다 **{_hm(late)} 늦게** 받은 것입니다." if not test and isinstance(late, (int, float)) and late > 0 else ""))
+        errors = [str(e)[:300] for e in (ledger.get('previous_errors') or [])[:2]]
+        if errors:
+            fields.append({'name': '첫 시도에서 난 오류', 'value': '\n'.join('> ' + e for e in errors)})
     placeholders = len(ledger['fetch_failed']) - len(ledger.get('kept_rows') or [])
     if placeholders > 0:
-        label = '원본에서 다시 계산하지 못해' if ledger.get('mode') == 'reprocess' else '받지 못해'
-        parts.append(f"{label} placeholder {placeholders}편")
+        warn = True
+        why = '원본으로 다시 계산하지 못한' if reprocess else '재시도까지 했는데도 받지 못한'
+        lines.append(f"{why} **{placeholders:,}편**은 "
+                     + ("실제였다면 '수집 실패'로 기록돼 그날과 다음 수집일의 일간 순위·태그 통계에서 빠졌을 것입니다." if test else
+                        "'수집 실패'로 기록했습니다 — 그날과 다음 수집일(견줄 전날 값이 없음)의 일간 순위·태그 통계에서 빠집니다."))
     if ledger['recovered']:
-        parts.append(f"재시도로 복구 {ledger['recovered']}편")
+        lines.append(f"처음엔 실패했다가 다시 받아 살린 작품 {ledger['recovered']:,}편 — 데이터에는 문제 없습니다.")
     if ledger['raw_failed']:
-        parts.append(f"원본 저장 실패 {ledger['raw_failed']}편")
+        warn = True
+        lines.append(f"원본 HTML 저장에 실패한 {ledger['raw_failed']:,}편 — 이 작품들은 나중에 원본으로 다시 계산할 수 없습니다.")
     d = ledger.get('discover') or {}
-    if ledger.get('mode') == 'reprocess':
+    if reprocess:
         pass   # ID 수집을 하지 않는다 — 참가작 수 비교는 그날 자정 실행의 장부에 있다
     elif d.get('fallback'):
-        parts.append("ID 수집 실패 → 23:30 목록으로 진행")
+        warn = True
+        lines.append("참가작 번호 수집이 실패해 **마지막으로 저장된 참가작 목록**(보통 23:30 준비 실행 결과)으로 진행했습니다 — "
+                     "그 뒤 등록된 작품은 이날 빠졌을 수 있습니다.")
     else:
         # 노벨피아 표시 수는 지금 보이는 작품만 센다 — 우리 목록(누적, 삭제·비공개 뒤에도 추적)이 아니라 '살아 있는' 수와 견준다.
         ours = d.get('alive_contest') if d.get('alive_contest') is not None else d.get('total_contest')
         if d.get('listed_total') and ours is not None and ours < d['listed_total']:
-            parts.append(f"참가작 수 부족 {ours}/{d['listed_total']}")
-    if not parts:
+            warn = True
+            lines.append(f"우리가 찾은 참가작이 노벨피아 표시보다 적습니다({ours:,} / {d['listed_total']:,}) — 새 작품을 놓쳤을 수 있습니다.")
+    if not lines and not actions:
         return None
-    head = "원본 재계산" if ledger.get('mode') == 'reprocess' else "수집 경고"
-    return f"2026 공모전 {date} {head}: " + " · ".join(parts) + f" (장부 {_ledger_key(date, ledger.get('mode') == 'reprocess')})"
+    if reprocess:
+        title = '저장된 원본으로 다시 계산'
+    elif warn:
+        title = '자정 수집 — 확인할 점 있음'
+    else:
+        title = '자정 수집 — 정상, 참고 사항'
+    if not test:
+        fields.append({'name': '자세한 기록', 'value': f"상태 버킷 `{_ledger_key(date, reprocess)}`"})
+    return {'level': 'warn' if warn else 'info', 'pipeline': '2026 공모전', 'date': date, 'title': title,
+            'lines': lines, 'fields': fields, 'action': '\n'.join(actions) or None, 'test': test, 'run': run}
 
 
 # 원본 재계산 그림자 실행에서 운영 행과 정확히 견줄 필드 — 같은 원본·같은 해석이면 모두 같아야 한다.
@@ -713,8 +746,8 @@ def handler_dmap(event, context):
         if exact is not None:
             report['exact_mismatch'] = exact   # 원본 재계산은 같은 원본이라 값이 정확히 같아야 한다
         _log(logging.INFO, execution_id, "DMap dry-run comparison.", **report)
-        notice = _notice(date, ledger)
-        return {**report, 'degraded': bool(notice), 'notice': notice and f"[그림자] {notice}"}
+        notice = _notice(date, ledger, test=True, run=execution_id)
+        return {**report, 'degraded': bool(notice), 'notice': notice}
 
     _validate_data(execution_id, unique, len(expected))
     if reprocess:
@@ -726,7 +759,7 @@ def handler_dmap(event, context):
     _put_json(_ledger_key(date, reprocess), {**ledger, 'written': True})   # 결손이 없어도 남긴다 — 그날 무엇을 했는지의 기록
     if reprocess:
         # gone_ids 는 '지금' 보이지 않는 참가작이다(수집기가 오늘 표시 수와 견준다) — 과거 날짜를 다시 계산하며 덮지 않는다.
-        notice = _notice(date, ledger)
+        notice = _notice(date, ledger, run=execution_id)
         return {'statusCode': 200, 'processed_count': len(unique), 'fetch_failed': len(still), 'kept_rows': len(kept),
                 'mode': 'reprocess', 'degraded': bool(notice), 'notice': notice}
     # 지금 보이지 않는 참가작(경고창·파싱 실패 자리표시 — 받지 못한 FetchFailed 는 제외)을 수집기에 알린다. 수집기는 이 번호를 빼고
@@ -736,6 +769,6 @@ def handler_dmap(event, context):
         _put_json('state/gone_ids.json', gone)
     except Exception as e:  # noqa: BLE001 — 부가 정보라 적재를 막지 않는다
         _log(logging.WARNING, execution_id, f"Could not write gone_ids: {e}")
-    notice = _notice(date, ledger)
+    notice = _notice(date, ledger, run=execution_id)
     return {'statusCode': 200, 'processed_count': len(unique), 'fetch_failed': len(still), 'attempt': attempt,
             'late_minutes': ledger['late_minutes'], 'recovered': ledger['recovered'], 'degraded': bool(notice), 'notice': notice}
