@@ -120,6 +120,9 @@ python scripts/backfill_ranking_snapshots.py --dry-run
 - **`main` = 운영에 배포된 상태.** main 에 직접 커밋하지 않습니다. 배포하지 않을 변경은 main 에 올리지 않습니다.
 - 작업은 main 에서 짧게 사는 브랜치로: `<type>/<요약>`, type 은 `feat` · `fix` · `refactor` · `docs` · `chore`
   (예: `fix/sqs-purge-race`). 오래 걸리는 작업(웹 개편 등)은 main 을 자주 rebase 해 갈라짐을 줄입니다.
+- **오래 사는 웹 브랜치에 파이프라인 코드(crawler·contests·data-pipeline·scripts)를 섞지 않습니다.** 웹은 사용자가 따로
+  배포하므로 거기 들어간 파이프라인 변경은 배포되지 않은 채 남습니다(2026-10-04: 09-30 인생픽·연재 요일 추출이 웹 브랜치에만
+  있어 데일리에 한 번도 실리지 않았다). 파이프라인 변경은 main 에서 딴 짧은 브랜치로 따로 합칩니다.
 - 합치기는 로컬에서, 이력은 일직선:
   `git rebase main` → `git switch main && git merge --ff-only <branch>` → `git push origin main` → `git branch -d <branch>`.
 - **이미지 배포에는 태그**(`crawler-v1.5.0` 처럼 컴포넌트-버전)를 겁니다. ECR 은 최신 이미지만 남기므로 롤백은 태그에서
