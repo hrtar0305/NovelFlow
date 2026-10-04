@@ -323,19 +323,24 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .text-toggle__item { display: inline-flex; align-items: flex-start; }
 
 /* ── 공모전: 수상은 강조색 글자 하나(여러 색 칩 대신) ── */
-/* 수상: 강조색은 대상에만(표에서 빨강 = 맨 위 — 1~3위와 같은 뜻). 나머지는 굵기·밝기 단계(AwardText). */
+/* 수상: 금(대상)·은(최우수상)·동(탑툰상·우수상·특별상)·흐림(본선). 수상 표기에만 쓰는 예외 색 — 순위의 빨강과 섞이지 않게(AwardText). */
 .award-text { font-size: 0.8125rem; white-space: nowrap; }
-.award-text--grand { font-weight: 800; color: var(--np-accent); }
-.award-text--top { font-weight: 700; color: var(--np-text-heading); }
-.award-text--mid { font-weight: 600; color: var(--np-text-primary); }
+.award-text--grand { font-weight: 800; color: var(--np-award-gold); }
+.award-text--top { font-weight: 700; color: var(--np-award-silver); }
+.award-text--mid { font-weight: 700; color: var(--np-award-bronze); }
 .award-text--minor { font-weight: 500; color: var(--np-text-secondary); }
 .rank-title--muted { color: var(--np-text-faint); font-weight: 500; }
 .contest-award-poster .media-rank-card__rank.contest-award-chip {
   display: inline-flex; align-items: center; height: 1.65rem; padding: 0 0.6rem; border-radius: 13px;
   border: 1px solid rgba(255, 255, 255, 0.14); background-color: rgba(10, 11, 14, 0.66); color: var(--np-on-image); font-size: 0.75rem; font-weight: 800;
 }
-/* 대상 칩만 강조색으로 채운다 — 나머지 상은 같은 어두운 칩(상끼리의 단계는 표·상세의 글자 굵기로). */
-.contest-award-poster .media-rank-card__rank.contest-award-chip--grand { border-color: transparent; background-color: var(--np-accent); color: var(--np-on-accent); }
+/* 수상 칩: 금·은·동으로 채운다(표지 위라 테마와 무관한 채움색 + 어두운 글자). 본선 등은 기본 어두운 칩. */
+.contest-award-poster .media-rank-card__rank.contest-award-chip--grand,
+.contest-award-poster .media-rank-card__rank.contest-award-chip--top,
+.contest-award-poster .media-rank-card__rank.contest-award-chip--mid { border-color: transparent; color: var(--np-on-award-fill); }
+.contest-award-poster .media-rank-card__rank.contest-award-chip--grand { background-color: var(--np-award-gold-fill); }
+.contest-award-poster .media-rank-card__rank.contest-award-chip--top { background-color: var(--np-award-silver-fill); }
+.contest-award-poster .media-rank-card__rank.contest-award-chip--mid { background-color: var(--np-award-bronze-fill); }
 .detail-head__contest { color: var(--np-text-secondary); }
 .detail-head__contest b { font-weight: 700; }
 

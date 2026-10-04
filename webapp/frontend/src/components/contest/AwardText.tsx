@@ -1,8 +1,8 @@
 import { awardTier } from '../../utils/contestNovels';
 
 /**
- * 수상 표기. 강조색은 하나(빨강)만 쓰고 **대상에만** 준다 — 표에서 빨강이 '1~3위'와 '대상', 곧 맨 위라는 뜻 하나가 되게.
- * 나머지 상은 새 색·배지 없이 글자 굵기·밝기로 단계를 둔다(2026-10-04): 최우수상 > 탑툰상·우수상·특별상 > 본선.
+ * 수상 표기: 금(대상)·은(최우수상)·동(탑툰상·우수상·특별상)·흐림(본선). 수상만을 위한 예외 색이다 — 강조색(빨강)은
+ * 순위 1~3위의 뜻이라 수상에 쓰면 섞이고, 굵기·밝기만으로는 상끼리 구분되지 않았다(2026-10-04 사용자).
  */
 export default function AwardText({ award }: { award?: string | null }) {
   return award ? <span className={`award-text award-text--${awardTier(award)}`}>{award}</span> : null;

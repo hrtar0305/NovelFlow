@@ -27,6 +27,11 @@
   --np-on-image-soft: #eceef3;
   --np-chip-up: #d42a44;          /* 표지 위 상승 칩(▲135) */
   --np-image-placeholder: #22242b; /* 표지가 오기 전 자리 */
+  /* 공모전 수상 칩(표지 위, 채움) — 금·은·동. 칩 글자는 어두운 색. 수상 표기에만 쓰는 예외 색(2026-10-04). */
+  --np-award-gold-fill: #ecc046;
+  --np-award-silver-fill: #c9d4e0;
+  --np-award-bronze-fill: #d9a06c;
+  --np-on-award-fill: #121418;
 
   --np-border: #262930;
   --np-border-strong: #353942;
@@ -35,6 +40,10 @@
   --np-text-secondary: #a0a6b1;
   --np-text-faint: #858b96;
   --np-text-heading: #eceef2;
+  /* 공모전 수상 글자 — 금(대상)·은(최우수상)·동(탑툰상·우수상·특별상). 강조색 하나 원칙의 예외: 수상 표기에만 쓴다(2026-10-04). */
+  --np-award-gold: #ecc046;
+  --np-award-silver: #a9bfd8;
+  --np-award-bronze: #dc9a62;
 
   --np-accent: #ff5c70;
   --np-accent-strong: #ff8190;
@@ -128,6 +137,9 @@
   --np-text-secondary: #6a707b;
   --np-text-faint: #6c717c;
   --np-text-heading: #15171c;
+  --np-award-gold: #8f6400;
+  --np-award-silver: #4d6888;
+  --np-award-bronze: #9b5424;
 
   --np-accent: #d42a44;
   --np-accent-strong: #b81f37;
