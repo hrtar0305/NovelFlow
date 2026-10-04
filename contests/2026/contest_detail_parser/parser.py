@@ -10,7 +10,6 @@ from bs4 import BeautifulSoup
 
 import raw_store
 import extract
-from botocore.exceptions import ClientError as BotoClientError
 
 # --- Basic Setup ---
 logger = logging.getLogger()
@@ -24,14 +23,10 @@ class Config:
     """Houses all configuration variables for the contest novel parser."""
     # AWS Configuration
     AWS_REGION = "ap-northeast-2"
-    SQS_RESULT_QUEUE_URL = os.environ.get('SQS_RESULT_QUEUE_URL')
 
     # Request & Parsing Configuration
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
     MAX_INTERNAL_RETRIES = 3 # Max retries for individual novel parsing
-    # SQS 판: 이 수신 차례(ApproximateReceiveCount)에서도 끝내 못 받으면 큐로 돌려보내지 않고 placeholder 로 끝낸다.
-    # 작업 큐에 DLQ 가 없어 돌려보내기만 하면 완료 판정이 영영 안 끝난다. 가시성 960초라 두 번째 수신은 약 16분 뒤(2700초 안).
-    SQS_GIVE_UP_RECEIVE_COUNT = int(os.environ.get('SQS_GIVE_UP_RECEIVE_COUNT', '2'))
     # DMap 판: 묶음 하나에 쓸 시간. 자식이 EXPRESS(최대 5분)라 넘기면 받은 작품까지 통째로 버려진다. 넘으면 남은 작품을
     # `failed`(TimeBudget)로 돌려주고 Reconcile 이 다음 라운드에 다시 받는다. 예산 뒤에도 진행 중인 한 편(최악 약 95초)과
     # 원본 업로드가 ParseBatch 제한(280초) 안에 들어가도록 잡는다.
@@ -54,9 +49,6 @@ class Config:
         OG_IMAGE = 'meta[property="og:image"]'
         # 성인 등급 배지. p.in-badge 로 반드시 한정한다(회차 목록에도 같은 class 가 있다 — DECISIONS 2026-08-24).
         ADULT_BADGE = "p.in-badge span.b_19"
-
-if not Config.SQS_RESULT_QUEUE_URL:
-    raise ValueError("Environment variable SQS_RESULT_QUEUE_URL must be set.")
 
 def _log(level, execution_id, message, **kwargs):
     """Creates a structured log message."""
@@ -110,12 +102,12 @@ def _now_iso():
 def _upload_raw_batch(execution_id, raw_batch, crawl_date, context):
     """이 배치가 받은 원본을 한 덩어리로 묶어 S3 에 올린다.
 
-    키는 `{prefix}/{year}/{date}/{request_id}.jsonl.zst` 다. 배치마다 객체가 하나씩
-    생기므로(4,719편 / batch 80 ≈ 59개) 이름이 겹치면 안 되는데, Lambda 요청 ID 가
-    호출마다 유일하고 재시도 시에도 새로 발급되므로 그대로 쓴다.
+    키는 `{prefix}/{year}/{date}/{request_id}.jsonl.zst` 다. 묶음마다 객체가 하나씩
+    생기므로 이름이 겹치면 안 되는데, Lambda 요청 ID 가 호출마다 유일하고 재시도
+    시에도 새로 발급되므로 그대로 쓴다.
 
-    실패해도 예외를 올리지 않는다 — 원본은 부가 기능이고, 여기서 raise 하면 SQS 가
-    배치 전체를 재시도해 같은 소설을 다시 긁는다.
+    실패해도 예외를 올리지 않는다 — 원본은 부가 기능이고, 여기서 raise 하면 묶음 전체가
+    실패해 받은 작품까지 버려진다. 대신 `False` 를 돌려주고 호출부가 `raw_failed` 로 센다.
     """
     if not raw_batch or not Config.RAW_BUCKET:
         return True
@@ -205,72 +197,8 @@ def _parse_one(session, novel_id, crawl_date, execution_id):
     return item, pages, True
 
 
-def parse_contest_novel_details_batch(event, context):
-    """SQS 배치(최대 Config 에 맞춘 batch size)를 한 세션으로 처리한다.
-
-    **실패한 작품만 다시 받는다(ReportBatchItemFailures).** 2025 는 한 편이 네트워크 오류로
-    끝내 실패하면 배치 전체를 다시 던져 나머지 79편도 다시 긁었다(백로그 #29). 이벤트 소스
-    매핑의 FunctionResponseTypes 에 ReportBatchItemFailures 를 켜야 동작한다.
-    중복 결과는 완료 판정(유니크 ID)과 consolidate(실데이터 우선, 그다음 최초 타임스탬프)가 걸러낸다.
-    다시 받은 차례(`SQS_GIVE_UP_RECEIVE_COUNT`)에서도 실패하면 돌려보내지 않고 placeholder 를 보낸다(DLQ 가 없어 끝없이 돈다).
-    """
-    records = event.get('Records', [])
-    if not records:
-        logger.info("Received empty event, no records to process.")
-        return {"batchItemFailures": []}
-
-    first_message = json.loads(records[0]['body'])
-    execution_id = first_message.get('execution_id', 'N/A')
-    crawl_date = first_message.get('date')
-    _log(logging.INFO, execution_id, f"Starting SQS batch processing for {len(records)} novels.")
-
-    session = requests.Session()
-    session.headers.update({"User-Agent": Config.USER_AGENT})
-    sqs_client = boto3.client('sqs', region_name=Config.AWS_REGION)
-
-    success_count = placeholder_count = 0
-    failures = []
-    # 배치가 받은 원본. 배치 끝에 한 덩어리로 묶어 올린다(소설마다 올리면 편당 67KB, 40편 묶음이면 4KB).
-    raw_batch = []
-
-    for record in records:
-        novel_id = str(json.loads(record['body'])['novel_id']).strip()
-        item = None
-        for attempt in range(Config.MAX_INTERNAL_RETRIES):
-            try:
-                item, pages, ok = _parse_one(session, novel_id, crawl_date, execution_id)
-                raw_batch.append((novel_id, pages))
-                if ok:
-                    success_count += 1
-                else:
-                    placeholder_count += 1
-                break
-            except requests.exceptions.RequestException as e:
-                _log(logging.WARNING, execution_id, f"Network error for {novel_id} (attempt {attempt + 1}/{Config.MAX_INTERNAL_RETRIES}): {e}", novel_id=novel_id)
-        if item is None:
-            receive_count = int((record.get('attributes') or {}).get('ApproximateReceiveCount') or 1)
-            if receive_count < Config.SQS_GIVE_UP_RECEIVE_COUNT:
-                failures.append({"itemIdentifier": record['messageId']})
-                continue
-            # 다시 받아도 실패 — DMap 판의 결손 처리와 같은 모양(N/A (FetchFailed), View -1)으로 그날을 끝낸다.
-            _log(logging.ERROR, execution_id, f"Giving up on {novel_id} after {receive_count} receives. Sending placeholder.",
-                 novel_id=novel_id, receive_count=receive_count)
-            item = _create_placeholder_item(novel_id, crawl_date, reason="FetchFailed")
-            placeholder_count += 1
-        try:
-            sqs_client.send_message(QueueUrl=Config.SQS_RESULT_QUEUE_URL, MessageBody=json.dumps(item, ensure_ascii=False))
-        except BotoClientError as sqs_e:
-            _log(logging.ERROR, execution_id, f"Failed to send result for {novel_id}: {sqs_e}", novel_id=novel_id, exc_info=True)
-            failures.append({"itemIdentifier": record['messageId']})
-
-    _upload_raw_batch(execution_id, raw_batch, crawl_date, context)
-    _log(logging.INFO, execution_id, "Batch processing complete.", success=success_count,
-         placeholders=placeholder_count, failed=len(failures), total=len(records))
-    return {"batchItemFailures": failures}
-
-
 def parse_dmap_batch(event, context):
-    """Distributed Map(ItemBatcher) 한 묶음 — SQS 대신 Step Functions 가 나눠 준다.
+    """Distributed Map(ItemBatcher) 한 묶음 — Step Functions 가 S3 ID 목록을 나눠 준다(SQS 판은 2026-10-04 에 걷어냈다).
 
     입력: {"Items": [novel_id, ...], "BatchInput": {"execution_id", "date"(기록 날짜), "raw": 원본 적재 여부}}
     출력: {"items": [...], "failed": [{"id", "error"}], "raw_failed": 원본을 못 올린 작품 수}

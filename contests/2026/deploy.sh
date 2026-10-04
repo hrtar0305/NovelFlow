@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # 2026 공모전 파이프라인 배포(처음 만들기 + 다시 올리기 겸용). 2025 스택은 건드리지 않는다.
 # 새 리소스는 NovelFlow 이름을 쓴다(사용자 결정 2026-10-01). 기존 np-trend/NpTrend 리소스(역할 등)는 그대로 둔다.
-#   bash contests/2026/deploy.sh            # 전부
-#   bash contests/2026/deploy.sh code       # Lambda 코드·이미지만 다시 올리기
+# 자정 수집은 Distributed Map 판(NovelFlowContest2026DMapWorkflow) 하나다. SQS 판(작업·결과 큐 + 완료 폴링)은 2026-10-04 에 걷어냈다.
+#   bash contests/2026/deploy.sh                 # infra + code + orchestration (스케줄은 따로)
+#   bash contests/2026/deploy.sh infra           # S3 버킷·DynamoDB 테이블·ECR
+#   bash contests/2026/deploy.sh code            # Lambda 코드·이미지만 다시 올리기(수집기·날짜·파서·적재)
+#   bash contests/2026/deploy.sh orchestration   # 상태 머신 + 상태 머신 역할 정책 + 실패 알림 규칙 (dmap 은 같은 뜻의 옛 이름)
+#   bash contests/2026/deploy.sh schedule        # 자정 수집·준비 실행 스케줄 + 수집기 알람
+#   bash contests/2026/deploy.sh alarm           # 수집기 오류 알람만
 # 계정 ID 는 실행 시 조회한다(공개 리포라 박지 않는다).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -12,27 +17,20 @@ ACC=$(aws sts get-caller-identity --query Account --output text)
 Y=2026
 BUCKET=novelflow-contest-$Y-$ACC
 TABLE=NovelFlowContest$Y
-TASK_Q=novelflow-contest-$Y-task
-RESULT_Q=novelflow-contest-$Y-result
 ECR_REPO=novelflow/contest-$Y
 LAMBDA_ROLE=arn:aws:iam::$ACC:role/NpTrendCrawlerLambdaExecutionRole
 SFN_ROLE_NAME=NpTrendCrawlerStepFunctionExecutionRole
-SM_NAME=NovelFlowContest${Y}Workflow
+SM_NAME=NovelFlowContest${Y}DMapWorkflow
 SCHED_NAME=NovelFlowContest${Y}Daily
 SCHED_ROLE_NAME=Amazon_EventBridge_Scheduler_SFN_376ddf2108
 SCHED_POLICY_ARN=arn:aws:iam::$ACC:policy/service-role/Amazon-EventBridge-Scheduler-Execution-Policy-9ebb732f-2dab-4fbf-b8d1-533947056425
 RAW_BUCKET=$(aws lambda get-function-configuration --region $R --function-name np-trend-crawler-get-novel-data --query 'Environment.Variables.RAW_HTML_BUCKET' --output text)
 F_COLLECTOR=novelflow-contest-$Y-id-collector
+# 이름은 SQS 판 시절 그대로다 — 배포된 상태 머신(ResolveDate)이 이 함수를 부른다. 이제 기록 날짜만 정하고 큐에는 보내지 않는다.
 F_FANOUT=novelflow-contest-$Y-fanout
-F_PARSER=novelflow-contest-$Y-parser
-F_CHECK=novelflow-contest-$Y-check-completion
-F_CONSOLIDATE=novelflow-contest-$Y-consolidate
-TASK_URL=https://sqs.$R.amazonaws.com/$ACC/$TASK_Q
-RESULT_URL=https://sqs.$R.amazonaws.com/$ACC/$RESULT_Q
+F_PARSER=novelflow-contest-$Y-parser-dmap
+F_CONSOLIDATE=novelflow-contest-$Y-consolidate-dmap
 SM_ARN=arn:aws:states:$R:$ACC:stateMachine:$SM_NAME
-DSM_ARN=arn:aws:states:$R:$ACC:stateMachine:${SM_NAME%Workflow}DMapWorkflow
-# 자정 스케줄이 부르는 판: dmap(기본, 2026-10-02 전환) | sqs(되돌릴 때 — `PIPELINE=sqs bash deploy.sh schedule`)
-PIPELINE=${PIPELINE:-dmap}
 BUILD=$(mktemp -d)
 trap 'rm -rf "$BUILD"' EXIT
 exists() { "$@" >/dev/null 2>&1; }
@@ -57,11 +55,6 @@ infra() {
   aws dynamodb update-continuous-backups --region $R --table-name $TABLE \
     --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true >/dev/null
 
-  echo "== SQS"
-  # 작업 큐 가시성 = 파서 제한(600초) + 여유. 결과 큐는 2025 와 같다.
-  aws sqs create-queue --region $R --queue-name $TASK_Q --attributes VisibilityTimeout=960,MessageRetentionPeriod=345600 >/dev/null
-  aws sqs create-queue --region $R --queue-name $RESULT_Q --attributes VisibilityTimeout=90,MessageRetentionPeriod=345600 >/dev/null
-
   echo "== ECR $ECR_REPO"
   exists aws ecr describe-repositories --region $R --repository-names $ECR_REPO || \
     aws ecr create-repository --region $R --repository-name $ECR_REPO >/dev/null
@@ -76,7 +69,6 @@ code() {
   cp contest_id_collector/app.py "$BUILD/col/"
   (cd "$BUILD/col" && zip -qr "$BUILD/collector.zip" .)
   zip -qj "$BUILD/fanout.zip" contest_detail_parser/app.py
-  zip -qj "$BUILD/check.zip" contest_detail_parser/check_completion.py
   zip -qj "$BUILD/consolidate.zip" contest_detail_parser/consolidate_contest_data.py
 
   echo "== 파서 이미지"
@@ -91,31 +83,29 @@ code() {
   # 23:30 준비 실행은 스케줄러의 비동기 호출이다. Lambda 기본 재시도(2번)가 시간 초과 뒤 자정 실행과 겹치면 같은 상태
   # 파일을 둘이 쓰므로 재시도를 끈다 — 실패한 준비 실행은 다음 날 다시 돈다(자정 수집은 무관).
   aws lambda put-function-event-invoke-config --region $R --function-name $F_COLLECTOR --maximum-retry-attempts 0 >/dev/null
-  upsert_zip $F_FANOUT "$BUILD/fanout.zip" app.get_id_list_from_s3 120 256 \
-    "Variables={S3_BUCKET_NAME=$BUCKET,S3_FILE_NAME=contest_novel_ids_$Y.json,SQS_TASK_QUEUE_URL=$TASK_URL,SQS_RESULT_QUEUE_URL=$RESULT_URL}"
-  upsert_zip $F_CHECK "$BUILD/check.zip" check_completion.handler 180 256 "Variables={SQS_RESULT_QUEUE_URL=$RESULT_URL}"
-  upsert_zip $F_CONSOLIDATE "$BUILD/consolidate.zip" consolidate_contest_data.handler 600 512 \
-    "Variables={DYNAMODB_TABLE_NAME=$TABLE,SQS_RESULT_QUEUE_URL=$RESULT_URL,STATE_BUCKET=$BUCKET}"
+  # 날짜 함수(ResolveDate)는 환경 변수가 필요 없다 — 수집기 재호출 마감은 코드 기본값(DISCOVERY_RECALL_MINUTES=12).
+  upsert_zip $F_FANOUT "$BUILD/fanout.zip" app.get_id_list_from_s3 120 256 '{"Variables":{}}'
 
-  PENV="Variables={SQS_RESULT_QUEUE_URL=$RESULT_URL,RAW_HTML_BUCKET=$RAW_BUCKET,RAW_HTML_PREFIX=contest,CONTEST_YEAR=$Y}"
+  echo "== 파서(DMap 묶음) $F_PARSER"
+  PENV="Variables={RAW_HTML_BUCKET=$RAW_BUCKET,RAW_HTML_PREFIX=contest,CONTEST_YEAR=$Y}"
   if exists aws lambda get-function --region $R --function-name $F_PARSER; then
     aws lambda update-function-code --region $R --function-name $F_PARSER --image-uri "$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" >/dev/null
     aws lambda wait function-updated --region $R --function-name $F_PARSER
-    aws lambda update-function-configuration --region $R --function-name $F_PARSER --timeout 600 --memory-size 512 --environment "$PENV" >/dev/null
+    # EXPRESS 자식은 5분이 한도다 — 파서가 그보다 오래 살면 Step Functions 가 끊은 뒤에도 Lambda 가 계속 돈다(리뷰 #36).
+    # 파서는 시간 예산(남은 작품은 failed 로 돌려 재시도 라운드가 받는다) 안에서 끝나고, Lambda 는 290초에서 끊는다.
+    aws lambda update-function-configuration --region $R --function-name $F_PARSER --timeout 290 --memory-size 512 \
+      --image-config 'Command=["parser.parse_dmap_batch"]' --environment "$PENV" >/dev/null
+    aws lambda wait function-updated --region $R --function-name $F_PARSER
   else
     aws lambda create-function --region $R --function-name $F_PARSER --package-type Image \
       --code ImageUri="$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" --role $LAMBDA_ROLE \
-      --timeout 600 --memory-size 512 --environment "$PENV" >/dev/null
+      --image-config 'Command=["parser.parse_dmap_batch"]' --timeout 290 --memory-size 512 --environment "$PENV" >/dev/null
+    aws lambda wait function-active --region $R --function-name $F_PARSER
   fi
-  aws lambda wait function-updated --region $R --function-name $F_PARSER 2>/dev/null || aws lambda wait function-active --region $R --function-name $F_PARSER
 
-  echo "== 작업 큐 → 파서 (배치 40, 동시 10, 실패한 작품만 재시도)"
-  UUID=$(aws lambda list-event-source-mappings --region $R --function-name $F_PARSER --query 'EventSourceMappings[0].UUID' --output text)
-  if [ "$UUID" = "None" ]; then
-    aws lambda create-event-source-mapping --region $R --function-name $F_PARSER \
-      --event-source-arn arn:aws:sqs:$R:$ACC:$TASK_Q --batch-size 40 --maximum-batching-window-in-seconds 5 \
-      --scaling-config MaximumConcurrency=10 --function-response-types ReportBatchItemFailures >/dev/null
-  fi
+  # 대조(action: reconcile)와 최종 적재를 한 함수가 한다.
+  upsert_zip $F_CONSOLIDATE "$BUILD/consolidate.zip" consolidate_contest_data.handler_dmap 600 512 \
+    "Variables={DYNAMODB_TABLE_NAME=$TABLE,STATE_BUCKET=$BUCKET}"
 }
 
 upsert_zip() {  # name zip handler timeout memory env
@@ -131,55 +121,23 @@ upsert_zip() {  # name zip handler timeout memory env
 }
 
 failure_rule() {
-  echo "== 실패 알림 규칙에 2026 상태 머신 두 판 추가"
+  echo "== 실패 알림 규칙에 2026 상태 머신 추가"
+  # put-rule 은 패턴을 통째로 바꾼다 — 데일리·2025 공모전 상태 머신을 함께 적는다.
   aws events put-rule --region $R --name novelflow-pipeline-failure --event-pattern "{
     \"source\":[\"aws.states\"],\"detail-type\":[\"Step Functions Execution Status Change\"],
     \"detail\":{\"status\":[\"FAILED\",\"TIMED_OUT\",\"ABORTED\"],\"stateMachineArn\":[
       \"arn:aws:states:$R:$ACC:stateMachine:NpTrendCrawlerWorkflow\",
-      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\",\"$DSM_ARN\"]}}" >/dev/null
+      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\"]}}" >/dev/null
 }
 
 orchestration() {
-  echo "== 상태 머신 역할: 2026 큐 purge 권한 추가"
+  # 상태 머신 역할의 큐 purge 정책은 통째로 덮어쓴다 — 2026 큐(SQS 판)를 빼고 데일리·2025 큐만 남긴다.
+  # 2026 DMap 판은 큐를 쓰지 않으므로 이 정책이 필요 없지만, 예전 배포가 넣은 2026 큐 항목을 걷어내려고 여기서 다시 쓴다.
+  echo "== 상태 머신 역할: 큐 purge 권한(데일리·2025 큐만)"
   aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name PurgePipelineQueues --policy-document "{
     \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sqs:PurgeQueue\",\"Resource\":[
       \"arn:aws:sqs:$R:$ACC:np-trend-crawler-queue\",
-      \"arn:aws:sqs:$R:$ACC:np-trend-contest-task-queue-2025\",\"arn:aws:sqs:$R:$ACC:np-trend-contest-result-queue-2025\",
-      \"arn:aws:sqs:$R:$ACC:$TASK_Q\",\"arn:aws:sqs:$R:$ACC:$RESULT_Q\"]}]}"
-
-  echo "== 상태 머신 $SM_NAME"
-  DEF=$(sed "s/YOUR_AWS_REGION/$R/g; s/YOUR_AWS_ACCOUNT_ID/$ACC/g" contest_detail_parser/NovelFlowContest2026Workflow.json)
-  if exists aws stepfunctions describe-state-machine --region $R --state-machine-arn $SM_ARN; then
-    aws stepfunctions update-state-machine --region $R --state-machine-arn $SM_ARN --definition "$DEF" >/dev/null
-  else
-    aws stepfunctions create-state-machine --region $R --name $SM_NAME --type STANDARD \
-      --role-arn arn:aws:iam::$ACC:role/$SFN_ROLE_NAME --definition "$DEF" >/dev/null
-  fi
-
-  failure_rule
-}
-
-dmap() {
-  # Distributed Map 판(그림자 실행으로 운영과 비교한 뒤 교체한다). 운영 함수와 같은 코드·이미지, 입구만 다르다.
-  echo "== DMap 함수(파서·적재 입구만 다름)"
-  DIGEST=$(aws ecr describe-images --region $R --repository-name $ECR_REPO --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' --output text)
-  PENV="Variables={SQS_RESULT_QUEUE_URL=$RESULT_URL,RAW_HTML_BUCKET=$RAW_BUCKET,RAW_HTML_PREFIX=contest,CONTEST_YEAR=$Y}"
-  if exists aws lambda get-function --region $R --function-name ${F_PARSER}-dmap; then
-    aws lambda update-function-code --region $R --function-name ${F_PARSER}-dmap --image-uri "$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" >/dev/null
-    aws lambda wait function-updated --region $R --function-name ${F_PARSER}-dmap
-    # EXPRESS 자식은 5분이 한도다 — 파서가 그보다 오래 살면 Step Functions 가 끊은 뒤에도 Lambda 가 계속 돈다(리뷰 #36).
-    # 파서는 시간 예산(남은 작품은 failed 로 돌려 재시도 라운드가 받는다) 안에서 끝나고, Lambda 는 290초에서 끊는다.
-    aws lambda update-function-configuration --region $R --function-name ${F_PARSER}-dmap --timeout 290 >/dev/null
-    aws lambda wait function-updated --region $R --function-name ${F_PARSER}-dmap
-  else
-    aws lambda create-function --region $R --function-name ${F_PARSER}-dmap --package-type Image \
-      --code ImageUri="$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" --role $LAMBDA_ROLE \
-      --image-config 'Command=["parser.parse_dmap_batch"]' --timeout 290 --memory-size 512 --environment "$PENV" >/dev/null
-    aws lambda wait function-active --region $R --function-name ${F_PARSER}-dmap
-  fi
-  zip -qj "$BUILD/consolidate.zip" contest_detail_parser/consolidate_contest_data.py
-  upsert_zip ${F_CONSOLIDATE}-dmap "$BUILD/consolidate.zip" consolidate_contest_data.handler_dmap 600 512 \
-    "Variables={DYNAMODB_TABLE_NAME=$TABLE,SQS_RESULT_QUEUE_URL=$RESULT_URL,STATE_BUCKET=$BUCKET}"
+      \"arn:aws:sqs:$R:$ACC:np-trend-contest-task-queue-2025\",\"arn:aws:sqs:$R:$ACC:np-trend-contest-result-queue-2025\"]}]}"
 
   echo "== 상태 머신 역할: 2026 버킷 읽기·쓰기(ItemReader·ResultWriter)"
   aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name NovelFlowContest${Y}DMapS3 --policy-document "{
@@ -191,14 +149,15 @@ dmap() {
     \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"dynamodb:PutItem\",
       \"Resource\":\"arn:aws:dynamodb:$R:$ACC:table/$TABLE\"}]}"
 
-  echo "== 상태 머신 ${SM_NAME%Workflow}DMapWorkflow"
+  echo "== 상태 머신 $SM_NAME"
   DEF=$(sed "s/YOUR_AWS_REGION/$R/g; s/YOUR_AWS_ACCOUNT_ID/$ACC/g" contest_detail_parser/NovelFlowContest2026DMapWorkflow.json)
-  if exists aws stepfunctions describe-state-machine --region $R --state-machine-arn $DSM_ARN; then
-    aws stepfunctions update-state-machine --region $R --state-machine-arn $DSM_ARN --definition "$DEF" >/dev/null
+  if exists aws stepfunctions describe-state-machine --region $R --state-machine-arn $SM_ARN; then
+    aws stepfunctions update-state-machine --region $R --state-machine-arn $SM_ARN --definition "$DEF" >/dev/null
   else
-    aws stepfunctions create-state-machine --region $R --name ${SM_NAME%Workflow}DMapWorkflow --type STANDARD \
+    aws stepfunctions create-state-machine --region $R --name $SM_NAME --type STANDARD \
       --role-arn arn:aws:iam::$ACC:role/$SFN_ROLE_NAME --definition "$DEF" >/dev/null
   fi
+
   failure_rule
 }
 
@@ -208,14 +167,12 @@ schedule() {
   for v in $OLD; do aws iam delete-policy-version --policy-arn $SCHED_POLICY_ARN --version-id $v; done
   aws iam create-policy-version --policy-arn $SCHED_POLICY_ARN --set-as-default --policy-document "{
     \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"states:StartExecution\"],\"Resource\":[
-      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\",\"$DSM_ARN\"]},
+      \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\"]},
       {\"Effect\":\"Allow\",\"Action\":[\"lambda:InvokeFunction\"],\"Resource\":[\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\"]}]}" >/dev/null
 
-  # SQS 판은 지우지 않고 남겨 둔다 — 문제가 생기면 스케줄 대상만 되돌린다.
-  TARGET_ARN=$([ "$PIPELINE" = sqs ] && echo $SM_ARN || echo $DSM_ARN)
-  echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → ${TARGET_ARN##*:})"
+  echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → $SM_NAME)"
   ARGS=(--region $R --name $SCHED_NAME --schedule-expression "cron(0 0 * * ? *)" --schedule-expression-timezone Asia/Seoul
-        --flexible-time-window Mode=OFF --target "Arn=$TARGET_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME")
+        --flexible-time-window Mode=OFF --target "Arn=$SM_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME")
   if exists aws scheduler get-schedule --region $R --name $SCHED_NAME; then aws scheduler update-schedule "${ARGS[@]}" >/dev/null
   else aws scheduler create-schedule "${ARGS[@]}" >/dev/null; fi
 
@@ -243,24 +200,24 @@ collector_alarm() {
     --namespace AWS/Lambda --metric-name Errors --dimensions Name=FunctionName,Value=$F_COLLECTOR \
     --statistic Sum --period 3600 --evaluation-periods 1 --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold \
     --treat-missing-data notBreaching --alarm-actions $TOPIC
-  # put-rule 은 패턴을 통째로 바꾼다 — 기존 세 알람(OPERATIONS 「실패 알림」)을 함께 적는다.
+  # put-rule 은 패턴을 통째로 바꾼다 — 다른 알람(OPERATIONS 「실패 알림」, 데일리 적재 오류 포함)을 함께 적는다.
   aws events put-rule --region $R --name novelflow-alarm-state \
     --description "NovelFlow 알람 상태 변경 → Discord (ALARM 은 멘션)" --event-pattern "{
     \"source\":[\"aws.cloudwatch\"],\"detail-type\":[\"CloudWatch Alarm State Change\"],\"resources\":[
       \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-daily-no-success-26h\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-contest-no-success-26h\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:np-trend-crawler-dlq-alarm\",
+      \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-daily-ingestion-errors\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:$ALARM\"]}" >/dev/null
 }
 
 case "${1:-all}" in
   infra) infra ;;
   code) code ;;
-  orchestration) orchestration ;;
+  orchestration|dmap) orchestration ;;   # dmap: SQS 판과 나란히 있던 시절의 옛 이름(문서 호환)
   schedule) schedule ;;
-  dmap) dmap ;;
   alarm) collector_alarm ;;
   all) infra; code; orchestration ;;   # 스케줄은 시험 실행이 통과한 뒤 따로 켠다
-  *) echo "usage: $0 [all|infra|code|orchestration|schedule|dmap|alarm]"; exit 1 ;;
+  *) echo "usage: $0 [all|infra|code|orchestration|dmap|schedule|alarm]"; exit 1 ;;
 esac
 echo "done: ${1:-all}"
