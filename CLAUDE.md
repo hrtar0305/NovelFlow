@@ -60,6 +60,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **SQS purge 는 상태 머신 첫 단계에서 하고 뒤에 Wait 65초를 둡니다.** purge 는 최대 60초 동안
   그 사이 보낸 메시지도 지울 수 있습니다(2026-09-11 공모전 작업 599건 유실). purge 를 Lambda 로
   되돌리거나 대기를 줄이지 마세요.
+- **하루의 값은 제시간 값입니다.** 늦은 재실행 거절(데일리 22:00 KST, 공모전 D+1 01:00 KST)과 자동 재실행 1회는 의도입니다.
+  마감을 늘리거나 우회 입력을 만들지 마세요. 받기가 끝난 공모전 날은 원본 재계산(`reprocess`)으로 살립니다.
 - 새로운 "왜"를 알게 되거나 결정을 내리면 DECISIONS.md에 항목을 추가하세요.
 
 ## 리포 구조

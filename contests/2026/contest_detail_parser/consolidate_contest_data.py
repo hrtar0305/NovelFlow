@@ -353,6 +353,14 @@ class TooManyMissing(Exception):
     """재시도 뒤에도 결손이 상한을 넘었다 — 그날을 반쪽으로 쓰지 않고 실패시킨다(상태 머신이 재시도하지 않는다)."""
 
 
+class ReprocessBatchFailed(Exception):
+    """원본 재계산의 자식(원본 묶음 2개)이 통째로 실패했다 — Lambda 제한·시간 초과·S3 일시 오류처럼 다시 하면 될 일이다.
+
+    재해석은 결정적이고 멱등이라 결손을 placeholder 로 채우지 않고 시도를 실패시킨다(병렬 단계 `Run` 이 한 번 다시 한다).
+    채우면 그날의 정상 자정 행을 'N/A (ReprocessFailed)' 로 덮는다(리뷰 2026-10-04). 대조 단계 자신은 다시 부르지 않는다.
+    """
+
+
 def _s3():
     return boto3.client('s3')
 
@@ -421,13 +429,23 @@ def reconcile_dmap(event):
     """ParseMap 한 라운드의 결과를 지금까지 모은 것과 합치고, 아직 못 받은 작품을 정한다.
 
     - 기대 목록은 첫 라운드에서 S3 ID 목록을 **복사해 고정**한다(그 사이 수집기가 목록을 다시 써도 흔들리지 않게).
+      원본 재계산(`reprocess`)이면 그 날짜 원본 묶음의 작품 번호(파서 `reprocess_index`)이고, 재시도 라운드가 없다.
+      어느 쪽이든 기록 날짜의 수집 뒤에 처음 찾은 번호는 뺀다(아래).
     - 빠진 작품 = 기대 − (실데이터 또는 경고창·파싱 placeholder). 네트워크로 끝내 실패한 작품과 자식이 통째로 실패한
       묶음의 작품이 여기에 든다. 라운드마다 이유를 errors 에 쌓는다(실패 장부의 재료).
     """
     execution_id, date, rnd = event['execution_id'], event['date'], int(event.get('round', 0))
+    reprocess = bool(event.get('reprocess'))
     pre = _run_prefix(date, execution_id)
     if rnd == 0:
-        expected = [str(x) for x in json.loads(_s3().get_object(Bucket=Config.STATE_BUCKET, Key=ID_LIST_KEY)['Body'].read())]
+        if reprocess:
+            # 원본 재계산: 기대 목록은 그 날짜 원본 묶음에 든 작품 전부(파서 `reprocess_index`) — 오늘의 ID 목록이 아니다.
+            index = _get_json(f'{pre}/reprocess-index.json')
+            if index is None:
+                raise RuntimeError(f"reprocess index missing: {pre}/reprocess-index.json (ReprocessIndex 단계가 먼저 돌아야 한다)")
+            expected = sorted(str(k) for k in index.get('ids', {}))
+        else:
+            expected = [str(x) for x in json.loads(_s3().get_object(Bucket=Config.STATE_BUCKET, Key=ID_LIST_KEY)['Body'].read())]
         # 기록 날짜의 수집 뒤에 처음 찾은 번호는 그날 없던 작품이다(과거 날짜를 target_date 로 다시 돌릴 때 섞인다) — 기대에서 빼
         # 그날 행을 만들지 않는다. 받기는 했어도 적재(수량 검증·placeholder)는 기대 목록만 본다. 다음 날 정상 수집에서 신작으로 든다.
         meta = _load_contest_meta(execution_id)
@@ -445,6 +463,9 @@ def reconcile_dmap(event):
         raw_failed_total, children_failed_total = state['raw_failed'], state['children_failed']
 
     items, failed, failed_children, raw_failed = _dmap_rows(event['manifest'], execution_id)
+    if reprocess and failed_children and not event.get('dry_run'):
+        raise ReprocessBatchFailed(f"{date} 원본 재계산: 자식 {failed_children}개(원본 묶음 최대 {failed_children * 2}개)가 실패해 "
+                                   f"그 작품들을 다시 계산하지 못했습니다 — 결손으로 채우지 않고 시도를 다시 합니다.")
     unique = _dedupe_prefer_real(collected + items)
     have = {str(i['ID']) for i in unique}
     reason = {f['id']: f.get('error') for f in failed}
@@ -455,7 +476,8 @@ def reconcile_dmap(event):
                                         'children_failed': children_failed_total + failed_children})
     _put_json(f'{pre}/missing-{rnd}.json', [int(k) for k in missing])
 
-    retry = bool(missing) and rnd < RETRY_ROUNDS
+    # 원본 재계산은 다시 받을 것이 없다(같은 원본을 다시 읽어도 같은 결과) — 남은 결손은 바로 적재 단계의 placeholder 로.
+    retry = bool(missing) and rnd < RETRY_ROUNDS and not reprocess
     out = {'round': rnd + 1, 'expected': len(expected), 'missing': len(missing), 'retry': retry,
            'missing_key': f'{pre}/missing-{rnd}.json', 'wait_seconds': RETRY_WAITS[min(rnd, len(RETRY_WAITS) - 1)],
            # 다시 받을 때는 작게 나눠 천천히 — 실패 원인이 과부하일 수 있다
@@ -464,22 +486,86 @@ def reconcile_dmap(event):
     return out
 
 
+# 적재 단계가 붙이는 필드 — 기존 행을 다시 쓸 때 걷어내고 다시 계산한다.
+ADDED_BY_CONSOLIDATE = ('Rank', 'DailyRank', 'ViewDelta', 'PrevDate', 'IsNew', 'AuthorOtherNovels', 'AuthorOtherMore')
+
+
+def _reuse_row(row):
+    """운영 테이블의 행 → 다시 쓸 수 있는 파서 출력 꼴(정수 Decimal → int, 적재 단계 필드 제거)."""
+    def conv(v):
+        if isinstance(v, Decimal):
+            return int(v) if v == v.to_integral_value() else v
+        if isinstance(v, list):
+            return [conv(x) for x in v]
+        if isinstance(v, dict):
+            return {k: conv(x) for k, x in v.items()}
+        return v
+    return {k: conv(v) for k, v in row.items() if k not in ADDED_BY_CONSOLIDATE}
+
+
 def _placeholder(novel_id, date, reason):
     return {"Date": date, "ID": novel_id, "Title": f"N/A ({reason})", "AuthorName": "N/A", "AuthorID": "0",
             "View": -1, "Like": -1, "Fav": -1, "Alr": -1, "Eps": -1, "Tags": [], "Synopsis": "", "IsAdult": False}
 
 
+def _minutes_after_midnight(date, items):
+    """받은 값이 기록 날짜의 자정(D+1 00:00 KST)에서 몇 분 뒤인가 — 실데이터의 가장 이른 CrawledAt 기준. 모르면 None."""
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    midnight = datetime.fromisoformat(date).replace(tzinfo=ZoneInfo('Asia/Seoul')) + timedelta(days=1)
+    stamps = []
+    for it in items:
+        if _is_placeholder(it) or not it.get('CrawledAt'):
+            continue
+        try:
+            dt = datetime.fromisoformat(str(it['CrawledAt']).replace('Z', '+00:00'))
+            stamps.append(dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc))
+        except ValueError:
+            continue
+    if not stamps:
+        return None
+    return round((min(stamps) - midnight).total_seconds() / 60, 1)
+
+
+def _ledger_key(date, reprocess):
+    """실패 장부의 위치. 원본 재계산은 자정 실행의 장부를 덮지 않는다(그날 자정에 무엇이 실패했는지가 남아야 한다)."""
+    return f'failures/{date}-reprocess.json' if reprocess else f'failures/{date}.json'
+
+
 def _notice(date, ledger):
-    """알릴 만한 결손이 있으면 Discord 문구(멘션 없음). 없으면 None."""
+    """알릴 만한 일이 있으면 Discord 문구(멘션 없음). 없으면 None.
+
+    결손 외에 **자동 재실행으로 적재한 날**(시도 2 이상)도 알린다 — 값이 자정에서 몇 분 늦었는지와 함께. 원본 재계산은 늘 알린다
+    (운영자가 과거 날짜를 다시 쓴 기록).
+    """
     parts = []
-    if ledger['fetch_failed']:
-        parts.append(f"받지 못해 placeholder {len(ledger['fetch_failed'])}편")
+    attempt = ledger.get('attempt')
+    if ledger.get('mode') == 'reprocess':
+        parts.append(f"원본 재계산으로 {ledger.get('written_rows', ledger['expected'])}편을 다시 썼습니다(노벨피아에서 다시 받지 않음, 원본 묶음 기준)")
+        if ledger.get('untouched_rows'):
+            parts.append(f"원본이 없는 그날 행 {len(ledger['untouched_rows'])}편은 그대로 둠")
+        if ledger.get('kept_rows'):
+            parts.append(f"원본에서 다시 계산하지 못한 {len(ledger['kept_rows'])}편은 기존 행 유지")
+        if ledger.get('later_dates'):
+            parts.append(f"이 날짜가 새로 생겨 다음 수집일 {ledger['later_dates'][0]} 의 일간 순위 기준이 바뀝니다 — 그 날짜도 reprocess 하세요")
+    elif isinstance(attempt, int) and attempt > 1:
+        late = ledger.get('late_minutes')
+        parts.append(f"첫 시도가 실패해 자동 재실행(시도 {attempt})으로 적재"
+                     + (f" — 값은 자정 {late:g}분 뒤부터 받은 것" if isinstance(late, (int, float)) else ""))
+        for e in (ledger.get('previous_errors') or [])[:2]:
+            parts.append(f"앞선 시도 오류 {str(e)[:200]}")
+    placeholders = len(ledger['fetch_failed']) - len(ledger.get('kept_rows') or [])
+    if placeholders > 0:
+        label = '원본에서 다시 계산하지 못해' if ledger.get('mode') == 'reprocess' else '받지 못해'
+        parts.append(f"{label} placeholder {placeholders}편")
     if ledger['recovered']:
         parts.append(f"재시도로 복구 {ledger['recovered']}편")
     if ledger['raw_failed']:
         parts.append(f"원본 저장 실패 {ledger['raw_failed']}편")
     d = ledger.get('discover') or {}
-    if d.get('fallback'):
+    if ledger.get('mode') == 'reprocess':
+        pass   # ID 수집을 하지 않는다 — 참가작 수 비교는 그날 자정 실행의 장부에 있다
+    elif d.get('fallback'):
         parts.append("ID 수집 실패 → 23:30 목록으로 진행")
     else:
         # 노벨피아 표시 수는 지금 보이는 작품만 센다 — 우리 목록(누적, 삭제·비공개 뒤에도 추적)이 아니라 '살아 있는' 수와 견준다.
@@ -488,15 +574,82 @@ def _notice(date, ledger):
             parts.append(f"참가작 수 부족 {ours}/{d['listed_total']}")
     if not parts:
         return None
-    return f"2026 공모전 {date} 수집 경고: " + " · ".join(parts) + f" (장부 failures/{date}.json)"
+    head = "원본 재계산" if ledger.get('mode') == 'reprocess' else "수집 경고"
+    return f"2026 공모전 {date} {head}: " + " · ".join(parts) + f" (장부 {_ledger_key(date, ledger.get('mode') == 'reprocess')})"
+
+
+# 원본 재계산 그림자 실행에서 운영 행과 정확히 견줄 필드 — 같은 원본·같은 해석이면 모두 같아야 한다.
+EXACT_FIELDS = ('Title', 'AuthorName', 'AuthorID', 'View', 'Like', 'Fav', 'Alr', 'Eps', 'Tags', 'Synopsis', 'ThumbnailURL',
+                'IsAdult', 'Badges', 'SerialStatus', 'SerialDays', 'LifePick', 'FirstEpView', 'FirstEpNum', 'Ep30View', 'Ep30Num',
+                'RecentBaseView', 'RecentBaseNum', 'TargetLatestEpView', 'TargetLatestEpNum')
+
+
+def _plain(v):
+    """DynamoDB 값(Decimal·set)을 파서 출력과 같은 꼴로."""
+    if isinstance(v, Decimal):
+        return int(v) if v == v.to_integral_value() else float(v)
+    if isinstance(v, list):
+        return [_plain(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _plain(x) for k, x in v.items()}
+    return v
+
+
+def _exact_mismatch(mine, prod):
+    """필드별 불일치 수와 표본(번호). 한쪽에만 있는 필드도 불일치로 센다."""
+    out = {}
+    for k in set(mine) & set(prod):
+        for f in EXACT_FIELDS:
+            if _plain(prod[k].get(f)) != _plain(mine[k].get(f)):
+                e = out.setdefault(f, {'count': 0, 'sample': []})
+                e['count'] += 1
+                if len(e['sample']) < 5:
+                    e['sample'].append(k)
+    return out
+
+
+def _rows_for_date(table, date, projection=None):
+    """운영 테이블의 그 날짜 작품 행 {ID: 행}(DateViewIndex — View 가 없는 특수 항목은 들어오지 않는다)."""
+    rows, kw = {}, {'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(date)}
+    if projection:
+        kw.update(ProjectionExpression=projection)
+    while True:
+        r = table.query(**kw)
+        for it in r['Items']:
+            rows[str(it['ID'])] = it
+        if 'LastEvaluatedKey' not in r:
+            break
+        kw['ExclusiveStartKey'] = r['LastEvaluatedKey']
+    return rows
+
+
+def _later_dates_if_new(table, date):
+    """`date` 가 아직 수집일 집합에 없고 그 뒤 수집일이 있으면 그 날짜들 — 다음 수집일의 일간 순위가 이 날짜를 기준으로 바뀐다.
+
+    (그 날짜의 일간 순위는 이 날짜가 없던 때 그 전 날짜와 견준 이틀치 증가다. 그 날짜도 원본 재계산하면 바로잡힌다.)
+    """
+    try:
+        meta = table.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}).get('Item') or {}
+    except Exception:  # noqa: BLE001 — 알림 문구용
+        return []
+    dates = set(meta.get('dates') or set())
+    return [] if date in dates else sorted(d for d in dates if d > date)
 
 
 def handler_dmap(event, context):
-    """`action: reconcile` 이면 대조, 아니면 최종 적재. `dry_run` 이면 쓰지 않고 운영 테이블과 비교만 한다(그림자 실행)."""
+    """`action: reconcile` 이면 대조, 아니면 최종 적재. `dry_run` 이면 쓰지 않고 운영 테이블과 비교만 한다(그림자 실행).
+
+    `reprocess`(원본 재계산)면 장부를 `failures/{date}-reprocess.json` 에 따로 남기고 `state/gone_ids.json` 을 건드리지 않는다.
+    `attempt`(상태 머신 `StartAttempt` 결과)가 2 이상이면 자동 재실행으로 적재한 날이라 알린다.
+    """
     if event.get('action') == 'reconcile':
         return reconcile_dmap(event)
 
     execution_id, date = event.get('execution_id', 'N/A'), event['date']
+    reprocess = bool(event.get('reprocess'))
+    # 시도 정보(상태 머신 `StartAttempt` 결과 통째로). 옛 상태 머신이면 없다.
+    attempt_info = event.get('attempt') if isinstance(event.get('attempt'), dict) else {}
+    attempt = attempt_info.get('attempt')
     pre = _run_prefix(date, execution_id)
     expected = _get_json(f'{pre}/expected.json')
     state = _get_json(f'{pre}/collected.json')
@@ -518,23 +671,27 @@ def handler_dmap(event, context):
                          for r in ('Inaccessible', 'ParsingFailed')},
         'raw_failed': state['raw_failed'], 'children_failed': state['children_failed'],
         'discover': event.get('discover') or {},
+        'mode': 'reprocess' if reprocess else 'fetch', 'attempt': attempt,
+        'previous_errors': attempt_info.get('previous_errors') or [],
+        'late_minutes': _minutes_after_midnight(date, unique),
     }
     if len(still) > MAX_MISSING_FRACTION * len(expected):
         if not event.get('dry_run'):
-            _put_json(f'failures/{date}.json', {**ledger, 'written': False})
+            _put_json(_ledger_key(date, reprocess), {**ledger, 'written': False})
         raise TooManyMissing(f"{len(still)}/{len(expected)} novels still missing after retries — not writing {date}.")
-    unique += [_placeholder(k, date, 'FetchFailed') for k in still]
-
     table = boto3.resource('dynamodb').Table(Config.DYNAMODB_TABLE_NAME)
+    prod = _rows_for_date(table, date) if (reprocess or event.get('dry_run')) else None
+    kept = []
+    if reprocess:
+        # 원본에서 다시 계산하지 못한 작품에 그날 실데이터 행이 이미 있으면 그 행을 그대로 다시 쓴다 — 자리표시로 덮지 않는다.
+        # 그 행은 자정(또는 앞선 원본 재계산)의 값이라 '자정 값' 원칙에 맞고, 순위·태그 통계 모수에도 그대로 들어가야 한다.
+        kept = [_reuse_row(prod[k]) for k in still if k in prod and not _is_placeholder(prod[k])]
+        ledger['kept_rows'] = sorted(str(r['ID']) for r in kept)
+    kept_ids = {str(r['ID']) for r in kept}
+    # 원본 재계산에서 빠진 작품은 '받지 못함'이 아니라 '원본에서 다시 계산하지 못함'이다.
+    unique += kept + [_placeholder(k, date, 'ReprocessFailed' if reprocess else 'FetchFailed') for k in still if k not in kept_ids]
+
     if event.get('dry_run'):
-        prod, kw = {}, {'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(date)}
-        while True:
-            r = table.query(**kw)
-            for it in r['Items']:
-                prod[str(it['ID'])] = it
-            if 'LastEvaluatedKey' not in r:
-                break
-            kw['ExclusiveStartKey'] = r['LastEvaluatedKey']
         mine = {str(i['ID']): i for i in unique}
         diff_view = [k for k in mine if k in prod and abs(int(prod[k].get('View', 0)) - int(mine[k].get('View', 0))) > max(50, int(prod[k].get('View', 0)) * 0.05)]
         added_by_consolidate = {'Rank', 'DailyRank', 'ViewDelta', 'PrevDate', 'AuthorOtherNovels', 'AuthorOtherMore'}
@@ -545,19 +702,33 @@ def handler_dmap(event, context):
                 missing_f[f] = missing_f.get(f, 0) + 1
             for f in mk - pk:
                 extra_f[f] = extra_f.get(f, 0) + 1
-        report = {'dry_run': True, 'date': date, 'expected': len(expected), 'collected': len(unique),
-                  'fetch_failed': len(still), 'recovered': ledger['recovered'], 'prod_rows': len(prod),
+        exact = _exact_mismatch(mine, prod) if reprocess else None
+        report = {'dry_run': True, 'date': date, 'mode': ledger['mode'], 'attempt': attempt,
+                  'late_minutes': ledger['late_minutes'], 'expected': len(expected), 'collected': len(unique),
+                  'fetch_failed': len(still), 'kept_real_rows': len(kept), 'recovered': ledger['recovered'], 'prod_rows': len(prod),
                   'only_in_dmap': len(set(mine) - set(prod)), 'only_in_prod': len(set(prod) - set(mine)),
                   'view_far_apart': len(diff_view),
                   'fields_missing_in_dmap': dict(sorted(missing_f.items(), key=lambda x: -x[1])[:10]),
                   'fields_extra_in_dmap': dict(sorted(extra_f.items(), key=lambda x: -x[1])[:10])}
+        if exact is not None:
+            report['exact_mismatch'] = exact   # 원본 재계산은 같은 원본이라 값이 정확히 같아야 한다
         _log(logging.INFO, execution_id, "DMap dry-run comparison.", **report)
         notice = _notice(date, ledger)
         return {**report, 'degraded': bool(notice), 'notice': notice and f"[그림자] {notice}"}
 
     _validate_data(execution_id, unique, len(expected))
+    if reprocess:
+        ledger['later_dates'] = _later_dates_if_new(table, date)   # 쓰기 전에 본다 — 쓰고 나면 이 날짜가 집합에 들어간다
+        ledger['written_rows'] = len(unique)
+        # 원본이 없는 그날 행(자정에 받지 못한 FetchFailed 자리표시 — 원본은 받은 작품만 남는다)은 다시 쓰지 않고 그대로 둔다.
+        ledger['untouched_rows'] = sorted(set(prod) - {str(i['ID']) for i in unique})
     _process_and_upload_data(table, execution_id, unique)
-    _put_json(f'failures/{date}.json', {**ledger, 'written': True})   # 결손이 없어도 남긴다 — 그날 무엇을 했는지의 기록
+    _put_json(_ledger_key(date, reprocess), {**ledger, 'written': True})   # 결손이 없어도 남긴다 — 그날 무엇을 했는지의 기록
+    if reprocess:
+        # gone_ids 는 '지금' 보이지 않는 참가작이다(수집기가 오늘 표시 수와 견준다) — 과거 날짜를 다시 계산하며 덮지 않는다.
+        notice = _notice(date, ledger)
+        return {'statusCode': 200, 'processed_count': len(unique), 'fetch_failed': len(still), 'kept_rows': len(kept),
+                'mode': 'reprocess', 'degraded': bool(notice), 'notice': notice}
     # 지금 보이지 않는 참가작(경고창·파싱 실패 자리표시 — 받지 못한 FetchFailed 는 제외)을 수집기에 알린다. 수집기는 이 번호를 빼고
     # '살아 있는 수'를 노벨피아 표시 수와 견준다(누적 목록이 삭제·비공개작까지 세서 놓친 신작을 가리지 않게). 매일 덮어쓴다.
     try:
@@ -566,5 +737,5 @@ def handler_dmap(event, context):
     except Exception as e:  # noqa: BLE001 — 부가 정보라 적재를 막지 않는다
         _log(logging.WARNING, execution_id, f"Could not write gone_ids: {e}")
     notice = _notice(date, ledger)
-    return {'statusCode': 200, 'processed_count': len(unique), 'fetch_failed': len(still),
-            'recovered': ledger['recovered'], 'degraded': bool(notice), 'notice': notice}
+    return {'statusCode': 200, 'processed_count': len(unique), 'fetch_failed': len(still), 'attempt': attempt,
+            'late_minutes': ledger['late_minutes'], 'recovered': ledger['recovered'], 'degraded': bool(notice), 'notice': notice}

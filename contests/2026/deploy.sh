@@ -4,8 +4,10 @@
 # 자정 수집은 Distributed Map 판(NovelFlowContest2026DMapWorkflow) 하나다. SQS 판(작업·결과 큐 + 완료 폴링)은 2026-10-04 에 걷어냈다.
 #   bash contests/2026/deploy.sh                 # infra + code + orchestration (스케줄은 따로)
 #   bash contests/2026/deploy.sh infra           # S3 버킷·DynamoDB 테이블·ECR
-#   bash contests/2026/deploy.sh code            # Lambda 코드·이미지만 다시 올리기(수집기·날짜·파서·적재)
+#   bash contests/2026/deploy.sh code            # Lambda 코드·이미지만 다시 올리기(수집기·날짜/시도 시작·파서/원본 재계산·적재)
 #   bash contests/2026/deploy.sh orchestration   # 상태 머신 + 상태 머신 역할 정책 + 실패 알림 규칙 (dmap 은 같은 뜻의 옛 이름)
+# 순서: code → orchestration. 상태 머신의 StartAttempt(날짜 함수 action=attempt_start)·ReprocessIndex/ReprocessMap(파서의 원본 재계산)은
+# 새 코드에만 있다 — 옛 코드에 새 상태 머신을 올리면 마감 확인 없이 돌고 원본 재계산은 실패한다. 새 코드는 옛 상태 머신과도 맞는다.
 #   bash contests/2026/deploy.sh schedule        # 자정 수집·준비 실행 스케줄 + 수집기 알람
 #   bash contests/2026/deploy.sh alarm           # 수집기 오류 알람만
 # 계정 ID 는 실행 시 조회한다(공개 리포라 박지 않는다).
@@ -83,10 +85,12 @@ code() {
   # 23:30 준비 실행은 스케줄러의 비동기 호출이다. Lambda 기본 재시도(2번)가 시간 초과 뒤 자정 실행과 겹치면 같은 상태
   # 파일을 둘이 쓰므로 재시도를 끈다 — 실패한 준비 실행은 다음 날 다시 돈다(자정 수집은 무관).
   aws lambda put-function-event-invoke-config --region $R --function-name $F_COLLECTOR --maximum-retry-attempts 0 >/dev/null
-  # 날짜 함수(ResolveDate)는 환경 변수가 필요 없다 — 수집기 재호출 마감은 코드 기본값(DISCOVERY_RECALL_MINUTES=12).
+  # 날짜 함수(ResolveDate·StartAttempt)는 환경 변수가 필요 없다 — 수집기 재호출 마감(DISCOVERY_RECALL_MINUTES=12)·받기 마감
+  # (REFETCH_GRACE_MINUTES=60, 자정 + 1시간)은 코드 기본값이고, 시도 표지를 쓸 상태 버킷은 상태 머신이 넘긴다(S3 권한은 Lambda 역할).
   upsert_zip $F_FANOUT "$BUILD/fanout.zip" app.get_id_list_from_s3 120 256 '{"Variables":{}}'
 
-  echo "== 파서(DMap 묶음) $F_PARSER"
+  # 파서 Lambda 는 원본 재계산(reprocess)도 맡는다 — action=reprocess_index·BatchInput.reprocess 로 갈린다(같은 이미지·같은 해석 코드).
+  echo "== 파서(DMap 묶음 + 원본 재계산) $F_PARSER"
   PENV="Variables={RAW_HTML_BUCKET=$RAW_BUCKET,RAW_HTML_PREFIX=contest,CONTEST_YEAR=$Y}"
   if exists aws lambda get-function --region $R --function-name $F_PARSER; then
     aws lambda update-function-code --region $R --function-name $F_PARSER --image-uri "$ACC.dkr.ecr.$R.amazonaws.com/$ECR_REPO@$DIGEST" >/dev/null
@@ -139,10 +143,19 @@ orchestration() {
       \"arn:aws:sqs:$R:$ACC:np-trend-crawler-queue\",
       \"arn:aws:sqs:$R:$ACC:np-trend-contest-task-queue-2025\",\"arn:aws:sqs:$R:$ACC:np-trend-contest-result-queue-2025\"]}]}"
 
-  echo "== 상태 머신 역할: 2026 버킷 읽기·쓰기(ItemReader·ResultWriter)"
+  # 이 정책은 시도 실패 기록(RecordAttemptError, aws-sdk:s3:putObject → runs/{date}/{exec}/attempt-errors/)에도 쓰인다.
+  echo "== 상태 머신 역할: 2026 버킷 읽기·쓰기(ItemReader·ResultWriter·시도 실패 기록)"
   aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name NovelFlowContest${Y}DMapS3 --policy-document "{
     \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:ListMultipartUploadParts\",\"s3:AbortMultipartUpload\"],
       \"Resource\":\"arn:aws:s3:::$BUCKET/*\"},{\"Effect\":\"Allow\",\"Action\":\"s3:ListBucket\",\"Resource\":\"arn:aws:s3:::$BUCKET\"}]}"
+
+  # 원본 재계산(reprocess)의 ReprocessMap 은 ItemReader(s3:listObjectsV2)로 그 날짜 원본 묶음 목록을 읽는다. 묶음 내용은 파서
+  # Lambda 가 읽는다(Lambda 역할). GetObject 는 목록 단계에 필요 없지만 같은 접두어 읽기로 함께 둔다. 2026 공모전 접두어로만 묶는다.
+  echo "== 상태 머신 역할: 원본 버킷 2026 공모전 접두어 목록·읽기(원본 재계산)"
+  aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name NovelFlowContest${Y}RawRead --policy-document "{
+    \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:ListBucket\",\"Resource\":\"arn:aws:s3:::$RAW_BUCKET\",
+      \"Condition\":{\"StringLike\":{\"s3:prefix\":[\"contest/$Y/*\"]}}},
+      {\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::$RAW_BUCKET/contest/$Y/*\"}]}"
 
   echo "== 상태 머신 역할: 날짜 잠금(RUN_LOCK#{date}) 쓰기 — 예약 중복 전달 방지"
   aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name NovelFlowContest${Y}RunLock --policy-document "{
@@ -170,9 +183,11 @@ schedule() {
       \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\"]},
       {\"Effect\":\"Allow\",\"Action\":[\"lambda:InvokeFunction\"],\"Resource\":[\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\"]}]}" >/dev/null
 
+  # 시작 요청이 실패해도 1시간 안에서만 다시 보낸다 — 그보다 늦은 시작은 자정 값이 아니다(실행도 거절하지만 애초에 보내지 않는다).
   echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → $SM_NAME)"
   ARGS=(--region $R --name $SCHED_NAME --schedule-expression "cron(0 0 * * ? *)" --schedule-expression-timezone Asia/Seoul
-        --flexible-time-window Mode=OFF --target "Arn=$SM_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME")
+        --flexible-time-window Mode=OFF
+        --target "Arn=$SM_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME,RetryPolicy={MaximumEventAgeInSeconds=3600,MaximumRetryAttempts=185}")
   if exists aws scheduler get-schedule --region $R --name $SCHED_NAME; then aws scheduler update-schedule "${ARGS[@]}" >/dev/null
   else aws scheduler create-schedule "${ARGS[@]}" >/dev/null; fi
 

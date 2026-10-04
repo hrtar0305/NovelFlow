@@ -99,7 +99,7 @@ def _valid_episodes(soup, before=None):
     return result
 
 
-def _episode_view_counts(session, novel_id, episode_ids, log):
+def _episode_view_counts(session, novel_id, episode_ids, log, pages=None):
     if not episode_ids:
         return {}
     payload = [("novel_no", novel_id), ("cmd", "get_episode_count_view")]
@@ -108,6 +108,11 @@ def _episode_view_counts(session, novel_id, episode_ids, log):
     headers = {"Referer": NOVEL_URL_TEMPLATE.format(novel_id), "X-Requested-With": "XMLHttpRequest"}
     r = session.post(NOVEL_PROC_URL, data=payload, headers=headers, timeout=10)
     r.raise_for_status()
+    # 응답(JSON)도 원본으로 남긴다(2026-10-04~) — 원본 재계산(`parser.reparse_raw_batch`)이 잔류율까지 다시 낼 수 있게.
+    # 그 전 묶음에는 이 페이지가 없어 재계산하면 잔류율 8개가 -1(값 없음)이 된다. 크롤러(`crawler/app.py`)는 아직 남기지 않는다.
+    if pages is not None:
+        pages.append({"kind": "episode_view_counts", "url": NOVEL_PROC_URL, "method": "POST",
+                      "params": [list(kv) for kv in payload], "status": r.status_code, "html": r.text})
     if not r.text.strip():
         return {}
     try:
@@ -119,7 +124,8 @@ def _episode_view_counts(session, novel_id, episode_ids, log):
 
 
 def retention_fields(session, novel_id, pages, log, before=None):
-    """잔류율 원재료 8개(crawler 와 같은 이름·규칙 — 유효 회차만 `before` 로 하루 앞당긴다). 받은 회차 목록은 `pages` 에 원본으로 담긴다.
+    """잔류율 원재료 8개(crawler 와 같은 이름·규칙 — 유효 회차만 `before` 로 하루 앞당긴다). 받은 회차 목록과 회차 조회수 응답은
+    `pages` 에 원본으로 담긴다. `session` 은 실시간이면 requests.Session, 원본 재계산이면 저장된 응답을 돌려주는 재생 세션이다.
 
     초기 30 유효 회차(오래된 순, 최대 2쪽)와 최근 30 유효 회차(최신순, 최대 5쪽)를 모아
     1화·30화·최신화·최신 30번째 전 회차의 조회수를 한 번에 받는다. 값을 못 얻으면 -1.
@@ -154,7 +160,7 @@ def retention_fields(session, novel_id, pages, log, before=None):
     if not first_id:
         return item
     ids = list(dict.fromkeys(e for e in [first_id, ep30_id, base_id, latest_id] if e))
-    vc = _episode_view_counts(session, novel_id, ids, log)
+    vc = _episode_view_counts(session, novel_id, ids, log, pages)
     if int(first_id) in vc:
         item["FirstEpView"], item["FirstEpNum"] = vc[int(first_id)], early[0][1]
     if latest_id and latest_id != first_id and int(latest_id) in vc:

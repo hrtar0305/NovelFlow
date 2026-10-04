@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 
 # Ignore other Python files
-app.py
+# app.py 는 넣는다 — parser 가 받기 마감 규칙(raw_accept_until)을 app 에서 가져온다(빠지면 이미지가 import 에서 죽는다).
 consolidate_contest_data.py
 
 # Ignore Step Functions Workflow JSON definitions
