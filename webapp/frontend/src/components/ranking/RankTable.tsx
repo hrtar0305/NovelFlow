@@ -25,6 +25,8 @@ interface RankTableProps<T> {
   expandedKey?: string | null;
   onToggleRow?: (row: T) => void;
   renderExpanded?: (row: T) => ReactNode;
+  /** 펼친 내용을 이 열(key)의 왼쪽 끝부터 둔다 — 행과 같은 격자를 써서 표마다 열 위치가 달라도 제목 칸과 맞는다. 없으면 전체 폭. */
+  expandFrom?: string;
   renderMobileRow: (row: T) => ReactNode;
   emptyText: string;
   rowHeight?: number;
@@ -38,7 +40,7 @@ interface RankTableProps<T> {
 const ariaSort = (on: boolean, dir?: 'ascending' | 'descending') => (on ? dir : 'none') as 'ascending' | 'descending' | 'none';
 
 export default function RankTable<T>(props: RankTableProps<T>) {
-  const { rows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768, onRowHover } = props;
+  const { rows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, expandFrom, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768, onRowHover } = props;
   const isMobile = useMediaQuery(`(max-width: ${compactBelow - 0.02}px)`);
   const listRef = useRef<HTMLDivElement>(null);
   // 창 스크롤 가상화는 목록이 문서 맨 위에서 얼마나 떨어져 있는지(scrollMargin)를 알아야 한다.
@@ -61,6 +63,7 @@ export default function RankTable<T>(props: RankTableProps<T>) {
     scrollMargin,
   });
   const template = columns.map(c => c.width).join(' ');
+  const expandCol = expandFrom ? columns.findIndex(c => c.key === expandFrom) + 1 : 0;
 
   if (isEmpty) return <p className="empty-line">{emptyText}</p>;
 
@@ -108,7 +111,11 @@ export default function RankTable<T>(props: RankTableProps<T>) {
                     onMouseEnter={onRowHover ? () => onRowHover(row) : undefined}>
                     {columns.map(c => <div key={c.key} role="cell" className={`rank-table__td is-${c.align ?? 'left'}`}>{c.render(row)}</div>)}
                   </div>
-                  {open && renderExpanded ? <div className="rank-table__expand">{renderExpanded(row)}</div> : null}
+                  {open && renderExpanded ? (
+                    <div className="rank-table__expand" style={expandCol > 0 ? { gridTemplateColumns: template } : undefined}>
+                      <div style={expandCol > 0 ? { gridColumn: `${expandCol} / -1`, minWidth: 0 } : undefined}>{renderExpanded(row)}</div>
+                    </div>
+                  ) : null}
                 </Fragment>
               )}
             </div>

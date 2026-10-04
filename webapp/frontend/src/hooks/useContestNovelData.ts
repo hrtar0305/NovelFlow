@@ -41,6 +41,8 @@ interface ContestNovelDetails {
   /** 최신 수집이 자리표시(삭제·비공개·수집 실패)였다. 수치는 직전 정상 행(values_date) 것이거나 비어 있다. */
   is_unavailable?: boolean;
   values_date?: string | null;
+  /** 상세 머리 배지 이름(백엔드 `_badge_labels`). 공모전 상세는 참가작 공통 배지를 걸러 낸다. */
+  badges?: string[];
   // 2026~ 잔류율과 그 원재료(회차 30 미만이면 비어 있다). 2025 는 없다.
   EarlyRetentionRate?: number | null;
   RecentRetentionRate?: number | null;

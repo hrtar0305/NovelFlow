@@ -52,7 +52,7 @@ function Synopsis({ text }: { text: string }) {
 /**
  * 작품 머리(2026-09-30 개편). 랭킹 표에 있는 값은 모두 여기에도 있고, 표에 없는 것(알람 · 인생픽 · 연재 요일 ·
  * 배지 · 이용 등급 · 잔류율의 근거 조회수)을 더한다. 태그는 제목 무리에, 작품 소개는 표지 아래 전체 폭에 둔다.
- * byExtra: 작가 줄 끝에 붙일 문구(공모전 이름·수상). nums: 한 줄 수치를 바꿀 때(공모전은 잔류율이 없다).
+ * byExtra: 작가 줄 끝에 붙일 문구(공모전 수상·기성/신인). nums: 한 줄 수치를 바꿀 때(공모전은 잔류율이 없다).
  */
 export default function NovelHeader({ details, current, backTo, byExtra, nums, tagHref }: {
   details: NovelHeaderDetails; current: CurrentRank; backTo: { to: string; label: string };
@@ -89,13 +89,16 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
       <header className="detail-head">
         <div className="detail-head__cover"><NovelCover url={details.ThumbnailURL} title={details.Title} imageClassName="detail-head__cover-img" /></div>
         <div className="detail-head__body">
-          <h1 className="detail-head__title">{details.Title || '(제목 없음)'}</h1>
+          {/* 노벨피아 링크는 작품(제목)의 것이라 제목 끝에 작게 붙인다(작가 줄에 있으면 작가 페이지 링크로 읽힌다). */}
+          <h1 className="detail-head__title">
+            {details.Title || '(제목 없음)'}
+            <a href={novelUrl} target="_blank" rel="noopener noreferrer" className="detail-head__ext" aria-label="노벨피아에서 보기" title="노벨피아에서 보기">
+              <BoxArrowUpRight size={15} aria-hidden="true" />
+            </a>
+          </h1>
           <p className="detail-head__by">
             {details.AuthorID ? <Link to={`/authors/${details.AuthorID}`}>{details.AuthorName}</Link> : <span>{details.AuthorName}</span>}
             {byExtra ? <span className="detail-head__extra">{byExtra}</span> : null}
-            <a href={novelUrl} target="_blank" rel="noopener noreferrer" className="detail-head__ext" aria-label="노벨피아에서 보기" title="노벨피아에서 보기">
-              <BoxArrowUpRight size={14} aria-hidden="true" />
-            </a>
           </p>
           {facts.length ? (
             <p className="detail-head__facts">

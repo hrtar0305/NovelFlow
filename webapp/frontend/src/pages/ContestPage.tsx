@@ -49,7 +49,7 @@ const toShowcase = (year: string, n: ContestNovel, stat: ReactNode, jump: number
 
 /** 기성/신인 — 작가 칸 아래 작은 글씨로 두면 눈에 띄지 않아 열로 뺐다. 판정 못 한 작가는 '–'. */
 const CareerText = ({ v }: { v?: boolean | null }) => (v == null ? <span className="career career--none">–</span>
-  : <span className={`career${v ? ' career--veteran' : ''}`}>{v ? '기성' : '신인'}</span>);
+  : <span className="career">{v ? '기성' : '신인'}</span>);
 type Career = 'all' | 'veteran' | 'rookie';
 
 const mapRows = (items: ContestNovel[]) => items.map(n => ({
@@ -297,7 +297,8 @@ export default function ContestPage() {
               sort={sort} onSort={k => setSort(s => nextContestSort(s, k as ContestSortKey))}
               expandedKey={openId}
               onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}
-              renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} status={n.serial_status}
+              expandFrom="title"
+              renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates}
                 contest={{ year, daily }} />}
               renderMobileRow={mobileRow}
               emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 공모전 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />

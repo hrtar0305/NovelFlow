@@ -91,16 +91,18 @@
 .applied-filters__part button { border: 0; background: none; padding: 0 0 0 2px; color: var(--np-text-faint); }
 .applied-filters__reset { margin-left: auto; border: 0; background: none; color: var(--np-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
 .rank-table { font-size: 0.875rem; }
-.rank-table__head { display: grid; column-gap: 12px; align-items: center; height: 40px; border-bottom: 1px solid var(--np-border);
+/* 행 좌우 안쪽 여백: 마우스를 올리거나 펼친 행의 바탕이 순위 숫자에 바로 붙지 않게(2026-10-04). 머리글도 같은 여백으로 열을 맞춘다. */
+.rank-table { --rank-table-inset: 14px; }
+.rank-table__head { display: grid; column-gap: 12px; align-items: center; height: 40px; padding: 0 var(--rank-table-inset); border-bottom: 1px solid var(--np-border);
   position: sticky; top: var(--np-header-h); z-index: 2; background: var(--np-canvas); font-size: 0.75rem; font-weight: 600; color: var(--np-text-faint); }
 .rank-table__th button { border: 0; background: none; padding: 0; font: inherit; color: inherit; white-space: nowrap; }
 .rank-table__th.is-on { color: var(--np-text-heading); }
 .rank-table__th .rank-table__sort { margin-left: 3px; font-size: 0.7rem; opacity: 0.7; cursor: pointer; } .rank-table__th.is-on .rank-table__sort { color: var(--np-accent); opacity: 1; }
-.rank-table__row { display: grid; column-gap: 12px; align-items: center; border-bottom: 1px solid var(--np-border); }
+.rank-table__row { display: grid; column-gap: 12px; align-items: center; padding: 0 var(--rank-table-inset); border-bottom: 1px solid var(--np-border); }
 .rank-table__row.is-clickable { cursor: pointer; } .rank-table__row:hover, .rank-table__row.is-open { background: var(--np-surface-alt); }
 .rank-table__th.is-right, .rank-table__td.is-right { text-align: right; } .rank-table__th.is-center, .rank-table__td.is-center { text-align: center; }
 .rank-table__td { min-width: 0; color: var(--np-text-secondary); font-variant-numeric: tabular-nums; }
-.rank-table__expand { background: var(--np-surface-alt); border-bottom: 1px solid var(--np-border); }
+.rank-table__expand { display: grid; column-gap: 12px; padding: 0 var(--rank-table-inset); background: var(--np-surface-alt); border-bottom: 1px solid var(--np-border); }
 .rank-table__mrow { border-bottom: 1px solid var(--np-border); }
 .rank-num { font-size: 1.3125rem; font-weight: 800; letter-spacing: -0.03em; color: var(--np-text-heading); }
 .rank-num.is-top { color: var(--np-accent); }
@@ -139,9 +141,8 @@
 .detail-head__by { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; margin: 0; font-size: 0.9375rem; color: var(--np-text-secondary); }
 .detail-head__by > a:first-child, .detail-head__by > span:first-child { color: var(--np-text-heading); font-weight: 700; text-decoration: none; }
 .detail-head__extra::before { content: "·"; margin-right: 0.6rem; color: var(--np-text-faint); }
-.detail-head__ext { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; color: var(--np-text-secondary); }
-/* ↗ 아이콘은 네모가 왼쪽 아래에 쏠려 있어 박스 중심을 맞춰도 글자보다 낮아 보인다 — 시각 중심을 맞춘다. */
-.detail-head__ext svg { transform: translateY(-1.5px); }
+.detail-head__ext { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: 0.3rem; vertical-align: 0.15em; border-radius: 50%; color: var(--np-text-faint); }
+.detail-head__ext svg { display: block; }
 .detail-head__ext:hover, .detail-head__ext:focus-visible { color: var(--np-text-heading); background: var(--np-surface-alt); }
 .detail-head__facts { display: flex; flex-wrap: wrap; margin: 0.45rem 0 0; font-size: 0.875rem; color: var(--np-text-secondary); }
 .detail-head__status { font-weight: 700; color: var(--np-text-primary); }
@@ -487,22 +488,21 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .mx-day__unknown { stroke: var(--np-border-strong); stroke-width: 2; stroke-linecap: round; }
 
 /* ── 일간 랭킹 행 펼침(2026-10-01): 30일 순위선+연재 줄 / 작품 소개 / 수치. 제목 열(116px)에서 시작 ── */
-.novel-expand { display: grid; grid-template-columns: 300px minmax(0, 1fr) 320px; gap: 2.25rem; align-items: start; padding: 0.9rem 1.5rem 1.2rem 116px; font-size: 0.875rem; color: var(--np-text-secondary); }
+/* 행 펼침: 순위선 | 작품 소개 | 작품 정보 보기. 왼쪽 끝은 표가 제목 칸에 맞춘다(RankTable expandFrom). */
+.novel-expand { display: grid; grid-template-columns: 300px minmax(0, 1fr) auto; gap: 2.25rem; align-items: start; padding: 1.1rem 0.25rem 1.3rem 0; font-size: 0.875rem; color: var(--np-text-secondary); }
 .novel-expand--loading { display: block; min-height: 120px; color: var(--np-text-faint); }
 .novel-expand__h { margin: 0 0 4px; font-size: 0.75rem; font-weight: 700; color: var(--np-text-heading); }
 .novel-expand__h small { margin-left: 0.35rem; font-size: inherit; font-weight: 500; color: var(--np-text-faint); }
 .novel-expand__cap { display: flex; justify-content: space-between; margin: 2px 0 10px; font-size: 0.6875rem; color: var(--np-text-faint); }
 .novel-expand__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-surface-alt); stroke-width: 3px; stroke-linejoin: round; }
 .novel-expand__none { margin: 0; height: 52px; display: flex; align-items: center; color: var(--np-text-faint); }
-.novel-expand__synopsis { margin: 0; white-space: pre-line; font-size: 0.875rem; line-height: 1.7; color: var(--np-text-primary); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.novel-expand__synopsis { margin: 0; white-space: pre-line; font-size: 0.875rem; line-height: 1.7; color: var(--np-text-primary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .novel-expand__synopsis.is-empty { color: var(--np-text-faint); }
-.novel-expand__facts { margin: 0; line-height: 1.9; }
-.novel-expand__facts b { color: var(--np-text-heading); font-weight: 700; }
-.novel-expand__go { display: inline-block; margin-top: 0.5rem; font-weight: 700; color: var(--np-text-heading); text-decoration: none; border-bottom: 1.5px solid var(--np-text-heading); }
-@media (max-width: 1199.98px) { .novel-expand { grid-template-columns: 300px minmax(0, 1fr); } .novel-expand > :last-child { grid-column: 2; } }
+.novel-expand__go { display: inline-block; white-space: nowrap; font-weight: 700; color: var(--np-text-heading); text-decoration: none; border-bottom: 1.5px solid var(--np-text-heading); }
+@media (max-width: 1199.98px) { .novel-expand { grid-template-columns: 300px minmax(0, 1fr); row-gap: 0.6rem; } .novel-expand__side { grid-column: 2; } }
 
 /* ── 2026 공모전: 일간 순위 없음 · 기성 표시 ── */
 .rank-num--none { color: var(--np-text-faint); font-weight: 600; }
-.career { font-size: 0.8125rem; color: var(--np-text-secondary); }
-.career--veteran { font-weight: 700; color: var(--np-text-heading); }
+/* 기성·신인은 같은 무게의 정보다 — 한쪽만 굵게 하면 다른 쪽이 약한 값처럼 읽힌다(2026-10-04). */
+.career { font-size: 0.8125rem; font-weight: 600; color: var(--np-text-primary); }
 .career--none { color: var(--np-text-faint); }

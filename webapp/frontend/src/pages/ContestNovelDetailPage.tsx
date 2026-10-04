@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { format, parseISO, subDays } from 'date-fns';
 import { useContestNovelData } from '../hooks/useContestNovelData';
@@ -17,6 +17,9 @@ import { buildMetricPoints } from '../utils/metricSeries';
  * 2026~ 은 목록 표처럼 초반·최신 잔류를 근거 조회수와 함께 붙인다.
  * 전일 대비는 실제 직전 수집일 기준이다(DECISIONS 2026-07-01).
  */
+/** 참가작이 모두 다는 배지 — 공모전 상세에서는 걸러 낸다(배지 이름은 백엔드 `_badge_labels`). */
+const CONTEST_COMMON_BADGES = new Set(['우주최강', '자유연재']);
+
 const ok = (v?: number | null): v is number => typeof v === 'number' && v >= 0;
 /** 잔류율 옆 근거 '1화 6,609 → 30화 2,223' — 일간 상세 머리(NovelHeader)와 같은 표기. */
 const basis = (aNum?: number | null, aView?: number | null, bNum?: number | null, bView?: number | null) => (
@@ -86,18 +89,25 @@ const ContestNovelDetailBody = () => {
 
   const ratio = details.View && details.View > 0 && details.Like != null ? details.Like / details.View : null;
   const award = details.award;
+  const veteran = (details as { is_veteran?: boolean | null }).is_veteran;
+  const byExtraParts: ReactNode[] = [
+    award ? <b className={award === '본선' ? undefined : 'award-text'}>{award}</b> : null,
+    veteran === true ? '기성 작가' : veteran === false ? '신인 작가' : null,
+    // 최신 수집이 자리표시(삭제·비공개 등)면 알린다 — 수치는 직전 정상 수집일 것이거나 비어 있다.
+    details.is_unavailable ? `최근 수집에서 열리지 않음${details.values_date ? `(수치는 ${formatDateKo(details.values_date)} 기준)` : ''}` : null,
+  ].filter(Boolean);
+  // 참가작이면 모두 다는 배지(공모전·자유연재)는 이 화면에서 정보가 아니다.
+  const headDetails = { ...details, badges: (details.badges ?? []).filter(b => !CONTEST_COMMON_BADGES.has(b)) };
 
   return (
     <div>
       <NovelHeader
-        details={details}
+        details={headDetails}
         current={current}
         backTo={{ to: `/contests/${year}`, label: `우주최강 공모전 ${year}` }}
         tagHref={t => `/contests/${year}?tag=${encodeURIComponent(t)}`}
-        byExtra={<span className="detail-head__contest">우주최강 공모전 {year}{award ? <> <b className={award === '본선' ? undefined : 'award-text'}>{award}</b></> : null}
-          {(details as { is_veteran?: boolean | null }).is_veteran === true ? ' · 기성 작가' : (details as { is_veteran?: boolean | null }).is_veteran === false ? ' · 신인 작가' : null}
-          {/* 최신 수집이 자리표시(삭제·비공개 등)면 알린다 — 수치는 직전 정상 수집일 것이거나 비어 있다. */}
-          {details.is_unavailable ? ` · 최근 수집에서 열리지 않음${details.values_date ? `(수치는 ${formatDateKo(details.values_date)} 기준)` : ''}` : null}</span>}
+        // 공모전 이름은 위 '‹ 우주최강 공모전 {year}' 링크에 이미 있다 — 작가 줄에는 수상·기성/신인·열리지 않음만.
+        byExtra={byExtraParts.length ? <span className="detail-head__contest">{byExtraParts.map((p, i) => <span key={i}>{i ? ' · ' : ''}{p}</span>)}</span> : undefined}
         nums={[
           { label: '조회', value: formatMan(details.View) },
           { label: '추천', value: formatMan(details.Like) },

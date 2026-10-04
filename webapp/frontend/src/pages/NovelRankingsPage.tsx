@@ -189,7 +189,8 @@ export default function NovelRankingsPage() {
               sort={sort} onSort={k => setSort(s => nextSort(s, k as SortKey))}
               expandedKey={openId}
               onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}
-              renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} synopsis={n.Synopsis} status={n.serial_status} />}
+              expandFrom="title"
+              renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} synopsis={n.Synopsis} />}
               renderMobileRow={mobileRow}
               emptyText={result.error ?? (statusBlocked ? SERIAL_STATUS_NOTICE : rows.length === 0 ? '이 날짜의 랭킹 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
           )}
