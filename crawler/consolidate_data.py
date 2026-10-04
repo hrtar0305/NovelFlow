@@ -155,7 +155,10 @@ def _validate_data(execution_id, collected_data, target_count):
 #   - placeholder: 정상일 0.0~0.8% (2026-08-22~24 실측) → 5%에서 실패
 #   - View 감소: 정상일 0건 (6개 날짜쌍 실측) → 100건에서 실패
 #     누적 조회수는 단조 증가해야 하므로 대량 감소는 다른 날짜/다른 사이트를 긁었다는 신호.
-#   - 성인작 비율: 정상 26.4% (2026-08-24 실측, 위 시나리오 ②) → 10% 미만이면 실패.
+#   - 성인작 0건: 로그인·성인 모드가 풀리면 성인작이 목록에서 **통째로** 빠진다(위 시나리오 ②) — 비율이 낮아지는 게
+#     아니라 0이 된다(정상일 22.6~27.2%, 2026-08-25~10-02 실측). 그래서 비율 하한이 아니라 '0건'만 본다(사용자 결정
+#     2026-10-04). **적재는 막지 않고 Discord 로 멘션 경고**만 보낸다 — 막으면 그날 메시지가 다음 날 purge 로 사라져 손쓸
+#     방법이 없고, 경고를 받으면 사람이 확인해 조치(재수집 여부 결정)한다.
 #     시나리오 ②는 건수도 조회수도 멀쩡해서 앞의 두 검사로는 드러나지 않고 **내용**으로만 드러난다.
 #     IsAdult 는 서버가 novel_age 로 그리는 배지라 로그인과 무관하게 정확하다 — 로그인이 빠지면
 #     성인작이 목록에서 빠질 뿐 일반작이 성인으로 오판되지는 않는다.
@@ -164,8 +167,20 @@ def _validate_data(execution_id, collected_data, target_count):
 PLACEHOLDER_TITLE_PREFIX = "N/A ("
 MAX_PLACEHOLDER_RATIO = 0.05
 MAX_VIEW_DECREASE_COUNT = 100
-MIN_ADULT_RATIO = 0.10
 MIN_ADULT_SAMPLE = 100
+NOTIFY_FUNCTION = os.environ.get('NOTIFY_FUNCTION', 'novelflow-discord-notify')
+
+
+def _notify_adult_zero(execution_id, date, real_count):
+    """성인작 0건 경고를 Discord 알림 Lambda 로 보낸다(멘션). 알림 실패가 적재를 막지 않는다."""
+    try:
+        boto3.client('lambda').invoke(
+            FunctionName=NOTIFY_FUNCTION, InvocationType='Event',
+            Payload=json.dumps({'content': f"데일리 {date} 수집: 성인작이 0편입니다(실데이터 {real_count}편). "
+                                           f"로그인·성인 모드가 풀렸을 수 있습니다 — 그날 랭킹을 확인해 주세요. (실행 {execution_id})",
+                                'mention': True}).encode())
+    except Exception as e:  # noqa: BLE001
+        _log(logging.ERROR, execution_id, f"Failed to send adult-zero warning: {e}")
 
 
 def _is_placeholder(item):
@@ -245,11 +260,10 @@ def _quality_gate(s3_client, execution_id, data, date):
     real_items = [item for item in data if not _is_placeholder(item)]
     adults = sum(1 for item in real_items if item.get("IsAdult") is True)
     adult_ratio = adults / len(real_items) if real_items else 0.0
-    if len(real_items) >= MIN_ADULT_SAMPLE and adult_ratio < MIN_ADULT_RATIO:
-        raise ValueError(
-            f"Quality gate failed: adult ratio {adult_ratio:.1%} ({adults}/{len(real_items)}) "
-            f"is below {MIN_ADULT_RATIO:.0%}. Likely login or adult mode was lost."
-        )
+    if len(real_items) >= MIN_ADULT_SAMPLE and adults == 0:
+        _log(logging.WARNING, execution_id, "No adult novels in the ranking — login or adult mode may have been lost.",
+             real=len(real_items))
+        _notify_adult_zero(execution_id, date, len(real_items))
 
     _log(logging.INFO, execution_id,
          f"Quality gate passed: placeholders {placeholders}/{total} ({ratio:.1%}), "
