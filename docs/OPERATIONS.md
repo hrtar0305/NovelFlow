@@ -198,8 +198,9 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 - 증분: 데일리 get-novel-data(`crawler-v1.7.0`~)가 순위권 작품을, 2026 파서(`contest2026-v1.1.0`~)가 전 작품을 수집 때마다 마지막 확인일까지 받아 병합한다.
   데일리가 잔류율 밖으로 더 받은 목록 쪽은 SQS 에 싣지 않고 원본 버킷 `episode-history/{date}/{id}.json.gz` 에 둔다. 공모전은 원본 묶음에 들어간다.
   기록 실패는 수집을 막지 않는다 — 로그 `Updated episode history` / `Failed to update episode history`(데일리), 묶음 로그의 `history`(공모전).
-- 화면: 백엔드 `GET /api/uploads/{id}?start&end[&asof&source=daily|contest2026]`. `asof` 를 주면 그날 수집 마감(데일리 D 22:00, 공모전 D+1 01:00 KST)
-  뒤에 처음 본 회차는 빼서 행 펼침 값이 고정된다.
+- 화면: 백엔드 `GET /api/uploads/{id}?start&end[&asof&source=daily|contest]`. `asof` 를 주면 그날 수집이 받을 수 있는 끝(데일리 D 23:59:59,
+  공모전 D+1 03:00 KST) 뒤에 처음 본 회차는 빼서 행 펼침 값이 고정된다. 칸: 올린 날 · 쉰 날 · 미정(본 시각이 든 날에 아직 안 보임) ·
+  빈칸(첫 회차 앞) · 모름 — DECISIONS 2026-10-05 「연재 줄의 칸과 요약」(웹 브랜치).
 - 감시: `python scripts/report_episode_events.py [--days 7]` — 사라진 회차·늦은 등장·다 받지 못한 기록 수(읽기만).
 
 ## 스케줄 (EventBridge, KST)
