@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useMediaQuery } from '../../hooks/useIsMobile';
 
@@ -76,7 +76,25 @@ export default function RankTable<T>(props: RankTableProps<T>) {
 
   if (isEmpty) return <p className="empty-line">{emptyText}</p>;
 
+  // 누를 수 있는 행은 키보드로도 연다(Tab → Enter/Space). 안의 링크에서 누른 키는 링크가 받는다.
+  const rowKeys = (row: T) => (onToggleRow ? {
+    tabIndex: 0,
+    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      onToggleRow(row);
+    },
+  } : {});
+  // 접을 때 버튼이 화면에서 같은 자리에 남게 한다 — 표가 수천 px 줄어 버튼과 읽던 자리가 화면 밖으로 날아갔다.
+  const toggleAll = (e: MouseEvent<HTMLButtonElement>) => {
+    const btn = e.currentTarget;
+    const before = btn.getBoundingClientRect().top;
+    setShowAll(v => !v);
+    requestAnimationFrame(() => window.scrollBy(0, btn.getBoundingClientRect().top - before));
+  };
+
   return (
+    <>
     <div className="rank-table" role="table" aria-label={ariaLabel} aria-rowcount={allRows.length}>
       {!isMobile ? (
         <div className="rank-table__head" role="row" style={{ gridTemplateColumns: template }}>
@@ -114,7 +132,7 @@ export default function RankTable<T>(props: RankTableProps<T>) {
                 expandOnMobile && onToggleRow ? (
                   <Fragment>
                     <div className={`rank-table__mrow is-clickable${open ? ' is-open' : ''}`} role="row" onClick={() => onToggleRow(row)}
-                      aria-expanded={renderExpanded ? open : undefined}>{renderMobileRow(row)}</div>
+                      aria-expanded={renderExpanded ? open : undefined} {...rowKeys(row)}>{renderMobileRow(row)}</div>
                     {open && renderExpanded ? <div className="rank-table__expand rank-table__expand--m">{renderExpanded(row)}</div> : null}
                   </Fragment>
                 ) : <div className="rank-table__mrow" role="row">{renderMobileRow(row)}</div>
@@ -122,7 +140,7 @@ export default function RankTable<T>(props: RankTableProps<T>) {
                 <Fragment>
                   <div role="row" className={`rank-table__row${open ? ' is-open' : ''}${onToggleRow ? ' is-clickable' : ''}`}
                     style={{ gridTemplateColumns: template, minHeight: rowHeight }}
-                    onClick={() => onToggleRow?.(row)} aria-expanded={renderExpanded ? open : undefined}
+                    onClick={() => onToggleRow?.(row)} aria-expanded={renderExpanded ? open : undefined} {...rowKeys(row)}
                     onMouseEnter={onRowHover ? () => onRowHover(row) : undefined}>
                     {columns.map(c => <div key={c.key} role="cell" className={`rank-table__td is-${c.align ?? 'left'}`}>{c.render(row)}</div>)}
                   </div>
@@ -137,11 +155,12 @@ export default function RankTable<T>(props: RankTableProps<T>) {
           );
         })}
       </div>
-      {collapseAfter != null && allRows.length > collapseAfter ? (
-        <button type="button" className="link-button rank-table__more" onClick={() => setShowAll(v => !v)}>
-          {showAll ? `상위 ${collapseAfter}개만 보기` : `전체 ${allRows.length.toLocaleString('ko-KR')}개 보기`}
-        </button>
-      ) : null}
     </div>
+    {collapseAfter != null && allRows.length > collapseAfter ? (
+      <button type="button" className="link-button rank-table__more" onClick={toggleAll}>
+        {showAll ? `상위 ${collapseAfter}개만 보기` : `전체 ${allRows.length.toLocaleString('ko-KR')}개 보기`}
+      </button>
+    ) : null}
+    </>
   );
 }

@@ -95,7 +95,7 @@ function DailyContestTags() {
         ariaLabel="공모전 태그 순위"
         emptyText="이 날짜는 일간 순위가 없어 태그 순위도 없습니다. 일간 순위는 직전 수집일과 비교할 수 있는 다음 날부터 생깁니다."
         noMapText="상위권 집중도를 계산할 만큼 태그가 모이지 않아 지도를 그리지 않습니다."
-        liftRule="참가작이 많아 상위 100위 안에 1편뿐인 태그도 계산하지 않습니다(우연과 구별되지 않습니다)."
+        liftRule="참가작이 많아, 상위 100위 안 1편만으로는 집중도 1.0 이상(몰림)으로 보지 않습니다(우연과 구별되지 않습니다)."
         // 공모전 태그 시계열 API 가 아직 없어 순위선 없이 그 태그의 참가작 목록으로 가는 길만 둔다(DECISIONS 2026-10-03 의 미룸).
         renderExpanded={t => (
           <div className="row-expand row-expand--tag">

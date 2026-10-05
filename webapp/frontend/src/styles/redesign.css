@@ -101,7 +101,7 @@
 .rank-table__th.is-on { color: var(--np-text-heading); }
 .rank-table__th .rank-table__sort { margin-left: 3px; font-size: 0.7rem; opacity: 0.7; cursor: pointer; } .rank-table__th.is-on .rank-table__sort { color: var(--np-accent); opacity: 1; }
 .rank-table__row { display: grid; column-gap: 12px; align-items: center; padding: 0 var(--rank-table-inset); border-bottom: 1px solid var(--np-border); }
-.rank-table__row.is-clickable { cursor: pointer; } .rank-table__row:hover, .rank-table__row.is-open { background: var(--np-surface-alt); }
+.rank-table__row.is-clickable { cursor: pointer; } .rank-table__row:focus-visible, .rank-table__mrow:focus-visible { outline-offset: -2px; } .rank-table__row:hover, .rank-table__row.is-open { background: var(--np-surface-alt); }
 .rank-table__th.is-right, .rank-table__td.is-right { text-align: right; } .rank-table__th.is-center, .rank-table__td.is-center { text-align: center; }
 .rank-table__td { min-width: 0; color: var(--np-text-secondary); font-variant-numeric: tabular-nums; }
 .rank-table__expand { display: grid; column-gap: 12px; padding: 0 var(--rank-table-inset); background: var(--np-surface-alt); border-bottom: 1px solid var(--np-border); }
@@ -451,6 +451,9 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
   .an-table td { padding: 0; border-top: 0; font-size: 0.875rem; }
   .an-table td:has(.an-work) { order: -1; flex: 1 0 100%; min-width: 0; font-size: 0.9375rem; }
   .an-table td[data-label]:not(:has(.an-work))::before { content: attr(data-label) ' '; color: var(--np-text-faint); font-size: 0.8125rem; }
+  /* 제목(작품) 칸이 없는 표(순위대별 · 견주기)는 첫 칸이 행 이름이다 — 한 줄을 다 쓰고 이름표를 달지 않는다. */
+  .an-table tr:not(:has(.an-work)) td:first-child { flex: 1 0 100%; font-size: 0.9375rem; color: var(--np-text-heading); }
+  .an-table tr:not(:has(.an-work)) td:first-child::before { content: none; }
 }
 .an-search { position: relative; max-width: 420px; margin-bottom: 0.75rem; }
 .an-search .toolbar-search { width: 100%; }

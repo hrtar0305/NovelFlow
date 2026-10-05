@@ -1176,15 +1176,19 @@ def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5,
     상위 100개와 나머지(데일리는 늘 400개)를 상호 배타적으로 비교하여 순위 관통력을 측정합니다.
     min_count 미만 태그는 노이즈로 간주하여 None 반환. 공모전 일간 순위는 순위가 매겨진 작품 수가 날마다 달라
     `rest_total = RankedTotal − 100` 을 넘긴다(100 이하면 나머지가 없어 None).
-    `min_top`: 상위 100 안 작품이 1편 이상 이 수 미만이면 None — 공모전은 모수(약 2,700편)가 커서 상위 100 안 1편만으로
-    5편짜리 태그가 6.5배가 된다. 우연과 구별되지 않는다(2026-10-05 리뷰: '숨은 강자' 54개 중 31개가 1편). 0편은 그대로 센다.
+    `min_top`: 상위 100 안 작품이 이 수 미만(1편 이상)인데 집중도가 1.0 이상이면 None — 공모전은 모수(약 2,700편)가 커서
+    상위 100 안 1편만으로 5편짜리 태그가 6.5배가 된다. '몰렸다'는 주장은 우연과 구별되지 않는다(2026-10-05 리뷰: '숨은 강자'
+    54개 중 31개가 1편). 1.0 미만(큰 태그가 1편뿐 — 예 SF 175편 중 1편, 기대 6.5편)은 '덜 몰렸다'는 분명한 신호라 그대로 둔다.
     """
-    if count_total < min_count or rest_total <= 0 or 0 < count_top100 < min_top:
+    if count_total < min_count or rest_total <= 0:
         return None
     count_bottom = count_total - count_top100
     top100_rate = count_top100 / 100.0
     rest_rate = max(count_bottom, 1) / float(rest_total)  # 최소 1로 스무딩
-    return top100_rate / rest_rate
+    lift = top100_rate / rest_rate
+    if 0 < count_top100 < min_top and lift >= 1.0:
+        return None
+    return lift
 
 
 @app.get("/api/ranks/tags/{date}", response_model=List[TagRankData])

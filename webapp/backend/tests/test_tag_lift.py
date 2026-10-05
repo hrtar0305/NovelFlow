@@ -12,6 +12,10 @@ class ContestLift(unittest.TestCase):
         self.assertAlmostEqual(M._compute_local_lift(2, 5, rest_total=2608, min_top=2), (2 / 100) / (3 / 2608))
         self.assertEqual(M._compute_local_lift(0, 30, rest_total=2608, min_top=2), 0.0)
 
+    def test_single_top_work_still_counts_when_it_says_not_concentrated(self):
+        # 175편 중 상위 100 안 1편(기대 6.5편)은 '덜 몰렸다'는 분명한 신호다 — 1편만으로 막는 건 '몰렸다'(1.0 이상)는 주장뿐.
+        self.assertAlmostEqual(M._compute_local_lift(1, 175, rest_total=2608, min_top=2), (1 / 100) / (174 / 2608))
+
     def test_daily_rule_unchanged(self):
         self.assertAlmostEqual(M._compute_local_lift(1, 5), (1 / 100) / (4 / 400))
 
