@@ -114,7 +114,7 @@ export function withDebutBaseline<T extends { Date: string; View?: number | null
   d.setUTCDate(d.getUTCDate() - 1);
   const prev = d.toISOString().slice(0, 10);
   const base = { ...first, Date: prev, View: 0, Like: 0, Fav: 0, Eps: 0, Alr: 0, Ranking: null, Baseline: true } as T;
-  return [...sorted.filter(r => r.Date !== prev), base];
+  return [...sorted, base];   // 같은 날짜의 실제 행(수집했지만 기록 없음)은 그대로 둔다 — buildMetricPoints 가 기준 행만 뺀다
 }
 
 export function contestTrendRow(d: ContestTrendRow, daily: boolean) {

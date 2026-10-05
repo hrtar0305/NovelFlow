@@ -82,4 +82,11 @@ describe('withDebutBaseline(공모전 신작 첫날의 증가량)', () => {
     expect(withDebutBaseline([row('2026-10-01', 1, 500), row('2026-10-02', 2, 900, { IsNew: true })], '2026').filter(r => 'Baseline' in r).map(r => r.Date)).toEqual(['2026-09-30']);
     expect(withDebutBaseline([row('2025-09-01', 5, 300)], '2025').some(r => 'Baseline' in r)).toBe(false);
   });
+  it('기준 행이 실제 수집일(기록 없음)과 겹쳐도 그 날짜 칸은 남는다', () => {
+    const empty = contestTrendRow({ Date: '2026-10-02', Eps: null, View: null, Like: null, Fav: null }, true);
+    const pts = buildMetricPoints(withDebutBaseline([row('2026-10-01', null, null), empty, row('2026-10-03', 2, 300, { IsNew: true }), row('2026-10-04', 3, 700)], '2026'), 'collection');
+    expect(pts.map(p => p.date)).toEqual(['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']);
+    expect(pts[1].rec).toBe(false);
+    expect(pts[2]).toMatchObject({ d: { eps: 2, view: 300 } });
+  });
 });

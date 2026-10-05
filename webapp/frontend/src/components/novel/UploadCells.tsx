@@ -18,7 +18,7 @@ export default function UploadCells({ dates, days, X, cw, h, y = 0, hover = null
         const n = days[date];
         if (n === 'before') return null;
         if (n === 'pending') {
-          return <rect key={date} x={x - cw / 2} y={y} width={cw} height={h} rx={Math.min(3, h / 4)} className={`mx-day is-pending${hover === i ? ' is-on' : ''}`} />;
+          return <rect key={date} x={x - cw / 2} y={y} width={cw} height={h} rx={Math.min(3, h / 4)} className={`mx-day is-tbd${hover === i ? ' is-on' : ''}`} />;
         }
         if (n == null) {
           return <line key={date} x1={x - Math.min(cw / 2, 5)} x2={x + Math.min(cw / 2, 5)} y1={y + h / 2} y2={y + h / 2} className="mx-day__unknown" />;

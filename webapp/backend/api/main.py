@@ -33,7 +33,7 @@ from botocore.config import Config as BotoConfig
 from boto3.dynamodb.types import TypeDeserializer
 from botocore.exceptions import ClientError
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 import analysis_report as AR
 import episode_history
@@ -1134,10 +1134,13 @@ def get_novel_available_dates(novel_id: str, response: Response):
     except Exception:
         raise _server_error("Unhandled error while handling request")
 
-# 행 펼침의 '그날 값' 마감 — 하루의 값은 제시간 값이다(데일리 D 22:00, 공모전 D+1 01:00 KST 의 늦은 재실행 거절과 같은 선).
+KST = timezone(timedelta(hours=9))
+
+# 행 펼침의 '그날 값' 마감 = 그날 수집이 받을 수 있는 끝. 늦은 재실행 거절선(데일리 D 22:00, 공모전 D+1 01:00)은 **시도를 시작할 수
+# 있는** 끝이라, 그 뒤에도 받는 중일 수 있다(재실행이 30~45분 걸린다). 그 다음 확인(공모전 00:00 / 데일리 21:00) 전까지로 둔다.
 _UPLOAD_CUTOFF = {
-    'daily': lambda d: f'{d}T22:00:00+09:00',
-    'contest': lambda d: f'{(datetime.fromisoformat(d) + timedelta(days=1)).date().isoformat()}T01:00:00+09:00',
+    'daily': lambda d: f'{d}T23:59:59+09:00',
+    'contest': lambda d: f'{(datetime.fromisoformat(d) + timedelta(days=1)).date().isoformat()}T03:00:00+09:00',
 }
 
 @app.get("/api/uploads/{novel_id}")
@@ -1155,11 +1158,22 @@ def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: O
         {'days': {}, 'known_from': None, 'known_until': None}
     # 첫 회차 날짜 — 그 앞은 '쉰 날'이 아니라 아직 없던 작품이다(다 받은 기록만 안다).
     eps = (item or {}).get('Episodes') or {}
-    first = min((v[0] for v in eps.values()), default=None) if item and item.get('Complete') else None
-    # 본 시각(마감 또는 마지막 확인 중 이른 쪽)이 든 날 — 그날은 다 지나지 않아, 아무것도 안 보였으면 '미정'이다(day_counts 가 null 로 둔다).
-    seen_at = min(t for t in (cutoff, (item or {}).get('CheckedAt')) if t) if (cutoff or (item or {}).get('CheckedAt')) else None
+    first = None
+    if item and item.get('Complete'):
+        # 다 받았는데 회차가 없으면(첫 회차 전 — 공모전 미시작작 등) 기간 전체가 첫 회차 앞이다.
+        first = min((v[0] for v in eps.values()), default=(e + timedelta(days=1)).strftime('%Y-%m-%d'))
+    # '미정' = 본 시각이 든 날에 아직 안 보임(day_counts 가 null 로 둔다). 행 펼침은 그 행의 날짜(그날 값),
+    # 작품 상세는 마지막 확인이 24시간 안일 때만 — 그보다 오래면 다음 확인이 없던 것(순위 밖)이라 '모름'이다.
+    checked = (item or {}).get('CheckedAt')
+    open_day = None
+    if cutoff:
+        open_day = min(cutoff, checked)[:10] if checked else None
+    elif checked and datetime.now(KST) - datetime.fromisoformat(checked) < timedelta(hours=24):
+        open_day = checked[:10]
+    if open_day and open_day < episode_history.BACKFILL_DATE:
+        open_day = None
     response.headers["Cache-Control"] = "public, max-age=600, s-maxage=600"
-    return {**out, 'first_date': first, 'open_day': seen_at[:10] if seen_at else None, 'tracked': bool(item)}
+    return {**out, 'first_date': first, 'open_day': open_day, 'tracked': bool(item)}
 
 def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5, rest_total: int = 400) -> Optional[float]:
     """

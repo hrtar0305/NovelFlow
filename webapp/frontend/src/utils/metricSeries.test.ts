@@ -111,3 +111,14 @@ describe('수집 실패 자리표시', () => {
     expect(summarizeMetrics(p)!).toMatchObject({ days: 3, d: { view: 600 } });
   });
 });
+
+describe('변동: 공모전 순위가 처음 생긴 날', () => {
+  it('직전 수집에 기록은 있지만 순위가 없으면(2026 첫날) 견줄 수 없음 — New 가 아니다', () => {
+    const p = buildMetricPoints([rec('2026-10-01', null, 1000), rec('2026-10-02', 174, 1500)], 'collection');
+    expect(p[1].change).toBeNull();
+  });
+  it('직전 수집에 기록이 없으면 New', () => {
+    const p = buildMetricPoints([{ Date: '2026-10-01', Ranking: null, View: null }, rec('2026-10-02', 174, 1500)], 'collection');
+    expect(p[1].change).toBe('New');
+  });
+});

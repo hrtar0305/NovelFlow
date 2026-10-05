@@ -58,9 +58,10 @@ const sub = (a: number | null, b: number | null) => (a != null && b != null ? a 
  * 연재 여부·증가량이 29일치만 나왔다.
  */
 export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowStart?: string): MetricPoint[] {
-  const sorted = [...rows].sort((a, b) => a.Date.localeCompare(b.Date));
+  // 기준 행(Baseline)은 같은 날짜의 실제 행보다 앞에 둔다 — 그날이 실제 수집일(기록 없음)이어도 그 칸은 남고, 기준 행만 뺀다.
+  const sorted = [...rows].sort((a, b) => a.Date.localeCompare(b.Date) || Number(!!b.Baseline) - Number(!!a.Baseline));
   const out: MetricPoint[] = [];
-  const baseDates = new Set(sorted.filter(r => r.Baseline).map(r => r.Date));
+  const base = new Set<MetricPoint>();
   let prevRec: MetricPoint | null = null;  // 증가량의 기준 = 수치가 있는 직전 기록
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
@@ -82,12 +83,14 @@ export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowSta
     if (rec && p.rank != null && i > 0) {
       const before = out[i - 1];
       const adjacent = compare === 'collection' || dayNo(p.date) - dayNo(before.date) === 1;
-      if (adjacent) p.change = before.rec && before.rank != null ? before.rank - p.rank : 'New';
+      // 직전에 기록은 있는데 순위가 없으면(2026 공모전 첫 수집일 — 일간 순위 전) 견줄 수 없다. 기록이 없었으면(기준 행 포함) 새로 든 것.
+      if (adjacent) p.change = !before.rec || base.has(before) ? 'New' : before.rank != null ? before.rank - p.rank : null;
     }
+    if (r.Baseline) base.add(p);
     out.push(p);
     if (hasVal) prevRec = p;
   }
-  return out.filter(p => !baseDates.has(p.date) && (!windowStart || p.date >= windowStart));
+  return out.filter(p => !base.has(p) && (!windowStart || p.date >= windowStart));
 }
 
 export interface MetricSummary {
