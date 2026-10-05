@@ -95,10 +95,15 @@ def merge(history, seen, fetched_at_iso, covered_from, complete, scheduled):
     return h
 
 
+# 백필한 날. 처음 본 시각이 없는(None) 회차는 이날 백필에서 왔고, 그 전 날짜는 하루 전체를 다 봤다.
+BACKFILL_DATE = '2026-10-05'
+
+
 def day_counts(history, start, end, cutoff_iso=None):
     """[start, end] 날짜별 올린 화 수. `cutoff_iso` 를 주면 처음 본 시각이 그 뒤인 회차는 뺀다(행 펼침 고정값 — 백필(None)은 날짜만 본다).
     값 None = 모름: 마지막 확인일 뒤, 또는 다 받지 못한 기록(`Complete=false`)의 가장 오래된 날짜 앞, 또는 **본 시각(마감 또는 마지막 확인)이
-    든 날에 아직 아무것도 안 보였을 때** — 그날은 다 지나지 않았다(데일리는 21시쯤 본다: 23시에 올리는 작가의 그날이 '쉰 날'이 되면 안 된다)."""
+    든 날에 아직 아무것도 안 보였을 때** — 그날은 다 지나지 않았다(데일리는 21시쯤 본다: 23시에 올리는 작가의 그날이 '쉰 날'이 되면 안 된다).
+    백필 전 날짜(`BACKFILL_DATE` 앞)는 하루 전체를 봤으므로 이 규칙을 쓰지 않는다."""
     eps = (history or {}).get('Episodes') or {}
     checked = (history or {}).get('CheckedAt')
     known_until = checked[:10] if checked else None
@@ -114,7 +119,7 @@ def day_counts(history, start, end, cutoff_iso=None):
     while cur <= last:
         k = cur.isoformat()
         unknown = (known_until is None or k > known_until) or (known_from is not None and k < known_from) \
-            or (k == open_day and not counts.get(k))
+            or (k == open_day and k >= BACKFILL_DATE and not counts.get(k))
         out[k] = None if unknown else counts.get(k, 0)
         cur += timedelta(days=1)
     return {'days': out, 'known_from': known_from, 'known_until': known_until}
@@ -137,6 +142,10 @@ def collect(fetch, history, prefetched=None, max_pages=120, fetch_down=None, out
     반환: seen(회차들), scheduled, covered_from(최신순으로 받은 가장 오래된 날짜, 끝까지면 FULL), complete, pages_fetched(새로 받은 쪽 수),
     fetched_at(첫 쪽을 받은 시각)."""
     prefetched = prefetched or {}
+    if history and not history.get('Episodes'):
+        # 목록이 비어 있던 기록(삭제·비공개였거나 첫 회차 전)은 처음 보듯 끝까지 받는다 — 마지막 확인일에서 멈추면 다시 열린 작품을
+        # 첫 쪽만 받고 '다 받음'이 되어 그 앞 날짜가 전부 쉰 날이 된다.
+        history = None
     checked = (history or {}).get('CheckedAt')
     checked_date = checked[:10] if checked else None
     seen, ids, scheduled, oldest, fetched, first_at = [], set(), [], None, 0, None
