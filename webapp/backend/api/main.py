@@ -1153,8 +1153,11 @@ def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: O
         raise _server_error("Unhandled error while handling request")
     out = episode_history.day_counts(item, s.strftime('%Y-%m-%d'), e.strftime('%Y-%m-%d'), cutoff) if item else \
         {'days': {}, 'known_from': None, 'known_until': None}
+    # 첫 회차 날짜 — 그 앞은 '쉰 날'이 아니라 아직 없던 작품이다(다 받은 기록만 안다).
+    eps = (item or {}).get('Episodes') or {}
+    first = min((v[0] for v in eps.values()), default=None) if item and item.get('Complete') else None
     response.headers["Cache-Control"] = "public, max-age=600, s-maxage=600"
-    return {**out, 'tracked': bool(item)}
+    return {**out, 'first_date': first, 'tracked': bool(item)}
 
 def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5, rest_total: int = 400) -> Optional[float]:
     """
