@@ -9,6 +9,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 import raw_store
+import episode_history as eh
 import extract
 from app import raw_accept_until   # 같은 이미지에 든 날짜 함수(app.py) — 받기 마감 규칙을 한 곳에 둔다
 
@@ -32,6 +33,8 @@ class Config:
     # `failed`(TimeBudget)로 돌려주고 Reconcile 이 다음 라운드에 다시 받는다. 예산 뒤에도 진행 중인 한 편(최악 약 95초)과
     # 원본 업로드가 ParseBatch 제한(280초) 안에 들어가도록 잡는다.
     DMAP_TIME_BUDGET_SECONDS = float(os.environ.get('DMAP_TIME_BUDGET_SECONDS', '170'))
+    # 연재 기록(설계 docs/superpowers/specs/2026-10-05-episode-upload-history-design.md)
+    EPISODE_HISTORY_TABLE = os.environ.get('EPISODE_HISTORY_TABLE', 'NovelFlowEpisodeHistory')
     
     # Novelpia URLs & Settings
     NOVELPIA_BASE_URL = "https://novelpia.com"
@@ -278,6 +281,43 @@ def _parse_one(session, novel_id, crawl_date, execution_id, crawled_at=None):
     return item, pages, ok
 
 
+_history_table_obj = None
+
+
+def _history_table():
+    global _history_table_obj
+    if _history_table_obj is None:
+        _history_table_obj = boto3.resource('dynamodb', region_name=Config.AWS_REGION).Table(Config.EPISODE_HISTORY_TABLE)
+    return _history_table_obj
+
+
+def _attach_history(session, novel_id, pages, crawled_at, write, execution_id, table=None, conflict=None):
+    """연재 기록 갱신 — 매일 전 작품의 최신순 목록을 마지막 확인일까지 본다(회차 수가 같아도: 삭제 후 재업로드는 고유 번호가 달라
+    여기서 잡힌다). 잔류율이 이미 받은 최신순 쪽은 다시 받지 않고, 새로 받은 쪽은 `pages` 에 더해 원본 묶음에 들어간다.
+    처음 본 시각 = 상세를 받은 시각(`crawled_at`, 재시도에도 같다). `write=False`(그림자 실행)면 쓰지 않고 셈만 돌려준다.
+    반환: {new, gone, pages, complete}."""
+    table = table or _history_table()
+    seen_at = eh.stamp(crawled_at)
+    at = datetime.fromisoformat(seen_at)
+    prefetched = {int((p.get('params') or {}).get('page', 0)): (p['html'], at) for p in pages
+                  if p.get('kind') == 'episode_list' and (p.get('params') or {}).get('sort') == 'UP'}
+    old = table.get_item(Key={'NovelId': novel_id}).get('Item')
+
+    def fetch(n):
+        return extract._episode_list_html(session, novel_id, 'UP', n, pages), at
+
+    r = eh.collect(fetch, old, prefetched=prefetched)
+    known = (old or {}).get('Episodes') or {}
+    seen_ids = {e[0] for e in r['seen']}
+    summary = {'new': sum(1 for e in r['seen'] if e[0] not in known and e[2]),
+               'gone': sum(1 for k, v in known.items() if k not in seen_ids and v[2] is None and v[0] > (r['covered_from'] or '9999')),
+               'pages': r['pages_fetched'], 'complete': r['complete']}
+    if write:
+        eh.update_record(table, novel_id, lambda cur: eh.merge(cur, r['seen'], seen_at, r['covered_from'], r['complete'], r['scheduled']),
+                         conflict=conflict)
+    return summary
+
+
 def parse_dmap_batch(event, context):
     """Distributed Map(ItemBatcher) 한 묶음 — Step Functions 가 S3 ID 목록을 나눠 준다(SQS 판은 2026-10-04 에 걷어냈다).
 
@@ -308,6 +348,7 @@ def parse_dmap_batch(event, context):
     session = requests.Session()
     session.headers.update({"User-Agent": Config.USER_AGENT})
     results, failed, raw_batch = [], [], []
+    history = {'new': 0, 'gone': 0, 'pages': 0, 'errors': 0}
     # 재시도 경로 시험(그림자 실행 전용): 첫 라운드에서 번호 % N == 0 인 작품을 받지 않고 네트워크 실패로 돌려준다.
     inject = int(bi.get('inject_fail_mod') or 0) if bi.get('dry_run') and int(bi.get('round') or 0) == 0 else 0
     for novel_id in ids:
@@ -324,6 +365,14 @@ def parse_dmap_batch(event, context):
                 break
             try:
                 item, pages, _ok = _parse_one(session, novel_id, crawl_date, execution_id)
+                if _ok:
+                    try:
+                        h = _attach_history(session, novel_id, pages, item.get("CrawledAt"), write=not bi.get('dry_run'), execution_id=execution_id)
+                        for k in ('new', 'gone', 'pages'):
+                            history[k] += h[k]
+                    except Exception as he:  # noqa: BLE001 — 기록은 다음 확인이 마지막 확인일부터 채운다. 작품 처리는 막지 않는다.
+                        history['errors'] += 1
+                        _log(logging.WARNING, execution_id, f"Episode history update failed for {novel_id}: {he}", novel_id=novel_id)
                 raw_batch.append((novel_id, pages, item.get("CrawledAt")))
                 break
             except requests.exceptions.RequestException as e:
@@ -340,9 +389,10 @@ def parse_dmap_batch(event, context):
     upload = bi.get('raw', True) and not bi.get('dry_run')
     raw_ok = _upload_raw_batch(execution_id, raw_batch, crawl_date, context) if upload else True
     _log(logging.INFO, execution_id, "DMap batch complete.", total=len(ids), ok=len(results), failed=len(failed), raw_ok=raw_ok,
+         history=history,
          over_budget=sum(1 for f in failed if str(f.get("error") or "").startswith("TimeBudget")),
          seconds=round(time.monotonic() - started, 1))
-    return {"items": results, "failed": failed, "raw_failed": 0 if raw_ok else len(raw_batch)}
+    return {"items": results, "failed": failed, "raw_failed": 0 if raw_ok else len(raw_batch), "history": history}
 
 
 # --- 원본 재계산(reprocess) ---------------------------------------------------------------

@@ -1,9 +1,20 @@
 """작품별 연재 기록 — 노벨피아 회차 목록 해석·병합·날짜별 화 수(설계 docs/superpowers/specs/2026-10-05-episode-upload-history-design.md).
-순수 함수만 둔다(I/O 없음). crawler/ 가 원본이고 contests/2026/contest_detail_parser/·webapp/backend/api/ 에 같은 파일을 둔다
+해석·병합·창 계산은 순수 함수다. 저장(`update_record`)만 넘겨받은 테이블 객체를 쓴다. crawler/ 가 원본이고 contests/2026/contest_detail_parser/·webapp/backend/api/ 에 같은 파일을 둔다
 (이미지·배포가 따로라 — scripts/check_copies.sh 로 확인).
 """
 import re
 from datetime import date, datetime, timedelta
+
+KST_OFFSET = timedelta(hours=9)
+
+
+def stamp(dt):
+    """시각 → 'YYYY-MM-DDTHH:MM:SS+09:00'(KST, 초 단위). 처음 본 시각·마지막 확인·마감은 모두 이 꼴로 둔다 — 문자열 비교로 앞뒤를 가린다."""
+    from datetime import timezone
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+    return dt.astimezone(timezone(KST_OFFSET)).replace(microsecond=0).isoformat()
+
 
 _REL = re.compile(r'(\d+)\s*(초|분|시간)\s*전')
 _DATE = re.compile(r'^(\d{2})\.(\d{2})\.(\d{2})$')
@@ -58,8 +69,9 @@ def is_last_page(new_count, labels, slots):
 
 
 def merge(history, seen, fetched_at_iso, covered_from, complete, scheduled):
-    """기록에 이번에 본 회차를 더한다. 새 고유 번호는 [날짜, 이번 시각, None]. 이번에 받은 범위(`covered_from` 이후 날짜) 안에
-    있어야 하는데 없는 기존 회차는 사라진 시각만 적는다(지우지 않는다 — 지워진 회차의 업로드 날도 연재로 센다). 다시 보이면 푼다."""
+    """기록에 이번에 본 회차를 더한다. 새 고유 번호는 [날짜, 이번 시각, None]. 이번에 받은 범위 — 날짜가 `covered_from` 보다
+    **뒤**인 회차(그 날짜 자체는 받지 않은 다음 쪽에 더 있을 수 있다; 끝까지 받았으면 '0000-01-01') — 안에 있어야 하는데 없는 기존
+    회차는 사라진 시각만 적는다(지우지 않는다 — 지워진 회차의 업로드 날도 연재로 센다). 다시 보이면 푼다."""
     h = dict(history or {})
     eps = {k: list(v) for k, v in (h.get('Episodes') or {}).items()}
     seen_ids = set()
@@ -72,7 +84,7 @@ def merge(history, seen, fetched_at_iso, covered_from, complete, scheduled):
         else:
             eps[eid] = [d, fetched_at_iso, None]
     for eid, v in eps.items():
-        if eid not in seen_ids and v[2] is None and covered_from and v[0] >= covered_from:
+        if eid not in seen_ids and v[2] is None and covered_from and v[0] > covered_from:
             v[2] = fetched_at_iso
     dates = [v[0] for v in eps.values()]
     h.update({'Episodes': eps, 'CheckedAt': fetched_at_iso, 'CheckedCount': len(seen_ids),
@@ -102,3 +114,65 @@ def day_counts(history, start, end, cutoff_iso=None):
         out[k] = None if unknown else counts.get(k, 0)
         cur += timedelta(days=1)
     return {'days': out, 'known_from': known_from, 'known_until': known_until}
+
+
+FULL = '0000-01-01'   # 끝까지 받았다는 표시(collect 의 covered_from)
+
+
+def collect(fetch, history, prefetched=None, max_pages=120):
+    """최신순 0쪽부터 받는다. `fetch(page) -> (html, fetched_at)`, `prefetched` = 이미 받은 쪽 {page: (html, fetched_at)}(잔류율이
+    받은 최신순 쪽을 다시 받지 않게). 멈춤: 끝(`is_last_page`), 또는 기록이 있고 그 쪽 가장 오래된 날짜가 마지막 확인 날짜 이하
+    (그 앞은 이미 안다), 또는 `max_pages`(처음 보는 긴 작품 — 다 받지 못하면 `complete=False`, 다음 확인이 이어 받는다).
+    반환: seen(회차들), scheduled, covered_from(받은 가장 오래된 날짜, 끝까지면 FULL), complete, pages_fetched(새로 받은 쪽 수),
+    fetched_at(첫 쪽을 받은 시각)."""
+    prefetched = prefetched or {}
+    checked = (history or {}).get('CheckedAt')
+    checked_date = checked[:10] if checked else None
+    seen, ids, scheduled, oldest, fetched, first_at = [], set(), [], None, 0, None
+    reached_end = False
+    for n in range(max_pages):
+        if n in prefetched:
+            html, at = prefetched[n]
+        else:
+            html, at = fetch(n)
+            fetched += 1
+        first_at = first_at or at
+        got, sch, slots = parse_page(html, at)
+        if n == 0:
+            scheduled = sch
+        new = [e for e in got if e[0] not in ids]
+        for e in new:
+            ids.add(e[0])
+            seen.append(e)
+        dates = [e[2] for e in got if e[2]]
+        if dates:
+            oldest = min(dates) if oldest is None else min(oldest, min(dates))
+        if is_last_page(len(new), [e[1] for e in got], slots):
+            reached_end = True
+            break
+        if checked_date and dates and min(dates) <= checked_date:
+            break
+    if reached_end:
+        return {'seen': seen, 'scheduled': scheduled, 'covered_from': FULL, 'complete': True, 'pages_fetched': fetched, 'fetched_at': first_at}
+    stopped_at_known = bool(checked_date and oldest and oldest <= checked_date)
+    return {'seen': seen, 'scheduled': scheduled, 'covered_from': oldest,
+            'complete': bool(stopped_at_known and (history or {}).get('Complete')), 'pages_fetched': fetched, 'fetched_at': first_at}
+
+
+def update_record(table, novel_id, fn, conflict=None, attempts=2):
+    """기록을 읽어 `fn(old) -> new` 로 고쳐 쓴다. 낙관적 잠금(`Version`): 그 사이 다른 곳이 고쳤으면 다시 읽어 한 번 더.
+    `table` 은 boto3 DynamoDB Table(또는 같은 모양). `conflict` 는 조건 실패 예외 클래스(기본: botocore ConditionalCheckFailed)."""
+    if conflict is None:
+        conflict = table.meta.client.exceptions.ConditionalCheckFailedException
+    for i in range(attempts):
+        old = table.get_item(Key={'NovelId': novel_id}, ConsistentRead=True).get('Item')
+        new = {**fn(old), 'NovelId': novel_id}
+        try:
+            if old is None:
+                table.put_item(Item=new, ConditionExpression='attribute_not_exists(NovelId)')
+            else:
+                table.put_item(Item=new, ConditionExpression='Version = :v', ExpressionAttributeValues={':v': old.get('Version')})
+            return new
+        except conflict:
+            if i == attempts - 1:
+                raise
