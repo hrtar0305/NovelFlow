@@ -195,6 +195,12 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 - 만들기·권한: `bash scripts/setup_episode_history.sh`(크롤러 Lambda 역할 읽기·쓰기, 웹 API 역할 읽기). 여러 번 돌려도 같다.
 - 백필: `python scripts/backfill_episode_history.py`(로컬, 결과 `review/episode-history/<날짜>/`) → `python scripts/load_episode_history.py --src … --dry-run` → 실제 적재.
   2026-10-05 백필 6,401편(데일리 3,693 · 2026 공모전 2,708, 2025 제외)을 적재했다. 목록 원본은 원본 버킷 `episode-history/backfill-2026-10-05/`.
+- 증분: 데일리 get-novel-data(`crawler-v1.7.0`~)가 순위권 작품을, 2026 파서(`contest2026-v1.1.0`~)가 전 작품을 수집 때마다 마지막 확인일까지 받아 병합한다.
+  데일리가 잔류율 밖으로 더 받은 목록 쪽은 SQS 에 싣지 않고 원본 버킷 `episode-history/{date}/{id}.json.gz` 에 둔다. 공모전은 원본 묶음에 들어간다.
+  기록 실패는 수집을 막지 않는다 — 로그 `Updated episode history` / `Failed to update episode history`(데일리), 묶음 로그의 `history`(공모전).
+- 화면: 백엔드 `GET /api/uploads/{id}?start&end[&asof&source=daily|contest2026]`. `asof` 를 주면 그날 수집 마감(데일리 D 22:00, 공모전 D+1 01:00 KST)
+  뒤에 처음 본 회차는 빼서 행 펼침 값이 고정된다.
+- 감시: `python scripts/report_episode_events.py [--days 7]` — 사라진 회차·늦은 등장·다 받지 못한 기록 수(읽기만).
 
 ## 스케줄 (EventBridge, KST)
 
