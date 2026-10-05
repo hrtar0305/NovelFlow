@@ -20,7 +20,7 @@ export function uploadDays(r: UploadsResponse): UploadDays {
   return Object.fromEntries(Object.entries(r.days ?? {}).map(([d, v]) => [d, first && d < first ? null : v]));
 }
 
-/** 알 수 있는 날 · 그중 올린 날 · 끝에서 거꾸로 센 연속 연재일 / 연속 휴재일(둘 중 하나만 0이 아니다). 모름에서 끊는다. */
+/** 알 수 있는 날 · 그중 올린 날 · 끝에서 거꾸로 센 연속 연재일 / 연속 휴재일(둘 중 하나만 0이 아니다). 끝의 모름은 건너뛰고, 중간의 모름에서 끊는다. */
 export function uploadSummary(days: UploadDays) {
   const dates = Object.keys(days).sort();
   const known = dates.filter(d => days[d] != null);
@@ -29,7 +29,7 @@ export function uploadSummary(days: UploadDays) {
   let resting = 0;
   for (let i = dates.length - 1; i >= 0; i--) {
     const v = days[dates[i]];
-    if (v == null) break;
+    if (v == null) { if (streak || resting) break; continue; }  // 끝의 모름(아직 안 끝난 날)은 건너뛴다
     if (v > 0) { if (resting) break; streak++; } else { if (streak) break; resting++; }
   }
   return { known: known.length, uploaded, streak, resting };

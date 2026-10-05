@@ -7,8 +7,9 @@ describe('uploadSummary', () => {
     expect(uploadSummary({ '2026-10-01': 1, '2026-10-02': null, '2026-10-03': 1 })).toEqual({ known: 2, uploaded: 2, streak: 1, resting: 0 });
     expect(uploadSummary({ '2026-10-01': 1, '2026-10-02': 0, '2026-10-03': 0 })).toEqual({ known: 3, uploaded: 1, streak: 0, resting: 2 });
   });
-  it('끝이 모름이면 연속을 세지 않는다', () => {
-    expect(uploadSummary({ '2026-10-01': 1, '2026-10-02': null })).toEqual({ known: 1, uploaded: 1, streak: 0, resting: 0 });
+  it('끝의 모름(아직 안 끝난 날·마지막 확인 뒤)은 건너뛰고 그 앞부터 센다', () => {
+    expect(uploadSummary({ '2026-09-30': 1, '2026-10-01': 1, '2026-10-02': null })).toEqual({ known: 2, uploaded: 2, streak: 2, resting: 0 });
+    expect(uploadSummary({ '2026-10-01': null })).toEqual({ known: 0, uploaded: 0, streak: 0, resting: 0 });
   });
 });
 
