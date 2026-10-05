@@ -7,3 +7,5 @@ consolidate_data.py
 
 # Ignore Step Functions Workflow JSON definitions
 *.json
+# Ignore tests
+test_*.py

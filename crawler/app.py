@@ -12,6 +12,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 from bs4 import BeautifulSoup
 
 import raw_store
+import episode_history as eh
 
 # --- Basic Setup ---
 logger = logging.getLogger()
@@ -25,6 +26,8 @@ class Config:
     # 원본 HTML 적재 버킷(ELT). 비워 두면 적재를 건너뛰므로 기존 동작이 그대로다.
     RAW_BUCKET = os.environ.get('RAW_HTML_BUCKET')
     RAW_PREFIX = os.environ.get('RAW_HTML_PREFIX', 'raw')
+    # 연재 기록(작품별 회차 목록 누적). 순위권 작품만, 다시 들어오면 마지막 확인일부터 이어 받는다.
+    EPISODE_HISTORY_TABLE = os.environ.get('EPISODE_HISTORY_TABLE', 'NovelFlowEpisodeHistory')
     CREDENTIAL_PARAM_NAMES = ["/NP-Trend/NOVELPIA_ID", "/NP-Trend/NOVELPIA_PASS"]
     # 로그인 쿠키를 상세 파서에 넘기는 곳. 상태 머신 입출력에 싣지 않는다 — Standard 실행 이력은
     # 90일 남고 읽기 권한만 있어도 보여서, 거기 실린 세션 쿠키는 크롤링 계정 로그인과 같다.
@@ -473,6 +476,48 @@ def _parse_valid_episodes(soup):
                     result.append((m.group(1), ep_num))
     return result
 
+_history_table_obj = None
+
+
+def _history_table():
+    global _history_table_obj
+    if _history_table_obj is None:
+        _history_table_obj = boto3.resource('dynamodb', region_name=Config.AWS_REGION).Table(Config.EPISODE_HISTORY_TABLE)
+    return _history_table_obj
+
+
+def _update_history(session, novel_id, today, raw_pages, detail_at, execution_id, table=None, s3=None, conflict=None):
+    """연재 기록 갱신 — 최신순 목록을 마지막 확인일까지 본다(공모전 `_attach_history` 와 같은 규칙). 잔류율이 받은 최신순 쪽은
+    다시 받지 않는다. 더 받은 쪽은 **SQS 원본에 얹지 않고**(메시지 256KB 한도 — 처음 보는 작품은 최대 120쪽) 원본 버킷
+    `episode-history/{date}/{id}.json.gz` 에 따로 둔다. 처음 본 시각 = 상세를 받은 시각. 반환: {new, gone, pages, complete}."""
+    table = table or _history_table()
+    seen_at = eh.stamp(detail_at)
+    at = datetime.fromisoformat(seen_at)
+    prefetched = {int((p.get('params') or {}).get('page', 0)): (p['html'], at) for p in raw_pages
+                  if p.get('kind') == 'episode_list' and (p.get('params') or {}).get('sort') == 'UP'}
+    extra = []
+    old = table.get_item(Key={'NovelId': novel_id}).get('Item')
+
+    def fetch(n):
+        return _get_episode_list_html(session, novel_id, 'UP', page=n, pages=extra), at
+
+    try:
+        r = eh.collect(fetch, old, prefetched=prefetched)
+    finally:
+        # 받은 것은 남긴다(중간에 실패해도) — 기록은 못 써도 원본이 있으면 나중에 다시 계산할 수 있다.
+        if extra and Config.RAW_BUCKET:
+            body, _ = raw_store.build_payload(novel_id, today, extra, meta={"purpose": "episode_history"})
+            (s3 or boto3.client('s3')).put_object(Bucket=Config.RAW_BUCKET, Key=f"episode-history/{today}/{novel_id}.json.gz",
+                                                   Body=body, ContentType='application/gzip')
+    known = (old or {}).get('Episodes') or {}
+    seen_ids = {e[0] for e in r['seen']}
+    eh.update_record(table, novel_id, lambda cur: eh.merge(cur, r['seen'], seen_at, r['covered_from'], r['complete'], r['scheduled']),
+                     conflict=conflict)
+    return {'new': sum(1 for e in r['seen'] if e[0] not in known and e[2]),
+            'gone': sum(1 for k, v in known.items() if k not in seen_ids and v[2] is None and v[0] > (r['covered_from'] or '9999')),
+            'pages': r['pages_fetched'], 'complete': r['complete']}
+
+
 def _get_episode_view_counts(session, novel_id, episode_ids, execution_id):
     """Fetches view counts for a list of episode IDs via /proc/novel."""
     if not episode_ids:
@@ -695,6 +740,7 @@ def parse_novel_details(event, context):
             novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
             response = session.get(novel_url, timeout=10)
             response.raise_for_status()
+            detail_at = datetime.now(timezone('Asia/Seoul'))
             raw_pages.append({
                 "kind": "detail", "url": novel_url, "method": "GET",
                 "status": response.status_code, "html": response.text,
@@ -849,6 +895,12 @@ def parse_novel_details(event, context):
                 _validate_item(item, novel_id)
                 item_to_send = item
                 status = "SUCCESS"
+
+                try:
+                    h = _update_history(session, novel_id, today, raw_pages, detail_at, execution_id)
+                    _log(logging.INFO, execution_id, "Updated episode history.", novel_id=novel_id, **h)
+                except Exception as h_e:  # noqa: BLE001 — 연재 기록은 부가 정보다. 실패해도 수집은 막지 않는다.
+                    _log(logging.WARNING, execution_id, f"Failed to update episode history: {h_e}", novel_id=novel_id)
 
     except requests.exceptions.RequestException as e:
         _log(logging.ERROR, execution_id, f"A retriable network error occurred: {e}. Retrying.", novel_id=novel_id, exc_info=True)
