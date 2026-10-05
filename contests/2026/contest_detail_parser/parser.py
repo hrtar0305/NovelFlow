@@ -22,6 +22,7 @@ class Config:
     RAW_BUCKET = os.environ.get('RAW_HTML_BUCKET')
     RAW_PREFIX = os.environ.get('RAW_HTML_PREFIX', 'raw')
     CONTEST_YEAR = os.environ.get('CONTEST_YEAR', '2026')
+    CONTEST_TABLE = os.environ.get('CONTEST_TABLE', f'NovelFlowContest{CONTEST_YEAR}')   # 연재 기록 단계가 그날 회차 수를 읽는 곳
     """Houses all configuration variables for the contest novel parser."""
     # AWS Configuration
     AWS_REGION = "ap-northeast-2"
@@ -103,7 +104,7 @@ def _now_iso():
     return datetime.now(timezone.utc).isoformat(timespec='milliseconds')
 
 
-def _upload_raw_batch(execution_id, raw_batch, crawl_date, context):
+def _upload_raw_batch(execution_id, raw_batch, crawl_date, context, prefix=None):
     """이 배치가 받은 원본을 한 덩어리로 묶어 S3 에 올린다.
 
     키는 `{prefix}/{year}/{date}/{request_id}.jsonl.zst` 다. 묶음마다 객체가 하나씩
@@ -127,7 +128,7 @@ def _upload_raw_batch(execution_id, raw_batch, crawl_date, context):
 
         blob = raw_store.bundle(payloads)
         rid = getattr(context, 'aws_request_id', 'unknown')
-        key = f"{Config.RAW_PREFIX}/{Config.CONTEST_YEAR}/{crawl_date}/{rid}.jsonl.zst"
+        key = f"{prefix or f'{Config.RAW_PREFIX}/{Config.CONTEST_YEAR}'}/{crawl_date}/{rid}.jsonl.zst"
         boto3.client('s3', region_name=Config.AWS_REGION).put_object(
             Bucket=Config.RAW_BUCKET, Key=key, Body=blob, ContentType='application/zstd',
         )
@@ -343,6 +344,8 @@ def parse_dmap_batch(event, context):
         return reprocess_index(event, context)
     if (event.get('BatchInput') or {}).get('reprocess'):
         return reparse_raw_batch(event, context)
+    if (event.get('BatchInput') or {}).get('history'):
+        return history_dmap_batch(event, context)
     started = time.monotonic()
 
     def over_budget():
@@ -354,7 +357,6 @@ def parse_dmap_batch(event, context):
     session = requests.Session()
     session.headers.update({"User-Agent": Config.USER_AGENT})
     results, failed, raw_batch = [], [], []
-    history = {'new': 0, 'gone': 0, 'pages': 0, 'errors': 0}
     # 재시도 경로 시험(그림자 실행 전용): 첫 라운드에서 번호 % N == 0 인 작품을 받지 않고 네트워크 실패로 돌려준다.
     inject = int(bi.get('inject_fail_mod') or 0) if bi.get('dry_run') and int(bi.get('round') or 0) == 0 else 0
     for novel_id in ids:
@@ -371,15 +373,6 @@ def parse_dmap_batch(event, context):
                 break
             try:
                 item, pages, _ok = _parse_one(session, novel_id, crawl_date, execution_id)
-                if _ok:
-                    try:
-                        h = _attach_history(session, novel_id, pages, item.get("CrawledAt"), write=not bi.get('dry_run'), execution_id=execution_id,
-                                            out_of_time=over_budget, eps=item.get("Eps"))
-                        for k in ('new', 'gone', 'pages'):
-                            history[k] += h[k]
-                    except Exception as he:  # noqa: BLE001 — 기록은 다음 확인이 마지막 확인일부터 채운다. 작품 처리는 막지 않는다.
-                        history['errors'] += 1
-                        _log(logging.WARNING, execution_id, f"Episode history update failed for {novel_id}: {he}", novel_id=novel_id)
                 raw_batch.append((novel_id, pages, item.get("CrawledAt")))
                 break
             except requests.exceptions.RequestException as e:
@@ -396,10 +389,75 @@ def parse_dmap_batch(event, context):
     upload = bi.get('raw', True) and not bi.get('dry_run')
     raw_ok = _upload_raw_batch(execution_id, raw_batch, crawl_date, context) if upload else True
     _log(logging.INFO, execution_id, "DMap batch complete.", total=len(ids), ok=len(results), failed=len(failed), raw_ok=raw_ok,
-         history=history,
          over_budget=sum(1 for f in failed if str(f.get("error") or "").startswith("TimeBudget")),
          seconds=round(time.monotonic() - started, 1))
-    return {"items": results, "failed": failed, "raw_failed": 0 if raw_ok else len(raw_batch), "history": history}
+    return {"items": results, "failed": failed, "raw_failed": 0 if raw_ok else len(raw_batch)}
+
+
+def _eps_for(date, ids):
+    """그날 적재된 행의 회차 수 {id: Eps}(없으면 빠짐) — 연재 기록 단계가 첫 회차 전 작품을 건너뛰는 데 쓴다."""
+    ddb = boto3.resource('dynamodb', region_name=Config.AWS_REGION)
+    name, out = Config.CONTEST_TABLE, {}
+    for i in range(0, len(ids), 100):
+        req = {name: {'Keys': [{'ID': x, 'Date': date} for x in ids[i:i + 100]], 'ProjectionExpression': 'ID, Eps'}}
+        while req:
+            r = ddb.batch_get_item(RequestItems=req)
+            for it in r['Responses'].get(name, []):
+                if it.get('Eps') is not None:
+                    out[str(it['ID'])] = int(it['Eps'])
+            req = r.get('UnprocessedKeys') or None
+    return out
+
+
+def history_dmap_batch(event, context):
+    """연재 기록 단계(자정 수집·적재 뒤, 같은 ID 목록의 두 번째 Map) 한 묶음 — `BatchInput.history`.
+
+    **왜 수집과 나눴나(2026-10-06):** 수집 묶음 안에서 작품마다 회차 목록을 받자 작품당 약 1초가 늘어 자정 실행이 7분 → 13분이 됐다.
+    묶음은 작품을 차례로 처리하고 동시 수가 정해져 있어, 늘어난 만큼 **작품 값을 받는 시각**이 00:00~00:13 으로 퍼졌다 — 24시간 주기에
+    가까운 수집이 이 파이프라인의 목표다. 기록은 몇 분 늦어도 뜻이 같다(처음 본 시각 = 이 단계가 본 시각, 마감 D+1 03:00 안).
+    회차 수는 방금 적재된 그날 행에서 읽는다(첫 회차 전 작품 건너뛰기). 그림자 실행(dry_run)이면 쓰지도 올리지도 않는다.
+    받은 목록 쪽은 묶음 하나로 원본 버킷 `episode-history/contest{year}/{date}/` 에 둔다 — 원본 재계산 접두어(`{RAW_PREFIX}/{year}/{date}/`)
+    밖이라 재계산이 읽지 않는다. 실패는 묶음 안에 가둔다(작품마다 로그) — 다음 확인이 마지막 확인일부터 채운다.
+    """
+    started = time.monotonic()
+
+    def over_budget():
+        return time.monotonic() - started > Config.DMAP_TIME_BUDGET_SECONDS
+
+    bi = event.get('BatchInput') or {}
+    execution_id, date, write = bi.get('execution_id', 'N/A'), bi.get('date'), not bi.get('dry_run')
+    ids = [str(x).strip() for x in event.get('Items') or []]
+    session = requests.Session()
+    session.headers.update({"User-Agent": Config.USER_AGENT})
+    try:
+        eps = _eps_for(date, ids)
+    except Exception as e:  # noqa: BLE001 — 회차 수를 못 읽으면 건너뛰기만 못 한다(전부 받는다)
+        _log(logging.WARNING, execution_id, f"Could not read episode counts: {e}")
+        eps = {}
+    history = {'new': 0, 'gone': 0, 'pages': 0, 'errors': 0, 'skipped': 0, 'over_budget': 0}
+    raw = []
+    for novel_id in ids:
+        if over_budget():
+            history['over_budget'] += 1
+            continue
+        pages = []
+        try:
+            h = _attach_history(session, novel_id, pages, datetime.now(timezone.utc).isoformat(), write=write, execution_id=execution_id,
+                                table=_history_table(), out_of_time=over_budget, eps=eps.get(novel_id))
+            for k in ('new', 'gone', 'pages'):
+                history[k] += h[k]
+            if not h['pages'] and eps.get(novel_id) == 0:
+                history['skipped'] += 1
+        except Exception as e:  # noqa: BLE001
+            history['errors'] += 1
+            _log(logging.WARNING, execution_id, f"Episode history update failed for {novel_id}: {e}", novel_id=novel_id)
+        if pages:
+            raw.append((novel_id, pages))
+    raw_ok = (_upload_raw_batch(execution_id, raw, date, context, prefix=f"episode-history/contest{Config.CONTEST_YEAR}")
+              if write and bi.get('raw', True) else True)
+    _log(logging.INFO, execution_id, "History batch complete.", total=len(ids), history=history, raw_ok=raw_ok,
+         seconds=round(time.monotonic() - started, 1))
+    return {"history": history, "raw_ok": raw_ok}
 
 
 # --- 원본 재계산(reprocess) ---------------------------------------------------------------
