@@ -45,5 +45,19 @@ class T(unittest.TestCase):
         self.assertEqual(s.calls, [])
         self.assertEqual(sorted(t.item['Episodes']), ['1', '2'])
 
+class NoEpisodes(unittest.TestCase):
+    def test_zero_episode_work_without_record_is_not_fetched(self):
+        # 상세의 회차 수가 0 이고 기록에도 회차가 없으면(첫 회차 전 — 하루 약 400편) 목록을 받지 않는다. 기록도 쓰지 않는다.
+        s, t = Session(['']), Table({'NovelId': '455999', 'Episodes': {}, 'CheckedAt': '2026-10-04T00:05:00+09:00', 'Complete': True, 'Version': 1})
+        r = P._attach_history(s, '455999', [], '2026-10-04T15:01:00+00:00', write=True, execution_id='t', table=t, conflict=Table.Conflict, eps=0)
+        self.assertEqual((s.calls, t.puts, r['pages']), ([], 0, 0))
+
+    def test_zero_episode_work_with_known_episodes_is_still_checked(self):
+        # 회차를 다 지운 작품은 받아야 사라진 시각을 적는다.
+        s, t = Session(['']), Table({'NovelId': '455999', 'Episodes': {'1': ['2026-10-02', None, None]}, 'CheckedAt': '2026-10-04T00:05:00+09:00', 'Complete': True, 'Version': 1})
+        r = P._attach_history(s, '455999', [], '2026-10-04T15:01:00+00:00', write=True, execution_id='t', table=t, conflict=Table.Conflict, eps=0)
+        self.assertEqual((s.calls, r['gone']), ([0], 1))
+
+
 if __name__ == '__main__':
     unittest.main()
