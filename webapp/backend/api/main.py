@@ -33,7 +33,7 @@ from botocore.config import Config as BotoConfig
 from boto3.dynamodb.types import TypeDeserializer
 from botocore.exceptions import ClientError
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import analysis_report as AR
 import episode_history
@@ -686,11 +686,12 @@ def _decorate_contest_item(item: dict, year: int, previous_item: dict | None = N
     item['daily_rank'] = item.get('DailyRank')
     prev_rank = (previous_item or {}).get('DailyRank')
     # 'New' = 오늘 처음 순위에 들었다. 직전 수집 뒤 새로 등록된 작품(IsNew — 적재가 판정)과 어제는 기준값이 없어
-    # 순위 밖이었던 작품 둘 다다. 단 **직전 수집일에 일간 순위가 아예 없었으면(`prev_ranked` 거짓 — 순위가 처음 생긴 날)
-    # 견줄 대상이 없으므로 None** — 전부 New 로 보이면 뜻이 없다. 기준값이 없어 오늘도 순위 밖인 작품도 None.
+    # 순위 밖이었던 작품 둘 다다. 직전 수집일에 일간 순위가 아예 없었으면(`prev_ranked` 거짓) 견줄 대상이 없어 None 이지만,
+    # 신작(IsNew)은 New — 개막일(2026-10-01)은 참가작 전부가 0 에서 출발한 신작이라 전부 New 다(사용자 2026-10-05).
+    # 기준값이 없어 오늘도 순위 밖인 작품은 None.
     if prev_rank is not None and item.get('DailyRank') is not None:
         item['daily_rank_change'] = prev_rank - item['DailyRank']
-    elif item.get('DailyRank') is not None and prev_ranked:
+    elif item.get('DailyRank') is not None and (prev_ranked or item.get('IsNew')):
         item['daily_rank_change'] = 'New'
     else:
         item['daily_rank_change'] = None
@@ -1134,8 +1135,6 @@ def get_novel_available_dates(novel_id: str, response: Response):
     except Exception:
         raise _server_error("Unhandled error while handling request")
 
-KST = timezone(timedelta(hours=9))
-
 # 행 펼침의 '그날 값' 마감 = 그날 수집이 받을 수 있는 끝. 늦은 재실행 거절선(데일리 D 22:00, 공모전 D+1 01:00)은 **시도를 시작할 수
 # 있는** 끝이라, 그 뒤에도 받는 중일 수 있다(재실행이 30~45분 걸린다). 그 다음 확인(공모전 00:00 / 데일리 21:00) 전까지로 둔다.
 _UPLOAD_CUTOFF = {
@@ -1162,18 +1161,8 @@ def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: O
     if item and item.get('Complete'):
         # 다 받았는데 회차가 없으면(첫 회차 전 — 공모전 미시작작 등) 기간 전체가 첫 회차 앞이다.
         first = min((v[0] for v in eps.values()), default=(e + timedelta(days=1)).strftime('%Y-%m-%d'))
-    # '미정' = 본 시각이 든 날에 아직 안 보임(day_counts 가 null 로 둔다). 행 펼침은 그 행의 날짜(그날 값),
-    # 작품 상세는 마지막 확인이 24시간 안일 때만 — 그보다 오래면 다음 확인이 없던 것(순위 밖)이라 '모름'이다.
-    checked = (item or {}).get('CheckedAt')
-    open_day = None
-    if cutoff:
-        open_day = min(cutoff, checked)[:10] if checked else None
-    elif checked and datetime.now(KST) - datetime.fromisoformat(checked) < timedelta(hours=24):
-        open_day = checked[:10]
-    if open_day and open_day < episode_history.BACKFILL_DATE:
-        open_day = None
     response.headers["Cache-Control"] = "public, max-age=600, s-maxage=600"
-    return {**out, 'first_date': first, 'open_day': open_day, 'tracked': bool(item)}
+    return {**out, 'first_date': first, 'tracked': bool(item)}
 
 def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5, rest_total: int = 400) -> Optional[float]:
     """
@@ -1339,7 +1328,7 @@ def get_contest_available_dates(year: int, response: Response):
 # 'Date', 'View', 'Like', 'Rank'는 DynamoDB 예약어이므로 ExpressionAttributeNames 사용
 _CONTEST_LIST_PROJ = ('ID, #dt, Title, AuthorName, AuthorID, #vw, #lk, Fav, Alr, Eps, Tags, ThumbnailURL, #rk, '
                       # 2026 부터 적재가 싣는 값(2025 행에는 없어 투영에서 그냥 빠진다)
-                      'ViewDelta, DailyRank, IsAdult, Badges, SerialStatus, SerialDays, AuthorOtherNovels, AuthorOtherMore, '
+                      'ViewDelta, DailyRank, IsNew, IsAdult, Badges, SerialStatus, SerialDays, AuthorOtherNovels, AuthorOtherMore, '
                       # 잔류율 원재료(회차 30 이상만 있다 — 표의 초반/최신 잔류 열)
                       'FirstEpView, Ep30View, RecentBaseView, TargetLatestEpView')
 _CONTEST_LIST_NAMES = {'#dt': 'Date', '#vw': 'View', '#lk': 'Like', '#rk': 'Rank'}

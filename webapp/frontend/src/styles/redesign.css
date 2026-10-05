@@ -501,11 +501,11 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 }
 /* 연재 줄: 올린 날은 채운 칸, 쉰 날은 빈 칸, 여러 날치는 점선. 두 화 이상 올린 날은 칸 안에 수. */
 .mx-day.is-up { fill: var(--np-accent); }
-.mx-day.is-rest { fill: none; stroke: var(--np-chart-bar); stroke-width: 1.5; }
-.mx-day.is-tbd { fill: none; stroke: var(--np-chart-bar); stroke-width: 1.5; stroke-dasharray: 2 2; }
+.mx-day.is-rest { stroke: var(--np-chart-bar); stroke-width: 1; }   /* 빗금은 fill(pattern) 속성 — CSS 로 fill 을 덮지 않는다 */
+.mx-day__hatch { stroke: var(--np-chart-bar); stroke-width: 1.2; }
+.mx-day__q { font-weight: 700; fill: var(--np-text-faint); pointer-events: none; }
 .mx-day.is-on { stroke: var(--np-text-heading); stroke-width: 2; }
 .mx-day__n { font-size: 11px; font-weight: 700; fill: var(--np-on-accent); pointer-events: none; }
-.mx-day__unknown { stroke: var(--np-chart-bar); stroke-width: 2; stroke-linecap: round; }
 
 /* ── 일간 랭킹 행 펼침(2026-10-01): 30일 순위선+연재 줄 / 작품 소개 / 수치. 제목 열(116px)에서 시작 ── */
 /* 행 펼침: [이름표 + 순위선] | 작품 소개 2줄 | 작품 정보 보기 — 한 줄, 세로 가운데. 왼쪽 끝은 표가 제목 칸에 맞춘다(RankTable expandFrom). */
