@@ -36,6 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import analysis_report as AR
+import episode_history
 
 # 로거 설정 (Lambda root logger 사용 — basicConfig는 Lambda에서 무효)
 logger = logging.getLogger()
@@ -80,6 +81,8 @@ CONTEST_TABLES = {
     2025: contest_table,
     2026: dynamodb.Table(os.environ.get('CONTEST_TABLE_2026', 'NovelFlowContest2026')),
 }
+# 연재 기록(작품별 실제 회차 목록). 크롤러·2026 파서가 쓰고 여기선 읽기만 한다(DECISIONS 2026-10-05).
+history_table = dynamodb.Table(os.environ.get('EPISODE_HISTORY_TABLE', 'NovelFlowEpisodeHistory'))
 # 기성 작가 판정의 기준선: 그해 공모전 첫 참가작 번호. 이보다 작은 다른 작품이 있으면 기성이다.
 # 신인이 공모전에 두 작품을 함께 내도 기성이 되지 않게 '다른 작품이 있나'가 아니라 '그 전 작품이 있나'로 본다.
 CONTEST_FIRST_NOVEL_ID = {2026: 455325}
@@ -1130,6 +1133,28 @@ def get_novel_available_dates(novel_id: str, response: Response):
         raise
     except Exception:
         raise _server_error("Unhandled error while handling request")
+
+# 행 펼침의 '그날 값' 마감 — 하루의 값은 제시간 값이다(데일리 D 22:00, 공모전 D+1 01:00 KST 의 늦은 재실행 거절과 같은 선).
+_UPLOAD_CUTOFF = {
+    'daily': lambda d: f'{d}T22:00:00+09:00',
+    'contest2026': lambda d: f'{(datetime.fromisoformat(d) + timedelta(days=1)).date().isoformat()}T01:00:00+09:00',
+}
+
+@app.get("/api/uploads/{novel_id}")
+def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: Optional[str] = None, source: Optional[str] = None):
+    """연재 기록에서 날짜별 올린 화 수(null = 모름). `asof`+`source`(daily|contest2026) 를 주면 그 날짜 수집 마감까지 본 회차만
+    센다(행 펼침 고정값). 회차 수 차이로 추정하지 않는다 — 삭제·재업로드·BONUS 도 실제 목록 그대로."""
+    _reject_if_blocked(novel_id)
+    s, e = _parse_date_range(start, end, NOVEL_TREND_MAX_DAYS)
+    cutoff = _UPLOAD_CUTOFF[source](_parse_date(asof).strftime('%Y-%m-%d')) if asof and source in _UPLOAD_CUTOFF else None
+    try:
+        item = _convert_decimals(history_table.get_item(Key={'NovelId': novel_id}).get('Item'))
+    except Exception:
+        raise _server_error("Unhandled error while handling request")
+    out = episode_history.day_counts(item, s.strftime('%Y-%m-%d'), e.strftime('%Y-%m-%d'), cutoff) if item else \
+        {'days': {}, 'known_from': None, 'known_until': None}
+    response.headers["Cache-Control"] = "public, max-age=600, s-maxage=600"
+    return {**out, 'tracked': bool(item)}
 
 def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5, rest_total: int = 400) -> Optional[float]:
     """
