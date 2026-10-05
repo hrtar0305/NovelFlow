@@ -106,6 +106,10 @@
 .rank-table__td { min-width: 0; color: var(--np-text-secondary); font-variant-numeric: tabular-nums; }
 .rank-table__expand { display: grid; column-gap: 12px; padding: 0 var(--rank-table-inset); background: var(--np-surface-alt); border-bottom: 1px solid var(--np-border); }
 .rank-table__mrow { border-bottom: 1px solid var(--np-border); }
+.rank-table__mrow.is-clickable { cursor: pointer; }
+.rank-table__mrow.is-open { border-bottom-color: transparent; }
+.rank-table__expand--m { display: block; padding: 0 0.25rem; }
+.rank-table__more { margin: 0.9rem 0 0; font-size: 0.875rem; }
 .rank-num { font-size: 1.3125rem; font-weight: 800; letter-spacing: -0.03em; color: var(--np-text-heading); }
 .rank-num.is-top { color: var(--np-accent); }
 .rank-cover { display: block; width: 48px; height: 68px; border-radius: 4px; overflow: hidden; background: var(--np-cover-bg); }
@@ -367,6 +371,9 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .zone-filter button.is-on .zone-filter__n { color: var(--np-text-secondary); }
 .row-expand--tag { padding-left: 7.5rem; }
 @media (max-width: 991.98px) { .row-expand--tag { padding-left: 1.25rem; } }
+/* 폰에서 펼친 태그 행: 순위선 · 수치 · 링크를 세로로 쌓는다(가로로 두면 360px 를 넘는다). */
+.rank-table__expand--m .row-expand { flex-direction: column; align-items: flex-start; gap: 0.6rem; padding: 0.75rem 0 1rem; }
+.rank-table__expand--m .row-expand__go { margin-left: 0; }
 .tag-map { padding: 1.5rem 0 2.5rem; border-top: 1px solid var(--np-border); }
 .tag-map__head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
 .tag-map__head h2 { margin: 0; font-size: 1.1875rem; font-weight: 800; letter-spacing: -0.02em; color: var(--np-text-heading); }
@@ -437,6 +444,14 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .an-table td:has(.an-work) { white-space: normal; min-width: 14rem; }
 .an-table thead th { border-top: 0; font-size: 0.8125rem; font-weight: 600; color: var(--np-text-secondary); }
 .an-table td b { color: var(--np-text-heading); }
+@media (max-width: 767.98px) {
+  .an-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .an-table, .an-table tbody { display: block; }
+  .an-table tr { display: flex; flex-wrap: wrap; column-gap: 0.9rem; row-gap: 0.15rem; padding: 0.6rem 0; border-top: 1px solid var(--np-border); }
+  .an-table td { padding: 0; border-top: 0; font-size: 0.875rem; }
+  .an-table td:has(.an-work) { order: -1; flex: 1 0 100%; min-width: 0; font-size: 0.9375rem; }
+  .an-table td[data-label]:not(:has(.an-work))::before { content: attr(data-label) ' '; color: var(--np-text-faint); font-size: 0.8125rem; }
+}
 .an-search { position: relative; max-width: 420px; margin-bottom: 0.75rem; }
 .an-search .toolbar-search { width: 100%; }
 .an-search__hits { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 0.25rem 0; list-style: none; border: 1px solid var(--np-border); border-radius: var(--np-radius-sm); background: var(--np-canvas); box-shadow: var(--np-shadow-md); }
@@ -538,3 +553,13 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 /* 기성·신인은 같은 무게의 정보다 — 한쪽만 굵게 하면 다른 쪽이 약한 값처럼 읽힌다(2026-10-04). */
 .career { font-size: 0.8125rem; font-weight: 400; color: var(--np-text-secondary); }
 .career--none { color: var(--np-text-faint); }
+
+/* 제목 줄 바로 다음 요소의 위 여백 — 완성된 랭킹·공모전 페이지(16px)에 맞춘다. 태그·분석 페이지는 툴바·탭·첫 섹션의
+   위 여백이 .page-shell gap 과 겹쳐 34~74px 였다(2026-10-05 리뷰). */
+.tag-rankings-page > .page-title + .rank-toolbar,
+.contest-tags-page > .page-title + .rank-toolbar,
+.tag-trends-page > .page-title + .inline-nums { margin-top: 0; }
+.analysis-page > .page-title + .an-sec { padding-top: 0; }
+.contest-tags-page > .page-title .page-title__meta,
+.tag-trends-page > .page-title .page-title__meta,
+.analysis-page > .page-title .page-title__meta { margin-bottom: 0; }

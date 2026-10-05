@@ -35,12 +35,19 @@ interface RankTableProps<T> {
   compactBelow?: number;
   /** 행에 마우스가 올라가거나(행) 표를 벗어날 때(null). 표와 짝인 차트를 강조할 때 쓴다. */
   onRowHover?: (row: T | null) => void;
+  /** 있으면 이만큼만 보이고 아래 '전체 N개 보기'로 펼친다 — 긴 표(태그 수백 개) 아래의 지도·각주가 수만 px 밑에 묻히지 않게. */
+  collapseAfter?: number;
+  /** 좁은 화면에서도 행을 눌러 펼친다(태그 표 — 모바일 행에 링크가 없어 펼침이 유일한 길이다). 작품 표는 제목 링크가 있어 끈다. */
+  expandOnMobile?: boolean;
 }
 
 const ariaSort = (on: boolean, dir?: 'ascending' | 'descending') => (on ? dir : 'none') as 'ascending' | 'descending' | 'none';
 
 export default function RankTable<T>(props: RankTableProps<T>) {
-  const { rows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, expandFrom, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768, onRowHover } = props;
+  const { rows: allRows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, expandFrom, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768, onRowHover, collapseAfter, expandOnMobile } = props;
+  const [showAll, setShowAll] = useState(false);
+  const collapsed = collapseAfter != null && !showAll && allRows.length > collapseAfter;
+  const rows = collapsed ? allRows.slice(0, collapseAfter) : allRows;
   const isMobile = useMediaQuery(`(max-width: ${compactBelow - 0.02}px)`);
   const listRef = useRef<HTMLDivElement>(null);
   // 창 스크롤 가상화는 목록이 문서 맨 위에서 얼마나 떨어져 있는지(scrollMargin)를 알아야 한다.
@@ -70,7 +77,7 @@ export default function RankTable<T>(props: RankTableProps<T>) {
   if (isEmpty) return <p className="empty-line">{emptyText}</p>;
 
   return (
-    <div className="rank-table" role="table" aria-label={ariaLabel} aria-rowcount={rows.length}>
+    <div className="rank-table" role="table" aria-label={ariaLabel} aria-rowcount={allRows.length}>
       {!isMobile ? (
         <div className="rank-table__head" role="row" style={{ gridTemplateColumns: template }}>
           {columns.map(c => {
@@ -104,7 +111,13 @@ export default function RankTable<T>(props: RankTableProps<T>) {
             <div key={key} data-index={v.index} ref={virtualizer.measureElement}
               style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${v.start - virtualizer.options.scrollMargin}px)` }}>
               {isMobile ? (
-                <div className="rank-table__mrow" role="row">{renderMobileRow(row)}</div>
+                expandOnMobile && onToggleRow ? (
+                  <Fragment>
+                    <div className={`rank-table__mrow is-clickable${open ? ' is-open' : ''}`} role="row" onClick={() => onToggleRow(row)}
+                      aria-expanded={renderExpanded ? open : undefined}>{renderMobileRow(row)}</div>
+                    {open && renderExpanded ? <div className="rank-table__expand rank-table__expand--m">{renderExpanded(row)}</div> : null}
+                  </Fragment>
+                ) : <div className="rank-table__mrow" role="row">{renderMobileRow(row)}</div>
               ) : (
                 <Fragment>
                   <div role="row" className={`rank-table__row${open ? ' is-open' : ''}${onToggleRow ? ' is-clickable' : ''}`}
@@ -124,6 +137,11 @@ export default function RankTable<T>(props: RankTableProps<T>) {
           );
         })}
       </div>
+      {collapseAfter != null && allRows.length > collapseAfter ? (
+        <button type="button" className="link-button rank-table__more" onClick={() => setShowAll(v => !v)}>
+          {showAll ? `상위 ${collapseAfter}개만 보기` : `전체 ${allRows.length.toLocaleString('ko-KR')}개 보기`}
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -22,6 +22,12 @@ describe('buildTagTrends', () => {
     expect([...r.risers, ...r.fallers].map(t => t.tag)).toEqual([]);
   });
 
+  it('들어옴은 끝날, 빠짐은 첫날 작품 5편 이상만 — 1↔2편을 오가며 깜빡이는 꼬리 태그를 거른다', () => {
+    const r = buildTagTrends(S({ a: row([null, 90, 88, 85], 2), b: row([95, 96, null, null], 2), c: row([null, 40, 38, 30], 6), d: row([50, 52, null, null], 7) }));
+    expect(r.entered.map(e => e.tag)).toEqual(['c']);
+    expect(r.left.map(e => e.tag)).toEqual(['d']);
+  });
+
   it('작품 5편 미만(시작 또는 끝)은 뜬·식은에서 뺀다', () => {
     const r = buildTagTrends(S({ a: row([20, 15, 12, 10], [4, 6, 6, 6]), b: row([30, 25, 22, 21]) }));
     expect(r.risers.map(t => t.tag)).toEqual(['b']);

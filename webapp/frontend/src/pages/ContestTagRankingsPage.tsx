@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { Search as SearchIcon } from 'react-bootstrap-icons';
@@ -94,7 +94,15 @@ function DailyContestTags() {
         rankBasis="일간 순위" topLabel="일간 순위 100위 안" restLabel="일간 순위가 매겨진 나머지 작품"
         ariaLabel="공모전 태그 순위"
         emptyText="이 날짜는 일간 순위가 없어 태그 순위도 없습니다. 일간 순위는 직전 수집일과 비교할 수 있는 다음 날부터 생깁니다."
-        noMapText="상위권 집중도를 계산할 만큼 태그가 모이지 않아 지도를 그리지 않습니다." />
+        noMapText="상위권 집중도를 계산할 만큼 태그가 모이지 않아 지도를 그리지 않습니다."
+        liftRule="참가작이 많아 상위 100위 안에 1편뿐인 태그도 계산하지 않습니다(우연과 구별되지 않습니다)."
+        // 공모전 태그 시계열 API 가 아직 없어 순위선 없이 그 태그의 참가작 목록으로 가는 길만 둔다(DECISIONS 2026-10-03 의 미룸).
+        renderExpanded={t => (
+          <div className="row-expand row-expand--tag">
+            <span>작품 <b>{formatInt(t.count)}편</b></span>
+            <Link to={`/contests/${year}/${dateParam}?tag=${encodeURIComponent(t.tag)}`} className="row-expand__go" onClick={e => e.stopPropagation()}>'{t.tag}' 작품 보기</Link>
+          </div>
+        )} />
     </div>
   );
 }
@@ -225,7 +233,7 @@ function CumulativeContestTags() {
       {error ? <p className="empty-line">{error}</p>
         : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
         : (
-          <RankTable ariaLabel="공모전 태그 순위" rows={rows} rowKey={r => r.tag} columns={columns} rowHeight={48}
+          <RankTable ariaLabel="공모전 태그 순위" rows={rows} rowKey={r => r.tag} columns={columns} rowHeight={48} collapseAfter={50}
             sort={sort} onSort={onSort} renderMobileRow={mobileRow} onRowHover={r => setHover(r?.tag ?? null)}
             emptyText={tags.length === 0 ? '이 날짜의 태그 랭킹이 없습니다.' : '검색된 태그가 없습니다.'} />
         )}

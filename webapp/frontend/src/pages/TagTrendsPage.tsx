@@ -39,7 +39,7 @@ const EMPTY_TEXT: Record<Tab, string> = {
 
 const NOTES = [
   { id: 'tau', content: <>순서 일치도 = 첫날과 마지막 날에 다 있는 태그 두 개씩 짝지어, 두 날의 앞뒤가 같으면 +1 · 뒤집히면 −1로 센 평균(Kendall τ). 1이면 순서 그대로, 0이면 무작위입니다.</> },
-  { id: 'elig', content: <>뜬 태그 · 식은 태그 · 치솟았다 돌아옴 · 많이 출렁임은 첫날과 마지막 날 모두 작품 {MIN_WORKS}편 이상인 태그만 봅니다. 치솟았다 돌아옴은 첫날·마지막 날 중 나은 순위보다 {SPIKE_MIN}계단 이상 위로 갔던 태그, 많이 출렁임은 기록이 {SWING_DAYS}일 이상인 태그 중 최고~최저 폭이 큰 {SWING_TOP}개입니다.</> },
+  { id: 'elig', content: <>뜬 태그 · 식은 태그 · 치솟았다 돌아옴 · 많이 출렁임은 첫날과 마지막 날 모두, 새로 들어옴은 마지막 날 · 빠짐은 첫날 작품 {MIN_WORKS}편 이상인 태그만 봅니다. 치솟았다 돌아옴은 첫날·마지막 날 중 나은 순위보다 {SPIKE_MIN}계단 이상 위로 갔던 태그, 많이 출렁임은 기록이 {SWING_DAYS}일 이상인 태그 중 최고~최저 폭이 큰 {SWING_TOP}개입니다.</> },
 ];
 
 const rank = (n: number) => `${formatInt(n)}위`;
@@ -151,7 +151,7 @@ export default function TagTrendsPage() {
       <div className="rank-mrow__main">{tagCell(t.tag)}<p>{facts}</p></div>
     </div>
   );
-  const common = { rowKey: (r: { tag: string }) => r.tag, rowHeight: 52, expandedKey: openTag, emptyText: EMPTY_TEXT[tab] };
+  const common = { rowKey: (r: { tag: string }) => r.tag, rowHeight: 52, expandedKey: openTag, expandOnMobile: true, emptyText: EMPTY_TEXT[tab] };
 
   const table = () => {
     switch (tab) {

@@ -1,7 +1,7 @@
 /**
  * 태그 트렌드 — 기간 안의 모든 수집일 시계열(`/api/trends/tags/series`)에서 시작과 끝을 견준 목록들.
  * 2026-09-30 페이지에서 분리. 목록 정의는 그대로다:
- *  - 뜬·식은·치솟음·출렁임은 시작·끝 모두 작품 MIN_WORKS편 이상인 태그만(꼬리 태그가 변동 상위를 채우지 않게.
+ *  - 뜬·식은·치솟음·출렁임은 시작·끝 모두, 들어옴은 끝날·빠짐은 첫날 작품 MIN_WORKS편 이상인 태그만(꼬리 태그가 변동 상위를 채우지 않게.
  *    실측: 하한 없을 때 최대 +93계단이 '1작품 → 7작품'짜리였다).
  *  - 정렬은 화면에 보이는 값(순위 변동) 우선, 동률은 인기 점수 변화율.
  *  - 치솟음은 고정 문턱 대신 3계단(관측 노이즈 경계) — 7일 창은 최대가 +6이라 큰 문턱이면 늘 빈 목록이 된다.
@@ -94,8 +94,10 @@ export function buildTagTrends(series: TagSeriesResponse | null): TagTrendLists 
   for (const [tag, s] of Object.entries(tags)) {
     const inFirst = s.rank[0] != null;
     const inLast = s.rank[lastIdx] != null;
-    if (!inFirst && inLast) { entered.push({ tag, rank: s.rank[lastIdx]!, count: s.count[lastIdx] ?? 0 }); continue; }
-    if (inFirst && !inLast) { left.push({ tag, rank: s.rank[0]!, count: s.count[0] ?? 0 }); continue; }
+    // 들어옴·빠짐도 MIN_WORKS 를 건다 — 등장 2회 미만은 적재가 지우므로(노이즈 제거), 1↔2편을 오가는 꼬리 태그가
+    // '없다가 생김'으로 보여 두 목록을 거의 다 채웠다(2026-10-05 리뷰: 들어옴 13개 전부 끝날 2~3편).
+    if (!inFirst && inLast) { if ((s.count[lastIdx] ?? 0) >= MIN_WORKS) entered.push({ tag, rank: s.rank[lastIdx]!, count: s.count[lastIdx] ?? 0 }); continue; }
+    if (inFirst && !inLast) { if ((s.count[0] ?? 0) >= MIN_WORKS) left.push({ tag, rank: s.rank[0]!, count: s.count[0] ?? 0 }); continue; }
     if (!inFirst) continue;
     const points: TrendPoint[] = [];
     dates.forEach((date, i) => {

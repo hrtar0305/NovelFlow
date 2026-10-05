@@ -36,13 +36,15 @@ interface DailyTagBoardProps {
   emptyText: string;
   /** 지도를 그릴 수 없을 때(집중도가 없는 날)의 한 줄. */
   noMapText: string;
+  /** 집중도 각주 끝에 붙는 판별 규칙(공모전: 상위 100 안 1편뿐인 태그 제외). */
+  liftRule?: string;
   /** 있으면 행을 눌러 펼친다. */
   renderExpanded?: (t: Row) => ReactNode;
   onOpenTag?: (tag: string | null) => void;
 }
 
 export default function DailyTagBoard({
-  tags, loading, error, resetKey, rankBasis, topLabel, restLabel, ariaLabel, emptyText, noMapText, renderExpanded, onOpenTag,
+  tags, loading, error, resetKey, rankBasis, topLabel, restLabel, ariaLabel, emptyText, noMapText, liftRule, renderExpanded, onOpenTag,
 }: DailyTagBoardProps) {
   const [sort, setSort] = useState<TagSort>(DEFAULT_TAG_SORT);
   const [zone, setZone] = useState<Zone>('all');
@@ -57,9 +59,9 @@ export default function DailyTagBoard({
 
   const notes = useMemo(() => [
     { id: 'zone', content: <>구역 = 작품 수가 그날 상위 25% 안인지 × 상위권 집중도가 1.0 이상인지. 오늘의 대세는 둘 다, 숨은 강자는 적게 쓰이지만 상위권에 몰린 태그, 과포화는 많이 쓰이지만 덜 몰린 태그, 오늘 약세는 둘 다 아닌 태그입니다.</> },
-    { id: 'lift', content: <>상위권 집중도 = {topLabel}에서의 등장 비율 ÷ {restLabel}에서의 등장 비율. 1.0이면 순위와 무관하게 고르게 쓰인 태그입니다. 작품 5편 미만인 태그는 계산하지 않습니다.</> },
+    { id: 'lift', content: <>상위권 집중도 = {topLabel}에서의 등장 비율 ÷ {restLabel}에서의 등장 비율. 1.0이면 순위와 무관하게 고르게 쓰인 태그입니다. 작품 5편 미만인 태그는 계산하지 않습니다.{liftRule ? ` ${liftRule}` : ''}</> },
     { id: 'power', content: <>인기 점수 = 태그가 달린 작품마다 1 ÷ ln({rankBasis} + 1)을 더한 값. 상위 작품일수록 크게 반영되며, 태그 순위가 이 점수 순입니다.</> },
-  ], [rankBasis, topLabel, restLabel]);
+  ], [rankBasis, topLabel, restLabel, liftRule]);
 
   const zoned = useMemo(() => withZones(tags), [tags]);
   const cut = useMemo(() => mainstreamCut(tags), [tags]);
@@ -156,6 +158,8 @@ export default function DailyTagBoard({
               renderExpanded,
             } : {})}
             onRowHover={t => setHover(t?.tag ?? null)}
+            // 수백 개를 다 펼치면 아래 지도·각주가 1~3만 px 밑에 묻힌다 — 상위 50개만, 나머지는 '전체 보기'(사용자 2026-10-05).
+            collapseAfter={50} expandOnMobile
             renderMobileRow={mobileRow}
             emptyText={tags.length === 0 ? emptyText : '조건에 맞는 태그가 없습니다.'} />
         )}
@@ -166,7 +170,7 @@ export default function DailyTagBoard({
           <section className="tag-map">
             <div className="tag-map__head">
               <h2>태그 지형 지도</h2>
-              {hasZones ? <span className="tag-map__meta">태그 {formatInt(mapRows.length)}개{excluded > 0 ? ` · 작품 5편 미만 ${formatInt(excluded)}개 제외` : ''}</span> : null}
+              {hasZones ? <span className="tag-map__meta">태그 {formatInt(mapRows.length)}개{excluded > 0 ? ` · 집중도를 계산하지 않은 ${formatInt(excluded)}개 제외` : ''}</span> : null}
             </div>
             {hasZones && cut != null ? (
               <>

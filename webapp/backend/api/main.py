@@ -1170,14 +1170,16 @@ def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: O
     response.headers["Cache-Control"] = "public, max-age=600, s-maxage=600"
     return {**out, 'first_date': first, 'tracked': bool(item)}
 
-def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5, rest_total: int = 400) -> Optional[float]:
+def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5, rest_total: int = 400, min_top: int = 0) -> Optional[float]:
     """
     Local Lift = top100_rate / rest_rate
     상위 100개와 나머지(데일리는 늘 400개)를 상호 배타적으로 비교하여 순위 관통력을 측정합니다.
     min_count 미만 태그는 노이즈로 간주하여 None 반환. 공모전 일간 순위는 순위가 매겨진 작품 수가 날마다 달라
     `rest_total = RankedTotal − 100` 을 넘긴다(100 이하면 나머지가 없어 None).
+    `min_top`: 상위 100 안 작품이 1편 이상 이 수 미만이면 None — 공모전은 모수(약 2,700편)가 커서 상위 100 안 1편만으로
+    5편짜리 태그가 6.5배가 된다. 우연과 구별되지 않는다(2026-10-05 리뷰: '숨은 강자' 54개 중 31개가 1편). 0편은 그대로 센다.
     """
-    if count_total < min_count or rest_total <= 0:
+    if count_total < min_count or rest_total <= 0 or 0 < count_top100 < min_top:
         return None
     count_bottom = count_total - count_top100
     top100_rate = count_top100 / 100.0
@@ -1656,7 +1658,7 @@ def _contest_daily_tag_ranking(tbl, date: str) -> Optional[list]:
     counts = item.get('TagCounts', {}) or {}
     top = item.get('TagCountsTop100', {}) or {}
     rows = [{'tag': t, 'power_score': float(v), 'count': int(counts.get(t, 0)),
-             'local_lift': _compute_local_lift(int(top.get(t, 0)), int(counts.get(t, 0)), rest_total=ranked_total - 100)}
+             'local_lift': _compute_local_lift(int(top.get(t, 0)), int(counts.get(t, 0)), rest_total=ranked_total - 100, min_top=2)}
             for t, v in scores.items()]
     rows.sort(key=lambda x: (-x['power_score'], x['tag']))
     for i, r in enumerate(rows, 1):
@@ -2068,11 +2070,12 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
     )
     pace_top = [ratio_row(w) for w in paced[:15]]
 
-    # 잔류율은 **회차가 늘어난 작품만** 본다. 최신 잔류는 연재가 멈추면 최신화
-    # 조회수가 계속 차서 올라가므로, 완결·휴재작이 섞이면 목록이 그것들로만 찬다.
+    # 잔류율은 **지금 연재 중인 작품만**(마지막 7일에 회차가 늘어난 작품) 본다. 최신 잔류는 연재가 멈추면 최신화
+    # 조회수가 계속 차서 올라가므로, 완결·휴재작이 섞이면 목록이 그것들로만 찬다. '기간 동안 늘었나'로 거르면
+    # 90일 창 초반에 몇 화 올리고 멈춘 작품이 최신 잔류 136% 로 1위가 됐다(2026-10-05 리뷰).
     active = [
         w for n, w in works.items()
-        if n in end_ids and (w['added_eps'] or 0) > 0
+        if n in end_ids and (w['recent_added_eps'] or 0) > 0
         and end_by_id[n].get('EarlyRetentionRate') is not None
         and end_by_id[n].get('RecentRetentionRate') is not None
     ]

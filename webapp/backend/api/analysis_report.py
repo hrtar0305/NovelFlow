@@ -20,6 +20,8 @@ from typing import Any
 # 기간 동안의 조회 증가분이 작으면 몇 건에 비율이 출렁인다. 30일 실측에서 258편 중
 # 이 하한을 넘는 것이 258편이라 사실상 전부 남는다(음수 0건).
 DELTA_VIEW_FLOOR = 5_000
+# '지금 연재 중'을 보는 창(일). 주 1회 연재도 걸리게 7일.
+RECENT_DAYS = 7
 
 # 주당 회차 분포 버킷. 상한을 열어 두는 마지막 칸이 필요하다 —
 # 주당 30화가 넘는 값이 실제로 관측되는데, 그것을 무엇이라 규정하지는 않는다.
@@ -61,7 +63,7 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
                     'first_eps': None, 'last_eps': None,
                     'first_view': None, 'last_view': None,
                     'first_like': None, 'last_like': None,
-                    'first_date': None, 'last_date': None,
+                    'first_date': None, 'last_date': None, 'eps_obs': [],
                 }
             w['ranks'].append(s['rank'][i])
             w['dates'].append(date)
@@ -75,6 +77,7 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
             w['last_view'] = s['view'][i]
             w['last_like'] = s['like'][i]
             w['last_date'] = date
+            w['eps_obs'].append((date, s['eps'][i]))
             w['value_obs'] += 1
 
     for w in out.values():
@@ -84,10 +87,15 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
         w['avg_rank'] = sum(rs) / len(rs)
         w['observations'] = len(rs)
         if w['first_eps'] is None:
-            w['added_eps'] = w['per_week'] = None
+            w['added_eps'] = w['per_week'] = w['recent_added_eps'] = None
             w['delta_view'] = w['delta_like'] = w['period_ratio'] = None
             continue
         w['added_eps'] = w['last_eps'] - w['first_eps']
+        # 마지막 7일에 늘어난 회차 — '지금 연재 중'인지. 기간 초반에만 올리고 멈춘 작품도 added_eps 는 양수라,
+        # 잔류율 목록이 연재가 멈춘 작품(최신 잔류가 계속 차오른다)으로 찬다. 기준값 = 마지막 날 −7일 이하의 마지막 값
+        # (그만큼 관측되지 않았으면 첫 값).
+        before = [e for d, e in w['eps_obs'] if _day_gap(d, w['last_date']) >= RECENT_DAYS]
+        w['recent_added_eps'] = w['last_eps'] - (before[-1] if before else w['first_eps'])
         span = _day_gap(w['first_date'], w['last_date'])
         w['per_week'] = (w['added_eps'] / span) * 7 if span else 0.0
         dv = w['last_view'] - w['first_view']

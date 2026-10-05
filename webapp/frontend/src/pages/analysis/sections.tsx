@@ -29,12 +29,13 @@ const Work = ({ id, title, author }: { id: string; title: string | null; author:
   </span>
 );
 
-/** 표. 몇십 줄이라 가상화가 필요 없고, 좁은 화면에서는 가로로 민다. */
+/** 표. 몇십 줄이라 가상화가 필요 없다. 좁은 화면에서는 행마다 제목 한 줄 + 이름표 붙은 수치로 접는다(`data-label` — 가로로 밀면
+ *  이 섹션의 핵심 수치(잔류율·주당)가 화면 밖에 있었다). */
 const Table = ({ head, rows }: { head: ReactNode[]; rows: { key: string; cells: ReactNode[] }[] }) => (
   <div className="an-table-wrap">
     <table className="an-table">
       <thead><tr>{head.map((h, i) => <th key={i} scope="col">{h}</th>)}</tr></thead>
-      <tbody>{rows.map(r => <tr key={r.key}>{r.cells.map((c, i) => <td key={i}>{c}</td>)}</tr>)}</tbody>
+      <tbody>{rows.map(r => <tr key={r.key}>{r.cells.map((c, i) => <td key={i} data-label={typeof head[i] === 'string' ? head[i] : undefined}>{c}</td>)}</tr>)}</tbody>
     </table>
   </div>
 );
@@ -185,7 +186,7 @@ export const RatioSection = ({ report }: { report: AnalysisReport }) => {
 
 export const RetentionSection = ({ report }: { report: AnalysisReport }) => (
   <Section title="회차를 넘겨도 독자가 남는 작품"
-    foot="초반 잔류 = 30화 조회수 ÷ 1화 조회수, 최신 잔류 = 최신화 조회수 ÷ 30화 전 조회수(흔히 쓰는 연독률과는 다른 값). 두 값을 후보 안 백분위로 바꿔 평균한 순서이고, 이 기간에 회차가 늘어난 작품만 넣었습니다 — 연재가 멈추면 최신화 조회수가 계속 차서 최신 잔류가 올라갑니다.">
+    foot="초반 잔류 = 30화 조회수 ÷ 1화 조회수, 최신 잔류 = 최신화 조회수 ÷ 30화 전 조회수(흔히 쓰는 연독률과는 다른 값). 두 값을 후보 안 백분위로 바꿔 평균한 순서이고, 마지막 7일에 회차가 늘어난(지금 연재 중인) 작품만 넣었습니다 — 연재가 멈추면 최신화 조회수가 계속 차서 최신 잔류가 올라갑니다.">
     {report.retention.rows.length === 0 ? <Empty>해당 작품이 없습니다.</Empty> : (
       <Table head={['지금 순위', '제목', '늘어난 회차', '초반 잔류', '최신 잔류']}
         rows={report.retention.rows.map(n => ({
