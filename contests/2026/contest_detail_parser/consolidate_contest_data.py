@@ -17,6 +17,8 @@ class Config:
     # 작가 다른 작품 색인(ID 수집기가 유지). 비우면 붙이지 않는다.
     STATE_BUCKET = os.environ.get('STATE_BUCKET')
     AUTHOR_INDEX_KEY = 'state/author_works.json'
+    # 공모전 개막일(2026-10-01 12:00 개막). 참가작은 모두 이날 0 에서 출발한다 — `opening_day_ids`.
+    CONTEST_OPEN_DATE = os.environ.get('CONTEST_OPEN_DATE', '2026-10-01')
     # 기록 날짜 D 의 수집 = D+1 00:00 KST. 그 뒤 이만큼 안에 수집기가 처음 찾은 번호까지 D 의 작품으로 친다(`_found_after_date`).
     # 자정 수집기는 길어야 12분(ID 수집 마감) — 그 뒤(손 실행 등)에 찾은 번호는 그 날짜의 작품이 아니다(그림자 실행 2026-10-03 실측:
     # 2시간 여유면 00:38 손 실행이 찾은 자정 뒤 등록작 20편이 전날로 들어갔다).
@@ -113,6 +115,14 @@ def _found_after_date(date, meta):
         return datetime.fromisoformat(seen) >= upper
     except (TypeError, ValueError):
         return False
+
+
+def opening_day_ids(prev_date, date, items):
+    """개막일(직전 수집 없음)의 신작 = 참가작 전부. 모두 개막 뒤 0 에서 출발해 누적 조회가 곧 그날 조회라, 그날도 일간 순위를 매긴다
+    (사용자 2026-10-05 — 전에는 첫 수집일이라 비워 10/02 변동이 전부 New 였다). 다른 날은 빈 집합."""
+    if prev_date is None and date == Config.CONTEST_OPEN_DATE:
+        return {str(i.get('ID')) for i in items}
+    return set()
 
 
 def new_since(prev_date, items, prev_views, contest_meta, date=None):
@@ -297,7 +307,8 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
 
     # 3. 일간 순위(대표 순위) — 직전 수집일 대비 누적 조회 증가
     prev_date, prev_views = _previous_views(dynamodb_table, processed_items[0]['Date'], execution_id)
-    new_ids = new_since(prev_date, processed_items, prev_views, _load_contest_meta(execution_id), processed_items[0]['Date'])
+    new_ids = new_since(prev_date, processed_items, prev_views, _load_contest_meta(execution_id), processed_items[0]['Date']) \
+        | opening_day_ids(prev_date, processed_items[0]['Date'], processed_items)
     daily_rank(processed_items, prev_views, new_ids)
     _log(logging.INFO, execution_id, "Daily rank computed.", prev_date=prev_date, new_novels=len(new_ids),
          ranked=sum(1 for i in processed_items if 'DailyRank' in i))
