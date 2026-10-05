@@ -6,7 +6,7 @@
     "Defaults": {
       "Type": "Pass",
       "Parameters": {
-        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false, \"inject_fail_mod\": 0, \"reprocess\": false, \"fail_first_attempt\": false, \"accept_partial\": false}'), $$.Execution.Input, false)",
+        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false, \"inject_fail_mod\": 0, \"reprocess\": false, \"fail_first_attempt\": false, \"accept_partial\": false, \"concurrency\": 10, \"history_concurrency\": 10}'), $$.Execution.Input, false)",
         "Discover": {
           "done": true,
           "fallback": false,
@@ -341,15 +341,15 @@
             },
             "FirstRound": {
               "Type": "Pass",
-              "Comment": "첫 라운드: 전체 목록, 20편 묶음, 동시 10. 묶음은 EXPRESS 자식(최대 5분) 안에 끝나야 한다 — 처리량은 동시 수가 정하고 묶음 크기는 자식 하나의 소요만 정하므로 줄여도 느려지지 않는다(파서 시간 예산 170초 + ParseBatch 280초 제한).",
-              "Result": {
+              "Comment": "첫 라운드: 전체 목록, 20편 묶음, 동시 10(실행 입력 concurrency 로 바꾼다 — 시험용). 묶음은 EXPRESS 자식(최대 5분) 안에 끝나야 한다 — 처리량은 동시 수가 정하고 묶음 크기는 자식 하나의 소요만 정하므로 줄여도 느려지지 않는다(파서 시간 예산 170초 + ParseBatch 280초 제한).",
+              "ResultPath": "$.Work",
+              "Next": "ParseMap",
+              "Parameters": {
                 "round": 0,
                 "missing_key": "contest_novel_ids_2026.json",
                 "batch": 20,
-                "concurrency": 10
-              },
-              "ResultPath": "$.Work",
-              "Next": "ParseMap"
+                "concurrency.$": "$.args.concurrency"
+              }
             },
             "ParseMap": {
               "Type": "Map",
@@ -534,7 +534,7 @@
                   "Next": "NormalizeErr"
                 }
               ],
-              "Next": "Degraded?",
+              "Next": "History?",
               "Comment": "최종 적재. attempt(StartAttempt 결과 통째로)가 2 이상이면 자동 재실행으로 적재한 날이라 알림(멘션 없음)에 얼마나 늦었는지 싣는다. TooManyMissing 은 여기서 다시 부르지 않고 시도 전체를 실패시킨다 — 병렬 단계 Run 이 마감 안이면 한 번 처음부터 다시 받는다."
             },
             "Degraded?": {
@@ -755,6 +755,110 @@
             },
             "AttemptDone": {
               "Type": "Succeed"
+            },
+            "History?": {
+              "Type": "Choice",
+              "Comment": "연재 기록 단계 — 원본 재계산(reprocess)이면 건너뛴다(그날 값을 다시 계산할 뿐, 회차 목록을 다시 받을 일이 아니다).",
+              "Choices": [
+                {
+                  "Variable": "$.args.reprocess",
+                  "BooleanEquals": true,
+                  "Next": "Degraded?"
+                }
+              ],
+              "Default": "HistoryRound"
+            },
+            "HistoryRound": {
+              "Type": "Pass",
+              "Comment": "자정 수집·적재가 끝난 뒤 같은 전체 목록으로 연재 기록만 받는다(2026-10-06). 수집 묶음 안에서 받으면 작품당 약 1초가 늘어 작품 값을 받는 시각이 00:00~00:13 으로 퍼졌다.",
+              "Parameters": {
+                "key": "contest_novel_ids_2026.json",
+                "batch": 20,
+                "concurrency.$": "$.args.history_concurrency"
+              },
+              "ResultPath": "$.HWork",
+              "Next": "HistoryMap"
+            },
+            "HistoryMap": {
+              "Type": "Map",
+              "ItemReader": {
+                "Resource": "arn:aws:states:::s3:getObject",
+                "ReaderConfig": {
+                  "InputType": "JSON"
+                },
+                "Parameters": {
+                  "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
+                  "Key.$": "$.HWork.key"
+                }
+              },
+              "ItemBatcher": {
+                "MaxItemsPerBatchPath": "$.HWork.batch",
+                "BatchInput": {
+                  "execution_id.$": "$$.Execution.Name",
+                  "date.$": "$.Resolved.date",
+                  "raw.$": "$.args.raw",
+                  "dry_run.$": "$.args.dry_run",
+                  "history": true
+                }
+              },
+              "MaxConcurrencyPath": "$.HWork.concurrency",
+              "ToleratedFailurePercentage": 100,
+              "ItemProcessor": {
+                "ProcessorConfig": {
+                  "Mode": "DISTRIBUTED",
+                  "ExecutionType": "EXPRESS"
+                },
+                "StartAt": "HistoryBatch",
+                "States": {
+                  "HistoryBatch": {
+                    "Type": "Task",
+                    "Comment": "연재 기록 묶음(parser history_dmap_batch). 실패는 묶음 안에 가두고, 묶음째 실패해도 다음 확인이 마지막 확인일부터 채운다.",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_AWS_ACCOUNT_ID:function:novelflow-contest-2026-parser-dmap",
+                      "Payload.$": "$"
+                    },
+                    "OutputPath": "$.Payload",
+                    "TimeoutSeconds": 280,
+                    "Retry": [
+                      {
+                        "ErrorEquals": [
+                          "Lambda.TooManyRequestsException",
+                          "Lambda.ServiceException",
+                          "Lambda.AWSLambdaException",
+                          "Lambda.SdkClientException"
+                        ],
+                        "IntervalSeconds": 10,
+                        "MaxAttempts": 2,
+                        "BackoffRate": 2
+                      }
+                    ],
+                    "End": true
+                  }
+                }
+              },
+              "ResultWriter": {
+                "Resource": "arn:aws:states:::s3:putObject",
+                "Parameters": {
+                  "Bucket": "novelflow-contest-2026-YOUR_AWS_ACCOUNT_ID",
+                  "Prefix": "history-results"
+                }
+              },
+              "ResultSelector": {
+                "manifest.$": "$.ResultWriterDetails"
+              },
+              "ResultPath": "$.History",
+              "Comment": "연재 기록은 부가 정보다 — 이 단계가 실패해도 그날 수집은 성공으로 끝낸다(Catch → Degraded?).",
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.HistoryErr",
+                  "Next": "Degraded?"
+                }
+              ],
+              "Next": "Degraded?"
             }
           }
         }
