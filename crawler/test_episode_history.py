@@ -54,5 +54,87 @@ class T(unittest.TestCase):
         self.assertEqual(r['days']['2026-10-06'], None)        # 마지막 확인 뒤
         self.assertEqual(r['known_until'], '2026-10-05')
 
+def page(rows):
+    return ''.join(row(*r) for r in rows)
+
+class Collect(unittest.TestCase):
+    AT = datetime(2026, 10, 5, 0, 5, tzinfo=KST)
+
+    def fetcher(self, pages):
+        calls = []
+        def fetch(n):
+            calls.append(n)
+            return (pages[min(n, len(pages) - 1)], self.AT)
+        return fetch, calls
+
+    def test_no_history_fetches_to_the_end(self):
+        fetch, calls = self.fetcher([page([(3, 'EP.3', '26.10.04'), (2, 'EP.2', '26.10.03')]), page([(1, 'EP.1', '26.10.01')])])
+        r = eh.collect(fetch, None)
+        self.assertEqual(calls, [0, 1])
+        self.assertTrue(r['complete'])
+        self.assertEqual(r['covered_from'], '0000-01-01')
+        self.assertEqual([e[0] for e in r['seen']], ['3', '2', '1'])
+
+    def test_with_history_stops_at_checked_date(self):
+        fetch, calls = self.fetcher([page([(5, 'EP.5', '26.10.04'), (4, 'EP.4', '26.10.04')]),
+                                     page([(3, 'EP.3', '26.10.03'), (2, 'EP.2', '26.10.02')]), page([(1, 'EP.1', '26.10.01')])])
+        r = eh.collect(fetch, {'CheckedAt': '2026-10-03T21:00:00+09:00', 'Complete': True})
+        self.assertEqual(calls, [0, 1])
+        self.assertTrue(r['complete'])
+        self.assertEqual(r['covered_from'], '2026-10-02')
+
+    def test_page_cap_leaves_incomplete(self):
+        fetch, calls = self.fetcher([page([(i, f'EP.{i}', '26.10.04')]) for i in range(10, 0, -1)])
+        r = eh.collect(fetch, None, max_pages=3)
+        self.assertEqual(len(calls), 3)
+        self.assertFalse(r['complete'])
+
+    def test_prefetched_pages_are_reused(self):
+        fetch, calls = self.fetcher([None, page([(1, 'EP.1', '26.10.01')])])
+        r = eh.collect(fetch, None, prefetched={0: (page([(2, 'EP.2', '26.10.02')]), self.AT)})
+        self.assertEqual(calls, [1])
+        self.assertEqual(r['pages_fetched'], 1)
+
+    def test_boundary_date_is_not_marked_gone(self):
+        h = {'Episodes': {'9': ['2026-10-02', None, None]}, 'CheckedAt': 'x', 'Complete': True}
+        h2 = eh.merge(h, [['3', 'EP.3', '2026-10-03', ''], ['2', 'EP.2', '2026-10-02', '']], 'now', '2026-10-02', True, [])
+        self.assertIsNone(h2['Episodes']['9'][2])
+
+class FakeTable:
+    """DynamoDB Table 흉내: get_item / put_item(ConditionExpression 은 Version 비교만 흉내)."""
+    class Conflict(Exception):
+        pass
+    def __init__(self, item=None, race=0):
+        self.item, self.race, self.puts = item, race, 0
+    def get_item(self, Key, ConsistentRead=False):
+        return {'Item': dict(self.item)} if self.item else {}
+    def put_item(self, Item, ConditionExpression=None, **kw):
+        expected = (kw.get('ExpressionAttributeValues') or {}).get(':v')
+        current = (self.item or {}).get('Version')
+        if self.race:
+            self.race -= 1
+            self.item = {**(self.item or {'NovelId': Item['NovelId'], 'Episodes': {}}), 'Version': (current or 0) + 1}
+            raise self.Conflict()
+        if expected is not None and current != expected:
+            raise self.Conflict()
+        if expected is None and self.item is not None:
+            raise self.Conflict()
+        self.item, self.puts = Item, self.puts + 1
+
+class Update(unittest.TestCase):
+    def test_creates_then_updates(self):
+        t = FakeTable()
+        eh.update_record(t, '7', lambda old: eh.merge(old, [['1', 'EP.1', '2026-10-01', '']], 'a', eh.FULL, True, []), conflict=FakeTable.Conflict)
+        self.assertEqual(t.item['Version'], 1)
+        eh.update_record(t, '7', lambda old: eh.merge(old, [['1', 'EP.1', '2026-10-01', ''], ['2', 'EP.2', '2026-10-02', '']], 'b', eh.FULL, True, []), conflict=FakeTable.Conflict)
+        self.assertEqual(sorted(t.item['Episodes']), ['1', '2'])
+        self.assertEqual(t.item['Version'], 2)
+
+    def test_retries_once_on_conflict(self):
+        t = FakeTable(item={'NovelId': '7', 'Episodes': {}, 'Version': 1}, race=1)
+        eh.update_record(t, '7', lambda old: eh.merge(old, [['1', 'EP.1', '2026-10-01', '']], 'a', eh.FULL, True, []), conflict=FakeTable.Conflict)
+        self.assertEqual(t.puts, 1)
+        self.assertIn('1', t.item['Episodes'])
+
 if __name__ == '__main__':
     unittest.main()

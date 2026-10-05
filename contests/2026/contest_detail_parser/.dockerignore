@@ -8,3 +8,5 @@ consolidate_contest_data.py
 
 # Ignore Step Functions Workflow JSON definitions
 *.json
+# 테스트는 이미지에 넣지 않는다
+test_*.py
