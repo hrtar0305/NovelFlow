@@ -61,5 +61,14 @@ class T(unittest.TestCase):
         self.assertEqual(sorted(t.item['Episodes']), ['4', '5', '6', '7', '8', '9'])
         self.assertEqual(r['pages'], 1)
 
+    def test_out_of_time_skips_write_for_existing_record(self):
+        t = Table({'NovelId': '1', 'Episodes': {}, 'CheckedAt': '2026-09-20T21:02:00+09:00', 'Complete': True, 'Version': 3})
+        s = Session(['', row(5, 'EP.5', '26.09.25')])
+        raw = [self.up(0, row(9, 'EP.9', '26.10.05') + row(8, 'EP.8', '26.10.01'))]
+        with self.assertRaises(app.eh.OutOfTime):
+            app._update_history(s, '1', '2026-10-05', raw, AT, 'x', table=t, s3=S3(), conflict=Table.Conflict, out_of_time=lambda: True)
+        self.assertEqual((s.calls, t.puts), ([], 0))
+
+
 if __name__ == '__main__':
     unittest.main()

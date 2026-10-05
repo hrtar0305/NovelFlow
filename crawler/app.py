@@ -486,7 +486,7 @@ def _history_table():
     return _history_table_obj
 
 
-def _update_history(session, novel_id, today, raw_pages, detail_at, execution_id, table=None, s3=None, conflict=None):
+def _update_history(session, novel_id, today, raw_pages, detail_at, execution_id, table=None, s3=None, conflict=None, out_of_time=None):
     """연재 기록 갱신 — 최신순 목록을 마지막 확인일까지 본다(공모전 `_attach_history` 와 같은 규칙). 잔류율이 받은 최신순 쪽은
     다시 받지 않는다. 더 받은 쪽은 **SQS 원본에 얹지 않고**(메시지 256KB 한도 — 처음 보는 작품은 최대 120쪽) 원본 버킷
     `episode-history/{date}/{id}.json.gz` 에 따로 둔다. 처음 본 시각 = 상세를 받은 시각. 반환: {new, gone, pages, complete}."""
@@ -501,8 +501,12 @@ def _update_history(session, novel_id, today, raw_pages, detail_at, execution_id
     def fetch(n):
         return _get_episode_list_html(session, novel_id, 'UP', page=n, pages=extra), at
 
+    def fetch_down(n):   # 다 받지 못한 기록을 오래된 쪽부터 채울 때
+        return _get_episode_list_html(session, novel_id, 'DOWN', page=n, pages=extra), at
+
     try:
-        r = eh.collect(fetch, old, prefetched=prefetched)
+        # 시간 예산: 기록 때문에 Lambda 가 SQS 전송 전에 끝나면 이 작품이 재시도·자리표시가 된다(수집을 막는다).
+        r = eh.collect(fetch, old, prefetched=prefetched, fetch_down=fetch_down, out_of_time=out_of_time)
     finally:
         # 받은 것은 남긴다(중간에 실패해도) — 기록은 못 써도 원본이 있으면 나중에 다시 계산할 수 있다.
         if extra and Config.RAW_BUCKET:
@@ -897,7 +901,10 @@ def parse_novel_details(event, context):
                 status = "SUCCESS"
 
                 try:
-                    h = _update_history(session, novel_id, today, raw_pages, detail_at, execution_id)
+                    # 남은 시간 60초 아래면 더 받지 않는다(한 쪽 최악 ≈ 30초 + SQS 전송).
+                    left = getattr(context, 'get_remaining_time_in_millis', None)
+                    h = _update_history(session, novel_id, today, raw_pages, detail_at, execution_id,
+                                        out_of_time=(lambda: left() < 60_000) if left else None)
                     _log(logging.INFO, execution_id, "Updated episode history.", novel_id=novel_id, **h)
                 except Exception as h_e:  # noqa: BLE001 — 연재 기록은 부가 정보다. 실패해도 수집은 막지 않는다.
                     _log(logging.WARNING, execution_id, f"Failed to update episode history: {h_e}", novel_id=novel_id)

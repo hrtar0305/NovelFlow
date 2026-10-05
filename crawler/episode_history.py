@@ -97,7 +97,8 @@ def merge(history, seen, fetched_at_iso, covered_from, complete, scheduled):
 
 def day_counts(history, start, end, cutoff_iso=None):
     """[start, end] 날짜별 올린 화 수. `cutoff_iso` 를 주면 처음 본 시각이 그 뒤인 회차는 뺀다(행 펼침 고정값 — 백필(None)은 날짜만 본다).
-    값 None = 모름: 마지막 확인일 뒤, 또는 다 받지 못한 기록(`Complete=false`)의 가장 오래된 날짜 앞."""
+    값 None = 모름: 마지막 확인일 뒤, 또는 다 받지 못한 기록(`Complete=false`)의 가장 오래된 날짜 앞, 또는 **본 시각(마감 또는 마지막 확인)이
+    든 날에 아직 아무것도 안 보였을 때** — 그날은 다 지나지 않았다(데일리는 21시쯤 본다: 23시에 올리는 작가의 그날이 '쉰 날'이 되면 안 된다)."""
     eps = (history or {}).get('Episodes') or {}
     checked = (history or {}).get('CheckedAt')
     known_until = checked[:10] if checked else None
@@ -107,10 +108,13 @@ def day_counts(history, start, end, cutoff_iso=None):
         if cutoff_iso and first_seen and first_seen > cutoff_iso:
             continue
         counts[d] = counts.get(d, 0) + 1
+    seen_at = min(t for t in (cutoff_iso, checked) if t) if (cutoff_iso or checked) else None
+    open_day = seen_at[:10] if seen_at else None
     out, cur, last = {}, date.fromisoformat(start), date.fromisoformat(end)
     while cur <= last:
         k = cur.isoformat()
-        unknown = (known_until is None or k > known_until) or (known_from is not None and k < known_from)
+        unknown = (known_until is None or k > known_until) or (known_from is not None and k < known_from) \
+            or (k == open_day and not counts.get(k))
         out[k] = None if unknown else counts.get(k, 0)
         cur += timedelta(days=1)
     return {'days': out, 'known_from': known_from, 'known_until': known_until}
@@ -119,23 +123,42 @@ def day_counts(history, start, end, cutoff_iso=None):
 FULL = '0000-01-01'   # 끝까지 받았다는 표시(collect 의 covered_from)
 
 
-def collect(fetch, history, prefetched=None, max_pages=120):
+class OutOfTime(Exception):
+    """시간 예산을 넘겼다(`collect` 의 `out_of_time`). 기록이 있는 작품은 쓰지 않는다 — 다음 확인이 마지막 확인일부터 다시 받는다."""
+
+
+def collect(fetch, history, prefetched=None, max_pages=120, fetch_down=None, out_of_time=None):
     """최신순 0쪽부터 받는다. `fetch(page) -> (html, fetched_at)`, `prefetched` = 이미 받은 쪽 {page: (html, fetched_at)}(잔류율이
-    받은 최신순 쪽을 다시 받지 않게). 멈춤: 끝(`is_last_page`), 또는 기록이 있고 그 쪽 가장 오래된 날짜가 마지막 확인 날짜 이하
-    (그 앞은 이미 안다), 또는 `max_pages`(처음 보는 긴 작품 — 다 받지 못하면 `complete=False`, 다음 확인이 이어 받는다).
-    반환: seen(회차들), scheduled, covered_from(받은 가장 오래된 날짜, 끝까지면 FULL), complete, pages_fetched(새로 받은 쪽 수),
+    받은 최신순 쪽을 다시 받지 않게). 멈춤: 끝(`is_last_page`), 또는 기록이 있고 그 쪽 가장 오래된 날짜가 마지막 확인 날짜 **앞**
+    (같은 날이면 아직 아니다 — 확인 뒤 그날 올린 회차가 다음 쪽에 더 있을 수 있다), 또는 `max_pages`(처음 보는 긴 작품 — 다 받지 못하면
+    `complete=False`). 다 받지 못한 기록(`Complete=false`)은 이어서 `fetch_down`(오래된 순)으로 아는 회차를 만날 때까지 받아 채운다
+    (`max_pages` 안에 못 만나면 버린다 — 가운데가 빈 채 '다 앎'이 되지 않게). `out_of_time()` 이 참이면 더 받지 않는다: 처음 보는 작품은
+    받은 데까지(`complete=False`), 기록이 있으면 `OutOfTime`.
+    반환: seen(회차들), scheduled, covered_from(최신순으로 받은 가장 오래된 날짜, 끝까지면 FULL), complete, pages_fetched(새로 받은 쪽 수),
     fetched_at(첫 쪽을 받은 시각)."""
     prefetched = prefetched or {}
     checked = (history or {}).get('CheckedAt')
     checked_date = checked[:10] if checked else None
     seen, ids, scheduled, oldest, fetched, first_at = [], set(), [], None, 0, None
     reached_end = False
+
+    def get(f, n):
+        nonlocal fetched
+        if out_of_time and out_of_time():
+            raise OutOfTime()
+        fetched += 1
+        return f(n)
+
     for n in range(max_pages):
         if n in prefetched:
             html, at = prefetched[n]
         else:
-            html, at = fetch(n)
-            fetched += 1
+            try:
+                html, at = get(fetch, n)
+            except OutOfTime:
+                if history:
+                    raise
+                break
         first_at = first_at or at
         got, sch, slots = parse_page(html, at)
         if n == 0:
@@ -150,13 +173,27 @@ def collect(fetch, history, prefetched=None, max_pages=120):
         if is_last_page(len(new), [e[1] for e in got], slots):
             reached_end = True
             break
-        if checked_date and dates and min(dates) <= checked_date:
+        if checked_date and dates and min(dates) < checked_date:
             break
     if reached_end:
         return {'seen': seen, 'scheduled': scheduled, 'covered_from': FULL, 'complete': True, 'pages_fetched': fetched, 'fetched_at': first_at}
-    stopped_at_known = bool(checked_date and oldest and oldest <= checked_date)
+    stopped_at_known = bool(checked_date and oldest and oldest < checked_date)
+    complete = bool(stopped_at_known and (history or {}).get('Complete'))
+    if stopped_at_known and not complete and fetch_down:
+        known, down = set((history or {}).get('Episodes') or {}), []
+        for n in range(max_pages):
+            html, at = get(fetch_down, n)
+            got, _, _ = parse_page(html, at)
+            new = [e for e in got if e[0] not in ids]
+            for e in new:
+                ids.add(e[0])
+                down.append(e)
+            if not new or any(e[0] in known for e in got):
+                seen += down
+                complete = True
+                break
     return {'seen': seen, 'scheduled': scheduled, 'covered_from': oldest,
-            'complete': bool(stopped_at_known and (history or {}).get('Complete')), 'pages_fetched': fetched, 'fetched_at': first_at}
+            'complete': complete, 'pages_fetched': fetched, 'fetched_at': first_at}
 
 
 def update_record(table, novel_id, fn, conflict=None, attempts=2):

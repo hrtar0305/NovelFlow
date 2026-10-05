@@ -45,6 +45,16 @@ class T(unittest.TestCase):
         r = eh.day_counts(h, '2026-10-03', '2026-10-04', cutoff_iso='2026-10-04T22:00:00+09:00')
         self.assertEqual(r['days'], {'2026-10-03': 1, '2026-10-04': 1})   # b 는 마감 뒤에 봤다, c 는 지워졌어도 센다
 
+    def test_day_of_the_check_is_not_rest_when_nothing_seen_yet(self):
+        # 데일리는 21시쯤 본다 — 그날 23시에 올리는 작가의 그날이 '쉰 날'이 되면 안 된다(아직 모름). 올린 게 보였으면 올린 날.
+        h = {'Episodes': {'a': ['2026-10-04', '2026-10-04T21:00:00+09:00', None]},
+             'CheckedAt': '2026-10-05T21:00:00+09:00', 'Complete': True}
+        self.assertEqual(eh.day_counts(h, '2026-10-04', '2026-10-05')['days'], {'2026-10-04': 1, '2026-10-05': None})
+        r = eh.day_counts(h, '2026-10-03', '2026-10-04', cutoff_iso='2026-10-04T22:00:00+09:00')
+        self.assertEqual(r['days'], {'2026-10-03': 0, '2026-10-04': 1})
+        r = eh.day_counts(h, '2026-10-02', '2026-10-03', cutoff_iso='2026-10-03T22:00:00+09:00')
+        self.assertEqual(r['days'], {'2026-10-02': 0, '2026-10-03': None})   # 마감(22시)까지 그날 올린 게 안 보였다
+
     def test_partial_history_marks_unknown_before_oldest(self):
         h = {'Episodes': {'a': ['2026-10-04', None, None]}, 'CheckedAt': '2026-10-05T12:00:00+09:00',
              'Complete': False, 'OldestDate': '2026-10-03'}
@@ -88,6 +98,43 @@ class Collect(unittest.TestCase):
         r = eh.collect(fetch, None, max_pages=3)
         self.assertEqual(len(calls), 3)
         self.assertFalse(r['complete'])
+
+    def test_uploads_on_checked_date_past_page_boundary_are_fetched(self):
+        # 확인(00:05) 뒤 그날 올린 회차가 한 쪽을 넘으면 다음 쪽까지 받아야 한다 — 그 날짜 '이하'에서 멈추면 영영 빠진다.
+        fetch, calls = self.fetcher([page([(9, 'EP.9', '26.10.05'), (8, 'EP.8', '26.10.05')]),
+                                     page([(7, 'EP.7', '26.10.05'), (6, 'EP.6', '26.10.04')]), page([(5, 'EP.5', '26.10.03')])])
+        r = eh.collect(fetch, {'CheckedAt': '2026-10-05T00:05:00+09:00', 'Complete': True})
+        self.assertEqual(calls, [0, 1])
+        self.assertIn('7', [e[0] for e in r['seen']])
+
+    def test_incomplete_history_resumes_from_the_oldest_end(self):
+        # 처음에 120쪽 상한으로 다 받지 못한 기록은 오래된 순(DOWN)으로 아는 회차를 만날 때까지 이어 받는다.
+        h = {'Episodes': {'5': ['2026-10-04', None, None], '4': ['2026-10-03', None, None]},
+             'CheckedAt': '2026-10-04T21:00:00+09:00', 'Complete': False, 'OldestDate': '2026-10-03'}
+        fetch, _ = self.fetcher([page([(6, 'EP.6', '26.10.05'), (5, 'EP.5', '26.10.04'), (4, 'EP.4', '26.10.03')])])
+        down_calls = []
+        downs = [page([(1, 'EP.1', '26.10.01'), (2, 'EP.2', '26.10.02')]), page([(3, 'EP.3', '26.10.02'), (4, 'EP.4', '26.10.03')])]
+        def fetch_down(n):
+            down_calls.append(n)
+            return downs[n], self.AT
+        r = eh.collect(fetch, h, fetch_down=fetch_down)
+        self.assertEqual(down_calls, [0, 1])
+        self.assertTrue(r['complete'])
+        self.assertTrue({'1', '2', '3', '6'} <= {e[0] for e in r['seen']})
+        merged = eh.merge(h, r['seen'], 'now', r['covered_from'], r['complete'], r['scheduled'])
+        self.assertTrue(merged['Complete'])
+        self.assertEqual(merged['OldestDate'], '2026-10-01')
+        self.assertIsNone(merged['Episodes']['5'][2])
+
+    def test_out_of_time(self):
+        pages = [page([(i, f'EP.{i}', '26.10.04')]) for i in range(10, 0, -1)]
+        fetch, calls = self.fetcher(pages)
+        r = eh.collect(fetch, None, out_of_time=lambda: len(calls) >= 2)
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(r['complete'])                     # 처음 보는 작품: 받은 데까지 남긴다(다음에 이어 받는다)
+        fetch, calls = self.fetcher(pages)
+        with self.assertRaises(eh.OutOfTime):                # 기록이 있으면 쓰지 않는다 — 다음 확인이 같은 자리부터 다시
+            eh.collect(fetch, {'CheckedAt': '2026-09-01T21:00:00+09:00', 'Complete': True}, out_of_time=lambda: len(calls) >= 2)
 
     def test_prefetched_pages_are_reused(self):
         fetch, calls = self.fetcher([None, page([(1, 'EP.1', '26.10.01')])])
