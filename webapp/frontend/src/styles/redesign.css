@@ -502,11 +502,8 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 /* 연재 줄: 올린 날은 채운 칸, 쉰 날은 빈 칸, 여러 날치는 점선. 두 화 이상 올린 날은 칸 안에 수. */
 .mx-day.is-up { fill: var(--np-accent); }
 .mx-day.is-rest { fill: none; stroke: var(--np-chart-bar); stroke-width: 1.5; }
-.mx-day.is-multi { fill: none; stroke-dasharray: 3 2; }
-.mx-day.is-up.is-multi { stroke: var(--np-accent); stroke-width: 1.5; }
 .mx-day.is-on { stroke: var(--np-text-heading); stroke-width: 2; }
 .mx-day__n { font-size: 11px; font-weight: 700; fill: var(--np-on-accent); pointer-events: none; }
-.mx-day__n.is-multi { fill: var(--np-accent); }
 .mx-rest { color: var(--np-warning) !important; }
 .mx-day__unknown { stroke: var(--np-chart-bar); stroke-width: 2; stroke-linecap: round; }
 
@@ -519,12 +516,12 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .novel-expand__meta b { margin-bottom: 1px; font-size: 0.75rem; font-weight: 700; color: var(--np-text-heading); }
 .novel-expand__svg { overflow: visible; }
 .novel-expand__upload { display: flex; flex-direction: column; gap: 7px; }
-.novel-expand__track { stroke: var(--np-border); stroke-width: 1; }
 .novel-expand__meta--row { flex-direction: row; align-items: baseline; gap: 0.5rem; }
 .novel-expand__meta--row b { margin: 0; }
 .novel-expand__meta--row span b { margin: 0; font-size: inherit; color: var(--np-text-heading); }
 /* 좁은 PC 폭(표가 모바일 행으로 바뀌기 전)에서는 소개글 칸이 너무 좁아져 연재 줄을 뺀다 — 작품 상세에 있다. */
 @media (max-width: 1279.98px) { .novel-expand { grid-template-columns: auto minmax(0, 1fr) auto; } .novel-expand__upload { display: none; } }
+.novel-expand--noup { grid-template-columns: auto minmax(0, 1fr) auto; }
 .novel-expand__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-surface-alt); stroke-width: 3px; stroke-linejoin: round; }
 .novel-expand__none { margin: 0; width: 260px; color: var(--np-text-faint); }
 .novel-expand__synopsis { margin: 0; white-space: pre-line; font-size: 0.875rem; line-height: 1.6; color: var(--np-text-primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

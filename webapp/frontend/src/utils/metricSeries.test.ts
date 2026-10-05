@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMetricPoints, rankTicks, signed, summarizeMetrics, uploadStats, type MetricRow } from './metricSeries';
+import { buildMetricPoints, rankTicks, signed, summarizeMetrics, type MetricRow } from './metricSeries';
 
 const rec = (Date: string, Ranking: number | null, View: number, extra: Partial<MetricRow> = {}): MetricRow =>
   ({ Date, Ranking, View, Like: View / 10, Fav: 100, Eps: 10, Alr: 5, Score: 1000, ...extra });
@@ -73,21 +73,6 @@ describe('signed / rankTicks', () => {
   });
 });
 
-describe('uploadStats', () => {
-  const eps = (list: (number | null)[]) => buildMetricPoints(list.map((e, i) => (e == null
-    ? { Date: `2026-09-${String(i + 1).padStart(2, '0')}`, Ranking: null, View: null }
-    : rec(`2026-09-${String(i + 1).padStart(2, '0')}`, 10, 1000 + i, { Eps: e }))), 'calendar');
-  it('올린 날 수와 끝에서 센 연속 연재', () => {
-    expect(uploadStats(eps([10, 11, 11, 12, 13, 14]))).toEqual({ known: 5, uploaded: 4, streak: 3, resting: 0 });
-  });
-  it('끝에서 쉬는 중이면 연속 휴재', () => {
-    expect(uploadStats(eps([10, 11, 12, 12, 12]))).toEqual({ known: 4, uploaded: 2, streak: 0, resting: 2 });
-  });
-  it('여러 날치는 세지 않고 연속도 거기서 끊는다', () => {
-    expect(uploadStats(eps([10, 11, null, 13, 14]))).toEqual({ known: 2, uploaded: 2, streak: 1, resting: 0 });
-  });
-});
-
 describe('windowStart(기간 전날 기준값)', () => {
   const rows = [rec('2026-08-31', 60, 900, { Eps: 9 }), rec('2026-09-01', 50, 1000, { Eps: 10 }), rec('2026-09-02', 40, 1500, { Eps: 11 })];
   const pts = buildMetricPoints(rows, 'calendar', '2026-09-01');
@@ -97,9 +82,6 @@ describe('windowStart(기간 전날 기준값)', () => {
   });
   it('기간 증가량은 기준일부터 센다', () => {
     expect(summarizeMetrics(pts)!.d).toMatchObject({ view: 600, eps: 2 });
-  });
-  it('연재 판단도 첫날부터', () => {
-    expect(uploadStats(pts)).toMatchObject({ known: 2, uploaded: 2 });
   });
   it('기준일이 순위권 밖이면 첫날은 알 수 없음', () => {
     const p = buildMetricPoints([out('2026-08-31'), ...rows.slice(1)], 'calendar', '2026-09-01');
@@ -126,7 +108,6 @@ describe('수집 실패 자리표시', () => {
     ], 'calendar');
     expect(p[1]).toMatchObject({ rec: true, rank: 45, score: 1200, view: null, eps: null, d: null, change: 5 });
     expect(p[2]).toMatchObject({ span: 2, d: { view: 600, eps: 2 }, change: 5 });
-    expect(uploadStats(p)).toMatchObject({ known: 0, streak: 0, resting: 0 });
     expect(summarizeMetrics(p)!).toMatchObject({ days: 3, d: { view: 600 } });
   });
 });

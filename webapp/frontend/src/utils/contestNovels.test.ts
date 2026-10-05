@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sortContestNovels, nextContestSort, contestTrendRow, withDebutBaseline, CONTEST_DEFAULT_SORT, type ContestNovel, CONTEST_DAILY_SORT } from './contestNovels';
-import { buildMetricPoints, uploadStats } from './metricSeries';
+import { sortContestNovels, nextContestSort, contestTrendRow, CONTEST_DEFAULT_SORT, type ContestNovel, CONTEST_DAILY_SORT } from './contestNovels';
 
 const c = (ID: string, Rank: number, o: Partial<ContestNovel> = {}): ContestNovel =>
   ({ ID, Rank, Title: ID, AuthorName: 'a', View: 1000 - Rank, view_change: 10, like_to_view_ratio: 0.05, Eps: 10, Tags: [], Date: 'd', ...o });
@@ -57,29 +56,5 @@ describe('contestTrendRow', () => {
   it('자리표시(View -1)는 기록 없음', () => {
     const r = contestTrendRow({ Date: '2026-10-05', Rank: 900, DailyRank: 3, View: -1, Like: -1, Fav: -1, Eps: -1 }, true);
     expect(r).toMatchObject({ Ranking: null, View: null, Like: null, Fav: null, Eps: null });
-  });
-});
-
-describe('withDebutBaseline(공모전 신작의 첫날)', () => {
-  const row = (Date: string, Eps: number | null, View: number | null, extra = {}) => contestTrendRow({ Date, Eps, View, Like: View, Fav: 0, ...extra }, true);
-  it('접수 시작일이 첫 기록이면 전날 = 0 — 첫날도 올린 날·증가량이 잡히고, 기준 행은 결과에 없다', () => {
-    const rows = withDebutBaseline([row('2026-10-01', 1, 500), row('2026-10-02', 2, 900), row('2026-10-03', 3, 1500), row('2026-10-04', 4, 2000)], '2026');
-    const pts = buildMetricPoints(rows, 'collection', '2026-10-01');
-    expect(pts.map(p => p.date)).toEqual(['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']);
-    expect(pts[0].d).toMatchObject({ eps: 1, view: 500 });
-    expect(uploadStats(pts)).toMatchObject({ known: 4, uploaded: 4, streak: 4 });
-  });
-  it('기간 시작이 기준 행보다 앞이어도 기준 행(0)은 점으로 나오지 않는다', () => {
-    const pts = buildMetricPoints(withDebutBaseline([row('2026-10-01', 1, 500), row('2026-10-02', 2, 900)], '2026'), 'collection', '2026-09-28');
-    expect(pts.map(p => p.date)).toEqual(['2026-10-01', '2026-10-02']);
-  });
-  it('나중에 등록된 신작(IsNew)도 첫 기록 전날 = 0', () => {
-    const pts = buildMetricPoints(withDebutBaseline([row('2026-10-03', 2, 300, { IsNew: true }), row('2026-10-04', 3, 700)], '2026'), 'collection');
-    expect(pts[0].d).toMatchObject({ eps: 2, view: 300 });
-  });
-  it('늦게 찾은 작품(IsNew 아님, 시작일도 아님)·앞선 기록이 있는 기간에는 붙이지 않는다', () => {
-    expect(withDebutBaseline([row('2026-10-03', 5, 300), row('2026-10-04', 6, 700)], '2026').some(r => r.Baseline)).toBe(false);
-    expect(withDebutBaseline([row('2026-10-01', 1, 500), row('2026-10-02', 2, 900, { IsNew: true })], '2026').filter(r => r.Baseline).map(r => r.Date)).toEqual(['2026-09-30']);
-    expect(withDebutBaseline([row('2025-09-01', 5, 300)], '2025').some(r => r.Baseline)).toBe(false);
   });
 });

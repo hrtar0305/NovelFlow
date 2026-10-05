@@ -2,7 +2,8 @@ import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type Rea
 import ChangeMark from '../ui/ChangeMark';
 import UploadCells from './UploadCells';
 import { formatDateKo, formatInt, formatMan, formatRatio } from '../../utils/format';
-import { rankTicks, signed, summarizeMetrics, uploadStats, type MetricPoint } from '../../utils/metricSeries';
+import { rankTicks, signed, summarizeMetrics, type MetricPoint } from '../../utils/metricSeries';
+import { uploadSummary, type UploadDays } from '../../utils/uploads';
 
 /**
  * 작품 상세 '지표' 영역(2026-09-30 개편). 사용자가 고른 기간 동안 한 작품의 지표를 따라가는 곳이다.
@@ -20,6 +21,8 @@ interface Props {
   kind: 'daily' | 'contest';
   /** 지금 연재 상태(일간 상세). 완결작은 '며칠째 쉬는 중' 대신 '완결'로 적는다. */
   status?: string | null;
+  /** 연재 기록의 날짜별 화 수(`/api/uploads`, 기간 = 이 지표의 기간). 없으면 연재 줄을 그리지 않는다(2025 공모전 — 기록하지 않는다). */
+  uploads?: UploadDays;
 }
 
 const TABLE_FOLD = 14;
@@ -39,7 +42,7 @@ function useWidth<T extends HTMLElement>() {
   return [ref, w] as const;
 }
 
-export default function MetricsPanel({ points, kind, status }: Props) {
+export default function MetricsPanel({ points, kind, status, uploads }: Props) {
   const [wrapRef, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const [allRows, setAllRows] = useState(false);
@@ -137,8 +140,10 @@ export default function MetricsPanel({ points, kind, status }: Props) {
   })();
 
   // ── 증가량 묶음 ──
-  // 연재 줄: 하루 단위 회차 증가는 거의 늘 1이라 양 대신 '올린 날 / 쉰 날'을 칸으로 칠한다.
-  const up = uploadStats(points);
+  // 연재 줄: 양 대신 '올린 날 / 쉰 날'을 칸으로 칠한다. 회차 수 차이가 아니라 연재 기록(실제 회차 목록)에서 센 값이다.
+  const dates = points.map(p => p.date);
+  const upDays: UploadDays = Object.fromEntries(dates.map(d => [d, uploads?.[d] ?? null]));
+  const up = uploadSummary(upDays);
   const uploadTotal = up.known > 0 ? (
     <>{up.known}일 중 <b>{up.uploaded}일</b> 연재
       {status === '완결' ? <> · <b>완결</b></> : up.streak > 1 ? <> · 지금 <b>{up.streak}일</b> 연속</> : up.resting > 0 ? <> · <b className="mx-rest">{up.resting}일째</b> 쉬는 중</> : null}
@@ -151,7 +156,7 @@ export default function MetricsPanel({ points, kind, status }: Props) {
   const rows: Row[] = [
     { key: 'view', label: '조회 증가', total: summary?.d.view != null ? `+${formatMan(summary.d.view)}` : null, kind: 'bar', get: p => p.d?.view ?? null },
     { key: 'like', label: '추천 증가', total: summary ? signed(summary.d.like) : null, kind: 'bar', get: p => p.d?.like ?? null },
-    { key: 'eps', label: '연재', total: uploadTotal, kind: 'upload', get: p => p.d?.eps ?? null },
+    ...(uploads ? [{ key: 'eps', label: '연재', total: uploadTotal, kind: 'upload' as const, get: (p: MetricPoint) => p.d?.eps ?? null }] : []),
     ...(kind === 'daily' ? [{ key: 'score', label: '점수', total: summary ? formatInt(lastScore) : null, kind: 'line' as const, get: (p: MetricPoint) => p.score }] : []),
   ];
   const rowSvg = (r: Row) => {
@@ -196,7 +201,7 @@ export default function MetricsPanel({ points, kind, status }: Props) {
     return (
       <svg width={width} height={h} className="mx-svg" aria-hidden="true">
         {hl(h)}
-        <UploadCells points={points} X={X} cw={Math.max(3, Math.min(col - 3, 28))} h={h - 4} y={2} hover={hv} />
+        <UploadCells dates={dates} days={upDays} X={X} cw={Math.max(3, Math.min(col - 3, 28))} h={h - 4} y={2} hover={hv} />
       </svg>
     );
   }

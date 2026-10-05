@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getContestNovelTrend, getNovelTrend } from '../../services/api';
+import { getContestNovelTrend, getNovelTrend, getUploads } from '../../services/api';
 import UploadCells from '../novel/UploadCells';
 import { formatDateKo } from '../../utils/format';
 import { previousCalendarDay } from '../../utils/currentRank';
 import { windowOf } from '../../utils/trendSummary';
-import { buildMetricPoints, summarizeMetrics, uploadStats, type MetricRow } from '../../utils/metricSeries';
-import { contestTrendRow, withDebutBaseline, type ContestTrendRow } from '../../utils/contestNovels';
+import { buildMetricPoints, summarizeMetrics, type MetricRow } from '../../utils/metricSeries';
+import { contestTrendRow, type ContestTrendRow } from '../../utils/contestNovels';
+import { uploadDays, uploadSummary, type UploadDays } from '../../utils/uploads';
 
 const WINDOW = 30;
 // 펼침 높이를 줄이려고 선은 넓고 낮게, 제목·기간은 선 왼쪽 작은 이름표로 접었다(2026-10-04).
@@ -52,17 +53,35 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
     let cancelled = false;
     const req = cYear
       ? getContestNovelTrend(parseInt(cYear, 10), novelId, base, date)
-        .then(r => withDebutBaseline((r.data as ContestTrendRow[]).map(d => contestTrendRow(d, cDaily)), cYear))
+        .then(r => (r.data as ContestTrendRow[]).map(d => contestTrendRow(d, cDaily)))
       : getNovelTrend(novelId, base, date).then(r => r.data as MetricRow[]);
     req.then(rows => { if (!cancelled) setState({ rows }); }).catch(() => { if (!cancelled) setState('error'); });
     return () => { cancelled = true; };
   }, [novelId, start, base, date, cYear, cDaily]);
 
+  // 연재 줄 = 연재 기록의 D−29 ~ D(달력 30일), 그날 수집 마감까지 본 회차만 — 나중에 다시 펼쳐도 같은 값이다.
+  // 2025 공모전은 기록하지 않는다(줄을 숨긴다).
+  const upDates = useMemo(() => Array.from({ length: WINDOW }, (_, i) => {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - (WINDOW - 1 - i));
+    return d.toISOString().slice(0, 10);
+  }), [date]);
+  const upSource = !cYear ? 'daily' : cYear === '2026' ? 'contest2026' : null;
+  const [upDays, setUpDays] = useState<{ date: string; days: UploadDays } | null>(null);
+  useEffect(() => {
+    if (!upSource) return;
+    let cancelled = false;
+    getUploads(novelId, upDates[0], date, { date, source: upSource })
+      .then(r => { if (!cancelled) setUpDays({ date, days: uploadDays(r.data) }); })
+      .catch(() => { if (!cancelled) setUpDays({ date, days: {} }); });
+    return () => { cancelled = true; };
+  }, [novelId, date, upDates, upSource]);
+
   const points = useMemo(() => {
     if (typeof state !== 'object' || !start || !base) return [];
     // 추이 API는 수집하지 않은 날도 빈 행으로 채운다 — 수집한 날(과 기준일)만 남긴다.
     const keep = new Set([...win, base]);
-    return buildMetricPoints(state.rows.filter(r => r.Baseline || (keep.has(r.Date) && (availableDates.has(r.Date) || r.Date === base))),
+    return buildMetricPoints(state.rows.filter(r => keep.has(r.Date) && (availableDates.has(r.Date) || r.Date === base)),
       cYear ? 'collection' : 'calendar', start);
   }, [state, win, start, base, availableDates, cYear]);
 
@@ -70,13 +89,13 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
   if (state === 'error') return <div className="novel-expand novel-expand--loading">추이를 불러오지 못했습니다.</div>;
 
   const s = summarizeMetrics(points);
-  const up = uploadStats(points);
   const n = points.length;
-  // 칸 폭은 30일 기준으로 고정하고 오른쪽(마지막 날)에 붙인다 — 기간이 짧으면(공모전 초반 4일) 칸이 늘어나 줄 전체를 덮었다.
+  const days = upDays?.date === date ? upDays.days : {};
+  const up = uploadSummary(days);
   const slot = (UW - 6) / (WINDOW - 1);
-  const UX = (i: number) => UW - 3 - (n - 1 - i) * slot;
+  const UX = (i: number) => 3 + i * slot;
   const ucw = Math.max(2, slot - 1.5);
-  const upSummary = up.streak > 1 ? <>지금 <b>{up.streak}일</b> 연속</> : up.resting > 0 ? <><b>{up.resting}일째</b> 쉬는 중</>
+  const upSummary = !upDays || upDays.date !== date ? '' : up.streak > 1 ? <>지금 <b>{up.streak}일</b> 연속</> : up.resting > 0 ? <><b>{up.resting}일째</b> 쉬는 중</>
     : up.known > 0 ? <>{up.known}일 중 <b>{up.uploaded}일</b></> : '기록 없음';
   const X = (i: number) => (n <= 1 ? W / 2 : P + (i / (n - 1)) * (W - 2 * P));
   const ranks = points.map(p => (p.rec ? p.rank : null));
@@ -103,7 +122,7 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
   const text = synopsis ?? (typeof state === 'object' ? [...state.rows].reverse().find(r => r.Synopsis)?.Synopsis ?? null : null);
 
   return (
-    <div className="novel-expand">
+    <div className={`novel-expand${upSource ? '' : ' novel-expand--noup'}`}>
       <div className="novel-expand__trend">
         <div className="novel-expand__meta">
           <b>{n}일 순위</b>
@@ -118,14 +137,12 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
           </svg>
         ) : <p className="novel-expand__none">{contest ? '이 기간에 순위가 매겨진 날이 없습니다.' : '이 기간에 순위권 기록이 없습니다.'}</p>}
       </div>
-      <div className="novel-expand__upload">
+      {upSource ? <div className="novel-expand__upload">
         <div className="novel-expand__meta novel-expand__meta--row"><b>연재</b><span>{upSummary}</span></div>
-        <svg width={UW} height={UH} className="mx-svg" role="img" aria-label={`${n}일 연재`}>
-          {/* 30일 자리를 옅은 선으로 깐다 — 기간이 짧으면 칸이 오른쪽에만 있어 왼쪽이 빈 채 떠 보였다. */}
-          <line x1={0} x2={UW} y1={UH / 2} y2={UH / 2} className="novel-expand__track" />
-          <UploadCells points={points} X={UX} cw={ucw} h={UH} showCount={false} />
+        <svg width={UW} height={UH} className="mx-svg" role="img" aria-label={`${WINDOW}일 연재`}>
+          <UploadCells dates={upDates} days={days} X={UX} cw={ucw} h={UH} showCount={false} />
         </svg>
-      </div>
+      </div> : null}
       {text ? <p className="novel-expand__synopsis">{text}</p> : <p className="novel-expand__synopsis is-empty">작품 소개가 없습니다.</p>}
       <Link to={contest ? `/contests/${contest.year}/novels/${novelId}` : `/novels/${novelId}`} className="novel-expand__go" onClick={e => e.stopPropagation()}>작품 정보 보기</Link>
     </div>

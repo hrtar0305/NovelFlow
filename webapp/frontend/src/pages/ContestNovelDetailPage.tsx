@@ -11,6 +11,7 @@ import { formatDateKo, formatInt, formatMan, formatRatio } from '../utils/format
 import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
 import MetricsPanel from '../components/novel/MetricsPanel';
 import { buildMetricPoints } from '../utils/metricSeries';
+import { useUploads } from '../hooks/useUploads';
 
 /**
  * 공모전 작품 상세(2026-09-30 개편) — 일간 작품 상세와 같은 머리·섹션 문법.
@@ -85,6 +86,8 @@ const ContestNovelDetailBody = () => {
   };
   // 공모전은 전날 = 실제 직전 수집일(DECISIONS 2026-07-01).
   const points = useMemo(() => buildMetricPoints(trendData, 'collection', dataStart ?? undefined), [trendData, dataStart]);
+  // 연재 기록은 2026 공모전부터(2025 는 넣지 않는다 — 연재 줄을 숨긴다).
+  const uploads = useUploads(novelId, points[0]?.date, points.at(-1)?.date, year === '2026');
 
   if (error) return <div className="page-shell"><p className="empty-line">{error}</p></div>;
   if (!details) return <div className="page-shell"><div className="rank-skeleton" aria-busy="true"><div /><div /><div /></div></div>;
@@ -139,7 +142,7 @@ const ContestNovelDetailBody = () => {
           </div>
         </div>
         <div className="detail-chart-area" aria-busy={loading} style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-          {points.length > 0 ? <MetricsPanel points={points} kind="contest" />
+          {points.length > 0 ? <MetricsPanel points={points} kind="contest" uploads={uploads} />
             : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
         </div>
       </section>

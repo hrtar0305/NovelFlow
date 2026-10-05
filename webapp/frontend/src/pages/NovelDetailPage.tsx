@@ -9,6 +9,7 @@ import DateRangePicker from '../components/novel/DateRangePicker';
 import { format, parseISO, subDays } from 'date-fns';
 import MetricsPanel from '../components/novel/MetricsPanel';
 import { buildMetricPoints } from '../utils/metricSeries';
+import { useUploads } from '../hooks/useUploads';
 
 // 같은 라우트에서 작품만 바뀌면(헤더 검색 등) 컴포넌트가 재사용돼 기간 버튼·표지 '보기' 같은 상태가
 // 이전 작품 것으로 남는다. 작품 ID를 key로 줘 작품마다 본문을 새로 띄운다.
@@ -94,6 +95,7 @@ const NovelDetailBody = ({ novelId }: { novelId: string | undefined }) => {
   };
 
   const points = useMemo(() => buildMetricPoints(novelData, 'calendar', dataStart ?? undefined), [novelData, dataStart]);
+  const uploads = useUploads(novelId, points[0]?.date, points.at(-1)?.date);
 
   return (
     <div>
@@ -130,7 +132,7 @@ const NovelDetailBody = ({ novelId }: { novelId: string | undefined }) => {
               </div>
             </div>
             <div className="detail-chart-area" aria-busy={loading} style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-              {points.length > 0 ? <MetricsPanel points={points} kind="daily" status={(details as { serial_status?: string | null } | null)?.serial_status} />
+              {points.length > 0 ? <MetricsPanel points={points} kind="daily" uploads={uploads} status={(details as { serial_status?: string | null } | null)?.serial_status} />
                 : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
             </div>
           </section>

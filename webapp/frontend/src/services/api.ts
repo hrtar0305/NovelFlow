@@ -56,6 +56,7 @@ const _tagSeriesCache: ApiCache = {};
 const _analysisReportCache: ApiCache = {};
 const _novelShowcaseCache: ApiCache = {};
 const _authorNovelsCache: ApiCache = {};
+const _uploadsCache: ApiCache = {};
 
 export const getNovelRankingsByDate = (date: string) => {
   return getCachedRequest(
@@ -111,6 +112,15 @@ export const analyzeTagTrends = (startDate: string, endDate: string) => {
     ONE_DAY_MS,
     () => apiClient.get(`/api/trends/tags/analysis/${startDate}/${endDate}`),
   );
+};
+
+/**
+ * 연재 기록 — 날짜별 올린 화 수. `asof` 를 주면 그날 수집 마감(데일리 D 22:00, 공모전 D+1 01:00 KST)까지 본 회차만
+ * 센다(행 펼침의 고정값). 응답 모양은 `utils/uploads` 의 UploadsResponse.
+ */
+export const getUploads = (novelId: string, start: string, end: string, asof?: { date: string; source: 'daily' | 'contest2026' }) => {
+  const q = new URLSearchParams({ start, end, ...(asof ? { asof: asof.date, source: asof.source } : {}) });
+  return getCachedRequest(_uploadsCache, `${novelId}?${q}`, FIVE_MINUTES_MS, () => apiClient.get(`/api/uploads/${novelId}?${q}`));
 };
 
 export const getNovelTrend = (novelId: string, startDate: string, endDate: string) => {
