@@ -51,6 +51,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   기반이라 다른 것이며, 회차별 감상인원은 외부에 노출되지 않아 재현할 수 없습니다.
 - **유효 회차 30개 미만이면 초반 잔류를 계산하지 않습니다**(`None` → 화면 `-`).
   `최신화/1화` 같은 대체 계산으로 채우지 마세요 — 표시 없이 정의가 바뀌어 정렬이 오염됩니다.
+- **연재(올린 날)는 연재 기록(`NovelFlowEpisodeHistory`, 실제 회차 목록)에서만 셉니다.** 회차 수 전날 대비 차이로 되돌리지 마세요 —
+  삭제와 업로드가 겹치면 업로드가 가려집니다(378108). 화면은 `/api/uploads` 하나를 씁니다. 날짜는 목록 날짜(예약 공개는 공개일로 찍힘 — 실측),
+  지운·다시 올린·BONUS 회차도 셉니다. 2025 공모전은 기록하지 않습니다(연재 줄을 숨김).
 - **원본 HTML은 스크립트째로 남깁니다.** `<script>`를 빼면 용량이 반이 되지만(91→42KB)
   "여기엔 값어치가 없다"를 미리 굳히는 것이라 ELT의 취지에 어긋납니다. 대신 비밀값만
   치환합니다. 압축은 **반드시 묶어서 zstd** — gzip은 윈도 32KB라 묶어도 이득이 0입니다.
@@ -108,6 +111,7 @@ python scripts/backfill_ranking_snapshots.py --dry-run
 - 백엔드 `main.py` 변경 시 Lambda 재배포가 필요합니다(자동 배포 없음). 배포는 보통 사용자가 직접 합니다 — 코드만 정리하고 별도 안내하세요.
 - 백엔드 배포 패키지에는 `api/` 아래 모듈이 **전부** 들어가야 합니다(`main.py`가 `analysis_report`를 import). `Dockerfile.arm64`는 `api/*.py`만 복사하므로, `api/` 아래에 하위 폴더를 만들면 COPY도 바꾸세요.
 - `raw_store.py`는 `crawler/`·`contests/2025/contest_detail_parser/`·`contests/2026/contest_detail_parser/`에 **같은 파일이 복사**돼 있습니다(이미지가 따로 빌드됨). 2026 파서의 `extract.py`도 크롤러 추출 규칙(배지·연재 상태·인생픽·잔류율)의 복사본입니다. 한쪽을 고치면 다른 쪽도 맞추세요.
+  `episode_history.py`(연재 기록 해석·병합)도 `crawler/`(원본)·`contests/2026/contest_detail_parser/`·`webapp/backend/api/` 사본입니다 — `bash scripts/check_copies.sh`.
 - 2026 공모전 스택은 `bash contests/2026/deploy.sh [infra|code|orchestration|schedule|alarm]`로 배포합니다(2025 스택은 건드리지 않음). `code` 가 수집기·날짜 계산·파서 이미지·적재를, `orchestration`(별칭 `dmap`)이 DMap 상태 머신·IAM·실패 알림 규칙을 올립니다.
 - crawler 이미지는 Lambda **두 개**(`np-trend-crawler-get-ranking`, `...-get-novel-data`)가 공유합니다. AWS 리소스 이름은 옛 프로젝트명 `np-trend`/`NP-Trend`를 유지 중이니 코드에서 임의로 `NovelFlow`로 바꾸지 마세요. 단 **새로 만드는 리소스는 NovelFlow 이름**을 씁니다(2026 공모전 스택 `novelflow-contest-2026-*`부터).
 - DECISIONS.md는 **append-only**입니다. 항목을 지우지 말고, 바뀐 결정은 새 항목을 쓰고 이전 항목 `상태`를 `대체됨 (→ 날짜)`로 바꿉니다. 템플릿은 파일 상단 「작성 규칙」.
