@@ -189,6 +189,13 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 - 백엔드 수상작 ID: 환경변수 (`webapp/backend/.env.example` 참고).
 - 프론트: `VITE_API_BASE_URL`, Algolia 키 (`webapp/frontend/.env.example` 참고).
 
+## 연재 기록 (NovelFlowEpisodeHistory)
+
+작품별 회차 업로드 이력(설계 `docs/superpowers/specs/2026-10-05-episode-upload-history-design.md`). 키 `NovelId`, 데일리·2026 공모전 공용.
+- 만들기·권한: `bash scripts/setup_episode_history.sh`(크롤러 Lambda 역할 읽기·쓰기, 웹 API 역할 읽기). 여러 번 돌려도 같다.
+- 백필: `python scripts/backfill_episode_history.py`(로컬, 결과 `review/episode-history/<날짜>/`) → `python scripts/load_episode_history.py --src … --dry-run` → 실제 적재.
+  2026-10-05 백필 6,401편(데일리 3,693 · 2026 공모전 2,708, 2025 제외)을 적재했다. 목록 원본은 원본 버킷 `episode-history/backfill-2026-10-05/`.
+
 ## 스케줄 (EventBridge, KST)
 
 - 데일리 랭킹 파이프라인: 매일 21:00 — 스케줄 입력 `{"target_novel_count": 500, "scheduled": true}`. `scheduled` 가 있는 실행만
