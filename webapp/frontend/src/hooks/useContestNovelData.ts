@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getLatestContestNovelDetails, getContestNovelTrend, getContestAvailableDates, getContestNovelAvailableDates } from '../services/api';
 import { format, subDays, parseISO, startOfDay } from 'date-fns';
-import { contestTrendRow } from '../utils/contestNovels';
+import { contestTrendRow, withDebutBaseline } from '../utils/contestNovels';
 import { contestConfig } from '../utils/contest';
 
 interface ContestTrendData {
@@ -84,8 +84,9 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
       // 일간 추이와 같은 모양(Ranking)으로 맞춘다. 공모전은 점수가 없다.
       const collected = contestDatesRef.current;
       // 대표 순위(2025 누적, 2026~ 일간)와 자리표시(View -1 → 기록 없음)는 contestTrendRow 한 곳에서 정한다(행 펼침과 공유).
-      const mappedData = response.data.filter((d: ContestTrendData) => collected.size === 0 || collected.has(d.Date))
-        .map((d: ContestTrendData) => contestTrendRow(d, daily));
+      // 신작의 첫 기록 앞에 '전날 = 0' 기준 행(결과에는 안 나온다) — 첫날의 증가량을 셀 수 있게(withDebutBaseline).
+      const mappedData = withDebutBaseline<MappedTrendData>(response.data.filter((d: ContestTrendData) => collected.size === 0 || collected.has(d.Date))
+        .map((d: ContestTrendData) => contestTrendRow(d, daily)), year);
       if (seq !== reqSeq.current) return;
       setTrendData(mappedData);
       setDataStart(format(startOfDay(start), 'yyyy-MM-dd'));

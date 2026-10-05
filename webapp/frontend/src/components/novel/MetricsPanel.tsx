@@ -19,8 +19,6 @@ interface Props {
   points: MetricPoint[];
   /** 일간은 순위권 밖·점수가 있고, 공모전은 전 작품 순위라 순위권 밖이 없고 점수도 없다. */
   kind: 'daily' | 'contest';
-  /** 지금 연재 상태(일간 상세). 완결작은 '며칠째 쉬는 중' 대신 '완결'로 적는다. */
-  status?: string | null;
   /** 연재 기록의 날짜별 화 수(`/api/uploads`, 기간 = 이 지표의 기간). 없으면 연재 줄을 그리지 않는다(2025 공모전 — 기록하지 않는다). */
   uploads?: UploadDays;
 }
@@ -42,7 +40,7 @@ function useWidth<T extends HTMLElement>() {
   return [ref, w] as const;
 }
 
-export default function MetricsPanel({ points, kind, status, uploads }: Props) {
+export default function MetricsPanel({ points, kind, uploads }: Props) {
   const [wrapRef, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const [allRows, setAllRows] = useState(false);
@@ -143,10 +141,10 @@ export default function MetricsPanel({ points, kind, status, uploads }: Props) {
   // 연재 줄: 양 대신 '올린 날 / 쉰 날'을 칸으로 칠한다. 회차 수 차이가 아니라 연재 기록(실제 회차 목록)에서 센 값이다.
   const dates = points.map(p => p.date);
   const upDays: UploadDays = Object.fromEntries(dates.map(d => [d, uploads?.[d] ?? null]));
+  // 요약은 '며칠 중 며칠' 만 — 연속 연재·휴재는 칸으로 보이고 연재 주기에 따라 갈려 헷갈린다(2026-10-05).
   const up = uploadSummary(upDays);
   const uploadTotal = up.known > 0 ? (
     <>{up.known}일 중 <b>{up.uploaded}일</b> 연재
-      {status === '완결' ? <> · <b>완결</b></> : up.streak > 1 ? <> · 지금 <b>{up.streak}일</b> 연속</> : up.resting > 0 ? <> · <b className="mx-rest">{up.resting}일째</b> 쉬는 중</> : null}
       {summary?.d.eps != null ? <> · 기간 <b>{signed(summary.d.eps)}화</b></> : null}
     </>
   ) : null;

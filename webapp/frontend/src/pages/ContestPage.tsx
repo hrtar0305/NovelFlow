@@ -295,11 +295,13 @@ export default function ContestPage() {
           : (
             <RankTable ariaLabel="공모전 작품 순위" /* 2026 은 열이 12개라 992~1100px 에서 제목 칸이 114px 까지 준다 — 그 폭부터 모바일 행 */ compactBelow={daily ? 1100 : 992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
               sort={sort} onSort={k => setSort(s => nextContestSort(s, k as ContestSortKey))}
-              expandedKey={openId}
-              onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}
-              expandFrom="title"
-              renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates}
-                contest={{ year, daily }} />}
+              // 2025 는 행 펼침이 없다 — 연재 기록을 넣지 않아 펼침에 보일 것이 순위선·소개뿐이다(2026-10-05 사용자).
+              {...(year !== '2025' ? {
+                expandedKey: openId,
+                onToggleRow: (n: ContestNovel) => setOpenId(id => (id === n.ID ? null : n.ID)),
+                expandFrom: 'title' as const,
+                renderExpanded: (n: ContestNovel) => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} contest={{ year, daily }} />,
+              } : {})}
               renderMobileRow={mobileRow}
               emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 공모전 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
           )}

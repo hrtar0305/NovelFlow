@@ -1137,12 +1137,12 @@ def get_novel_available_dates(novel_id: str, response: Response):
 # 행 펼침의 '그날 값' 마감 — 하루의 값은 제시간 값이다(데일리 D 22:00, 공모전 D+1 01:00 KST 의 늦은 재실행 거절과 같은 선).
 _UPLOAD_CUTOFF = {
     'daily': lambda d: f'{d}T22:00:00+09:00',
-    'contest2026': lambda d: f'{(datetime.fromisoformat(d) + timedelta(days=1)).date().isoformat()}T01:00:00+09:00',
+    'contest': lambda d: f'{(datetime.fromisoformat(d) + timedelta(days=1)).date().isoformat()}T01:00:00+09:00',
 }
 
 @app.get("/api/uploads/{novel_id}")
 def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: Optional[str] = None, source: Optional[str] = None):
-    """연재 기록에서 날짜별 올린 화 수(null = 모름). `asof`+`source`(daily|contest2026) 를 주면 그 날짜 수집 마감까지 본 회차만
+    """연재 기록에서 날짜별 올린 화 수(null = 셀 수 없음). `asof`+`source`(daily|contest) 를 주면 그 날짜 수집 마감까지 본 회차만
     센다(행 펼침 고정값). 회차 수 차이로 추정하지 않는다 — 삭제·재업로드·BONUS 도 실제 목록 그대로."""
     _reject_if_blocked(novel_id)
     s, e = _parse_date_range(start, end, NOVEL_TREND_MAX_DAYS)
@@ -1156,8 +1156,10 @@ def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: O
     # 첫 회차 날짜 — 그 앞은 '쉰 날'이 아니라 아직 없던 작품이다(다 받은 기록만 안다).
     eps = (item or {}).get('Episodes') or {}
     first = min((v[0] for v in eps.values()), default=None) if item and item.get('Complete') else None
+    # 본 시각(마감 또는 마지막 확인 중 이른 쪽)이 든 날 — 그날은 다 지나지 않아, 아무것도 안 보였으면 '미정'이다(day_counts 가 null 로 둔다).
+    seen_at = min(t for t in (cutoff, (item or {}).get('CheckedAt')) if t) if (cutoff or (item or {}).get('CheckedAt')) else None
     response.headers["Cache-Control"] = "public, max-age=600, s-maxage=600"
-    return {**out, 'first_date': first, 'tracked': bool(item)}
+    return {**out, 'first_date': first, 'open_day': seen_at[:10] if seen_at else None, 'tracked': bool(item)}
 
 def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5, rest_total: int = 400) -> Optional[float]:
     """

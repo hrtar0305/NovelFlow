@@ -132,7 +132,7 @@ const NovelDetailBody = ({ novelId }: { novelId: string | undefined }) => {
               </div>
             </div>
             <div className="detail-chart-area" aria-busy={loading} style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-              {points.length > 0 ? <MetricsPanel points={points} kind="daily" uploads={uploads} status={(details as { serial_status?: string | null } | null)?.serial_status} />
+              {points.length > 0 ? <MetricsPanel points={points} kind="daily" uploads={uploads} />
                 : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
             </div>
           </section>

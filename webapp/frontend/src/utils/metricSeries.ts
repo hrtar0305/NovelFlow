@@ -20,6 +20,8 @@ export interface MetricRow {
   Fav?: number | null;
   Eps?: number | null;
   Alr?: number | null;
+  /** 비교 기준으로만 쓰는 가짜 행(공모전 신작의 '등록 전날 = 0', `withDebutBaseline`). 결과에는 나오지 않는다. */
+  Baseline?: boolean;
 }
 
 export type Delta = { view: number | null; like: number | null; fav: number | null; eps: number | null };
@@ -58,6 +60,7 @@ const sub = (a: number | null, b: number | null) => (a != null && b != null ? a 
 export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowStart?: string): MetricPoint[] {
   const sorted = [...rows].sort((a, b) => a.Date.localeCompare(b.Date));
   const out: MetricPoint[] = [];
+  const baseDates = new Set(sorted.filter(r => r.Baseline).map(r => r.Date));
   let prevRec: MetricPoint | null = null;  // 증가량의 기준 = 수치가 있는 직전 기록
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
@@ -84,7 +87,7 @@ export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowSta
     out.push(p);
     if (hasVal) prevRec = p;
   }
-  return windowStart ? out.filter(p => p.date >= windowStart) : out;
+  return out.filter(p => !baseDates.has(p.date) && (!windowStart || p.date >= windowStart));
 }
 
 export interface MetricSummary {

@@ -87,7 +87,7 @@ const ContestNovelDetailBody = () => {
   // 공모전은 전날 = 실제 직전 수집일(DECISIONS 2026-07-01).
   const points = useMemo(() => buildMetricPoints(trendData, 'collection', dataStart ?? undefined), [trendData, dataStart]);
   // 연재 기록은 2026 공모전부터(2025 는 넣지 않는다 — 연재 줄을 숨긴다).
-  const uploads = useUploads(novelId, points[0]?.date, points.at(-1)?.date, year === '2026');
+  const uploads = useUploads(novelId, points[0]?.date, points.at(-1)?.date, year !== '2025');
 
   if (error) return <div className="page-shell"><p className="empty-line">{error}</p></div>;
   if (!details) return <div className="page-shell"><div className="rank-skeleton" aria-busy="true"><div /><div /><div /></div></div>;
