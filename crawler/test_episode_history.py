@@ -47,13 +47,19 @@ class T(unittest.TestCase):
 
     def test_day_of_the_check_is_not_rest_when_nothing_seen_yet(self):
         # 데일리는 21시쯤 본다 — 그날 23시에 올리는 작가의 그날이 '쉰 날'이 되면 안 된다(아직 모름). 올린 게 보였으면 올린 날.
-        h = {'Episodes': {'a': ['2026-10-04', '2026-10-04T21:00:00+09:00', None]},
-             'CheckedAt': '2026-10-05T21:00:00+09:00', 'Complete': True}
-        self.assertEqual(eh.day_counts(h, '2026-10-04', '2026-10-05')['days'], {'2026-10-04': 1, '2026-10-05': None})
-        r = eh.day_counts(h, '2026-10-03', '2026-10-04', cutoff_iso='2026-10-04T22:00:00+09:00')
-        self.assertEqual(r['days'], {'2026-10-03': 0, '2026-10-04': 1})
-        r = eh.day_counts(h, '2026-10-02', '2026-10-03', cutoff_iso='2026-10-03T22:00:00+09:00')
-        self.assertEqual(r['days'], {'2026-10-02': 0, '2026-10-03': None})   # 마감(22시)까지 그날 올린 게 안 보였다
+        h = {'Episodes': {'a': ['2026-10-14', '2026-10-14T21:00:00+09:00', None]},
+             'CheckedAt': '2026-10-15T21:00:00+09:00', 'Complete': True}
+        self.assertEqual(eh.day_counts(h, '2026-10-14', '2026-10-15')['days'], {'2026-10-14': 1, '2026-10-15': None})
+        r = eh.day_counts(h, '2026-10-13', '2026-10-14', cutoff_iso='2026-10-14T22:00:00+09:00')
+        self.assertEqual(r['days'], {'2026-10-13': 0, '2026-10-14': 1})
+        r = eh.day_counts(h, '2026-10-12', '2026-10-13', cutoff_iso='2026-10-13T22:00:00+09:00')
+        self.assertEqual(r['days'], {'2026-10-12': 0, '2026-10-13': None})   # 마감(22시)까지 그날 올린 게 안 보였다
+
+    def test_backfilled_days_are_whole_days(self):
+        # 백필(2026-10-05)은 그 전 날짜를 하루 전체 다 봤다 — 마감이 그 전 날짜에 걸려도 0 은 쉰 날이지 '아직 모름'이 아니다.
+        h = {'Episodes': {'a': ['2026-10-01', None, None]}, 'CheckedAt': '2026-10-05T13:00:00+09:00', 'Complete': True}
+        r = eh.day_counts(h, '2026-10-01', '2026-10-02', cutoff_iso='2026-10-02T23:59:59+09:00')
+        self.assertEqual(r['days'], {'2026-10-01': 1, '2026-10-02': 0})
 
     def test_partial_history_marks_unknown_before_oldest(self):
         h = {'Episodes': {'a': ['2026-10-04', None, None]}, 'CheckedAt': '2026-10-05T12:00:00+09:00',
@@ -88,7 +94,7 @@ class Collect(unittest.TestCase):
     def test_with_history_stops_at_checked_date(self):
         fetch, calls = self.fetcher([page([(5, 'EP.5', '26.10.04'), (4, 'EP.4', '26.10.04')]),
                                      page([(3, 'EP.3', '26.10.03'), (2, 'EP.2', '26.10.02')]), page([(1, 'EP.1', '26.10.01')])])
-        r = eh.collect(fetch, {'CheckedAt': '2026-10-03T21:00:00+09:00', 'Complete': True})
+        r = eh.collect(fetch, {'Episodes': {'0': ['2020-01-01', None, None]}, 'CheckedAt': '2026-10-03T21:00:00+09:00', 'Complete': True})
         self.assertEqual(calls, [0, 1])
         self.assertTrue(r['complete'])
         self.assertEqual(r['covered_from'], '2026-10-02')
@@ -103,7 +109,7 @@ class Collect(unittest.TestCase):
         # 확인(00:05) 뒤 그날 올린 회차가 한 쪽을 넘으면 다음 쪽까지 받아야 한다 — 그 날짜 '이하'에서 멈추면 영영 빠진다.
         fetch, calls = self.fetcher([page([(9, 'EP.9', '26.10.05'), (8, 'EP.8', '26.10.05')]),
                                      page([(7, 'EP.7', '26.10.05'), (6, 'EP.6', '26.10.04')]), page([(5, 'EP.5', '26.10.03')])])
-        r = eh.collect(fetch, {'CheckedAt': '2026-10-05T00:05:00+09:00', 'Complete': True})
+        r = eh.collect(fetch, {'Episodes': {'0': ['2020-01-01', None, None]}, 'CheckedAt': '2026-10-05T00:05:00+09:00', 'Complete': True})
         self.assertEqual(calls, [0, 1])
         self.assertIn('7', [e[0] for e in r['seen']])
 
@@ -134,7 +140,15 @@ class Collect(unittest.TestCase):
         self.assertFalse(r['complete'])                     # 처음 보는 작품: 받은 데까지 남긴다(다음에 이어 받는다)
         fetch, calls = self.fetcher(pages)
         with self.assertRaises(eh.OutOfTime):                # 기록이 있으면 쓰지 않는다 — 다음 확인이 같은 자리부터 다시
-            eh.collect(fetch, {'CheckedAt': '2026-09-01T21:00:00+09:00', 'Complete': True}, out_of_time=lambda: len(calls) >= 2)
+            eh.collect(fetch, {'Episodes': {'0': ['2020-01-01', None, None]}, 'CheckedAt': '2026-09-01T21:00:00+09:00', 'Complete': True}, out_of_time=lambda: len(calls) >= 2)
+
+    def test_empty_history_is_fetched_from_scratch(self):
+        # 목록이 비어 있던 기록(삭제·비공개였거나 아직 첫 회차 전)은 마지막 확인일로 멈추지 않는다 — 다시 열린 작품을 첫 쪽만 받고
+        # '다 받음'으로 두면 그 앞 날짜가 전부 쉰 날이 된다.
+        fetch, calls = self.fetcher([page([(3, 'EP.3', '26.10.04'), (2, 'EP.2', '26.10.01')]), page([(1, 'EP.1', '26.09.20')])])
+        r = eh.collect(fetch, {'Episodes': {}, 'CheckedAt': '2026-10-03T21:00:00+09:00', 'Complete': True})
+        self.assertEqual(calls, [0, 1])
+        self.assertEqual(r['covered_from'], '0000-01-01')
 
     def test_prefetched_pages_are_reused(self):
         fetch, calls = self.fetcher([None, page([(1, 'EP.1', '26.10.01')])])

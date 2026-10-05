@@ -48,7 +48,7 @@ class T(unittest.TestCase):
         self.assertEqual(r['new'], 1)
 
     def test_reentry_fetches_gap_and_stores_extra_pages_outside_sqs(self):
-        t = Table({'NovelId': '1', 'Episodes': {}, 'CheckedAt': '2026-09-20T21:02:00+09:00', 'Complete': True, 'Version': 3})
+        t = Table({'NovelId': '1', 'Episodes': {'0': ['2020-01-01', None, None]}, 'CheckedAt': '2026-09-20T21:02:00+09:00', 'Complete': True, 'Version': 3})
         s, s3 = Session(['', '', row(5, 'EP.5', '26.09.25') + row(4, 'EP.4', '26.09.19')]), S3()
         raw = [self.up(0, row(9, 'EP.9', '26.10.05') + row(8, 'EP.8', '26.10.01')), self.up(1, row(7, 'EP.7', '26.09.30') + row(6, 'EP.6', '26.09.28'))]
         n_before = len(raw)
@@ -58,11 +58,11 @@ class T(unittest.TestCase):
         (bucket, key), body = next(iter(s3.objects.items()))
         self.assertEqual((bucket, key), ('raw-bucket', 'episode-history/2026-10-05/1.json.gz'))
         self.assertEqual(len(json.loads(gzip.decompress(body))['pages']), 1)
-        self.assertEqual(sorted(t.item['Episodes']), ['4', '5', '6', '7', '8', '9'])
+        self.assertEqual(sorted(t.item['Episodes']), ['0', '4', '5', '6', '7', '8', '9'])
         self.assertEqual(r['pages'], 1)
 
     def test_out_of_time_skips_write_for_existing_record(self):
-        t = Table({'NovelId': '1', 'Episodes': {}, 'CheckedAt': '2026-09-20T21:02:00+09:00', 'Complete': True, 'Version': 3})
+        t = Table({'NovelId': '1', 'Episodes': {'0': ['2020-01-01', None, None]}, 'CheckedAt': '2026-09-20T21:02:00+09:00', 'Complete': True, 'Version': 3})
         s = Session(['', row(5, 'EP.5', '26.09.25')])
         raw = [self.up(0, row(9, 'EP.9', '26.10.05') + row(8, 'EP.8', '26.10.01'))]
         with self.assertRaises(app.eh.OutOfTime):
