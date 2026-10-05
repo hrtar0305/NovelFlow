@@ -1148,6 +1148,12 @@ def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: O
     센다(행 펼침 고정값). 회차 수 차이로 추정하지 않는다 — 삭제·재업로드·BONUS 도 실제 목록 그대로."""
     _reject_if_blocked(novel_id)
     s, e = _parse_date_range(start, end, NOVEL_TREND_MAX_DAYS)
+    if HIDE_ADULT_CONTENT:
+        # 차단 목록 ∪ 행의 IsAdult(합집합) — 다른 단건 API 와 같은 판정. 연재 기록 항목엔 IsAdult 가 없어 수집 테이블에서 읽는다
+        # (데일리 · 2026 공모전 — 연재 기록이 있는 두 곳). 꺼져 있으면 읽지 않는다.
+        rows = [it for tbl in (table, CONTEST_TABLES[2026]) for it in _query_all_pages(
+            tbl, KeyConditionExpression=Key('ID').eq(novel_id), ProjectionExpression='IsAdult', FilterExpression=Attr('IsAdult').eq(True))]
+        _reject_if_any_adult(novel_id, rows)
     cutoff = _UPLOAD_CUTOFF[source](_parse_date(asof).strftime('%Y-%m-%d')) if asof and source in _UPLOAD_CUTOFF else None
     try:
         item = _convert_decimals(history_table.get_item(Key={'NovelId': novel_id}).get('Item'))
