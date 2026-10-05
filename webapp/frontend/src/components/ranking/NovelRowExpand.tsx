@@ -6,7 +6,7 @@ import { formatDateKo } from '../../utils/format';
 import { previousCalendarDay } from '../../utils/currentRank';
 import { windowOf } from '../../utils/trendSummary';
 import { buildMetricPoints, summarizeMetrics, uploadStats, type MetricRow } from '../../utils/metricSeries';
-import { contestTrendRow, type ContestTrendRow } from '../../utils/contestNovels';
+import { contestTrendRow, withDebutBaseline, type ContestTrendRow } from '../../utils/contestNovels';
 
 const WINDOW = 30;
 // 펼침 높이를 줄이려고 선은 넓고 낮게, 제목·기간은 선 왼쪽 작은 이름표로 접었다(2026-10-04).
@@ -52,7 +52,7 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
     let cancelled = false;
     const req = cYear
       ? getContestNovelTrend(parseInt(cYear, 10), novelId, base, date)
-        .then(r => (r.data as ContestTrendRow[]).map(d => contestTrendRow(d, cDaily)))
+        .then(r => withDebutBaseline((r.data as ContestTrendRow[]).map(d => contestTrendRow(d, cDaily)), cYear))
       : getNovelTrend(novelId, base, date).then(r => r.data as MetricRow[]);
     req.then(rows => { if (!cancelled) setState({ rows }); }).catch(() => { if (!cancelled) setState('error'); });
     return () => { cancelled = true; };
@@ -62,7 +62,7 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
     if (typeof state !== 'object' || !start || !base) return [];
     // 추이 API는 수집하지 않은 날도 빈 행으로 채운다 — 수집한 날(과 기준일)만 남긴다.
     const keep = new Set([...win, base]);
-    return buildMetricPoints(state.rows.filter(r => keep.has(r.Date) && (availableDates.has(r.Date) || r.Date === base)),
+    return buildMetricPoints(state.rows.filter(r => r.Baseline || (keep.has(r.Date) && (availableDates.has(r.Date) || r.Date === base))),
       cYear ? 'collection' : 'calendar', start);
   }, [state, win, start, base, availableDates, cYear]);
 

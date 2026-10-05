@@ -85,6 +85,8 @@ export interface ContestTrendRow {
   Eps?: number | null;
   Alr?: number | null;
   Synopsis?: string | null;
+  /** 직전 수집 뒤 새로 등록된 작품(적재가 판정 — 그날 일간 순위의 '신작'). */
+  IsNew?: boolean;
 }
 
 /**
@@ -92,6 +94,29 @@ export interface ContestTrendRow {
  * **삭제·비공개 자리표시(View = -1)는 '기록 없음'으로 바꾼다** — 그대로 두면 -1 이 실제 값으로 들어가 그날과 다음 날의
  * 증가량이 수천만으로 튄다(공모전은 일시 비공개 뒤 재공개가 실제로 있다).
  */
+/** 공모전 접수 시작일. 참가작은 이날 이후 새로 등록한 작품이라, 이날이 첫 기록이면 전날의 회차·조회는 0 이다. */
+export const CONTEST_OPEN_DATE: Record<string, string> = { 2026: '2026-10-01' };
+
+/**
+ * 공모전 신작의 첫 기록 앞에 '전날 = 0' 기준 행을 둔다 — 첫날도 올린 회차·조회 증가를 셀 수 있게(2026-10-05).
+ * 없으면 수집 첫날(10/1)은 비교할 전날이 없어 연재 줄이 '모름'이 되고, 10/1 부터 매일 올린 작품도 '지금 3일 연속'이 됐다.
+ * 붙이는 조건(셋 다): 받은 행 중 그보다 앞선 실제 기록이 없고, 첫 기록이 접수 시작일이거나 `IsNew`(직전 수집 뒤 등록)다.
+ * 늦게 찾은 작품(재확인으로 찾음 — 등록은 더 일렀을 수 있다)은 `IsNew` 가 없어 붙지 않는다(그날은 그대로 '모름').
+ * 기준 행은 `Baseline` 이라 `buildMetricPoints` 결과에는 나오지 않는다.
+ */
+export function withDebutBaseline<T extends { Date: string; View?: number | null; IsNew?: boolean }>(rows: T[], year: string): T[] {
+  const sorted = [...rows].sort((a, b) => a.Date.localeCompare(b.Date));
+  const i = sorted.findIndex(r => typeof r.View === 'number' && r.View >= 0);
+  if (i < 0) return rows;
+  const first = sorted[i];
+  if (!(first.Date === CONTEST_OPEN_DATE[year] || first.IsNew === true)) return rows;
+  const d = new Date(`${first.Date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  const prev = d.toISOString().slice(0, 10);
+  const base = { ...first, Date: prev, View: 0, Like: 0, Fav: 0, Eps: 0, Alr: 0, Ranking: null, Baseline: true } as T;
+  return [...sorted.filter(r => r.Date !== prev), base];
+}
+
 export function contestTrendRow(d: ContestTrendRow, daily: boolean) {
   const placeholder = typeof d.View === 'number' && d.View < 0;
   const v = (x: number | null | undefined) => (placeholder || x == null || x < 0 ? null : x);
