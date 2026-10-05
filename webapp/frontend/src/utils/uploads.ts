@@ -15,6 +15,8 @@ export interface UploadsResponse {
 /** 칸 하나: 화 수(≥1 올린 날, 0 쉰 날 확정) · 'before' 첫 회차 앞(빈칸) · null 확정할 수 없음(?). */
 export type UploadCell = number | 'before' | null;
 export type UploadDays = Record<string, UploadCell>;
+/** 화면이 들고 있는 연재 기록: 받은 값 · 받는 중 · 실패. 받는 중·실패를 빈 값({})으로 두면 모든 칸이 ? 로 그려져 틀린 정보가 된다. */
+export type UploadsState = UploadDays | 'loading' | 'error';
 
 export function uploadDays(r: UploadsResponse): UploadDays {
   const first = r.first_date;

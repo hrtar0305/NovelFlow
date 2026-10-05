@@ -504,6 +504,9 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .mx-day.is-rest { stroke: var(--np-chart-bar); stroke-width: 1; }   /* 빗금은 fill(pattern) 속성 — CSS 로 fill 을 덮지 않는다 */
 .mx-day__hatch { stroke: var(--np-chart-bar); stroke-width: 1.2; }
 .mx-day__q { font-weight: 700; fill: var(--np-text-faint); pointer-events: none; }
+.mx-day__loading { fill: var(--np-chart-bar); opacity: 0.35; animation: mx-pulse 1.1s ease-in-out infinite; }
+@keyframes mx-pulse { 50% { opacity: 0.12; } }
+@media (prefers-reduced-motion: reduce) { .mx-day__loading { animation: none; } }
 .mx-day.is-on { stroke: var(--np-text-heading); stroke-width: 2; }
 .mx-day__n { font-size: 11px; font-weight: 700; fill: var(--np-on-accent); pointer-events: none; }
 

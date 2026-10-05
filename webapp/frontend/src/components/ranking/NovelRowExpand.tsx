@@ -7,7 +7,7 @@ import { previousCalendarDay } from '../../utils/currentRank';
 import { windowOf } from '../../utils/trendSummary';
 import { buildMetricPoints, summarizeMetrics, type MetricRow } from '../../utils/metricSeries';
 import { contestTrendRow, type ContestTrendRow } from '../../utils/contestNovels';
-import { uploadDays, uploadSummary, type UploadDays } from '../../utils/uploads';
+import { uploadDays, uploadSummary, type UploadsState } from '../../utils/uploads';
 
 const WINDOW = 30;
 // 펼침 높이를 줄이려고 선은 넓고 낮게, 제목·기간은 선 왼쪽 작은 이름표로 접었다(2026-10-04).
@@ -67,12 +67,12 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
     return d.toISOString().slice(0, 10);
   }), [date]);
   const upSource = cYear ? 'contest' as const : 'daily' as const;
-  const [upDays, setUpDays] = useState<{ date: string; days: UploadDays } | null>(null);
+  const [upDays, setUpDays] = useState<{ date: string; days: UploadsState } | null>(null);
   useEffect(() => {
     let cancelled = false;
     getUploads(novelId, upDates[0], date, { date, source: upSource })
       .then(r => { if (!cancelled) setUpDays({ date, days: uploadDays(r.data) }); })
-      .catch(() => { if (!cancelled) setUpDays({ date, days: {} }); });
+      .catch(() => { if (!cancelled) setUpDays({ date, days: 'error' }); });
     return () => { cancelled = true; };
   }, [novelId, date, upDates, upSource]);
 
@@ -89,12 +89,12 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
 
   const s = summarizeMetrics(points);
   const n = points.length;
-  const days = upDays?.date === date ? upDays.days : {};
-  const up = uploadSummary(days);
+  const days: UploadsState = upDays?.date === date ? upDays.days : 'loading';
+  const up = uploadSummary(typeof days === 'object' ? days : {});
   const slot = (UW - 6) / (WINDOW - 1);
   const UX = (i: number) => 3 + i * slot;
   const ucw = Math.max(2, slot - 1.5);
-  const upSummary = !upDays || upDays.date !== date ? '' : up.known > 0 ? <>{up.known}일 중 <b>{up.uploaded}일</b></> : '기록 없음';
+  const upSummary = days === 'loading' ? '불러오는 중' : days === 'error' ? '불러오지 못했습니다' : up.known > 0 ? <>{up.known}일 중 <b>{up.uploaded}일</b></> : '기록 없음';
   const X = (i: number) => (n <= 1 ? W / 2 : P + (i / (n - 1)) * (W - 2 * P));
   const ranks = points.map(p => (p.rec ? p.rank : null));
   const vals = ranks.filter((r): r is number => r != null);
@@ -137,7 +137,7 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
       </div>
       <div className="novel-expand__upload">
         <div className="novel-expand__meta novel-expand__meta--row"><b>연재</b><span>{upSummary}</span></div>
-        <svg width={UW} height={UH} className="mx-svg" role="img" aria-label={`${WINDOW}일 연재`}>
+        <svg width={UW} height={UH} className="mx-svg" role="img" aria-label={`${WINDOW}일 연재`} aria-busy={days === 'loading'}>
           <UploadCells dates={upDates} days={days} X={UX} cw={ucw} h={UH} showCount={false} />
         </svg>
       </div>

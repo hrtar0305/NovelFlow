@@ -3,7 +3,7 @@ import ChangeMark from '../ui/ChangeMark';
 import UploadCells from './UploadCells';
 import { formatDateKo, formatInt, formatMan, formatRatio } from '../../utils/format';
 import { rankTicks, signed, summarizeMetrics, type MetricPoint } from '../../utils/metricSeries';
-import { uploadSummary, type UploadDays } from '../../utils/uploads';
+import { uploadSummary, type UploadDays, type UploadsState } from '../../utils/uploads';
 
 /**
  * 작품 상세 '지표' 영역(2026-09-30 개편). 사용자가 고른 기간 동안 한 작품의 지표를 따라가는 곳이다.
@@ -20,7 +20,7 @@ interface Props {
   /** 일간은 순위권 밖·점수가 있고, 공모전은 전 작품 순위라 순위권 밖이 없고 점수도 없다. */
   kind: 'daily' | 'contest';
   /** 연재 기록의 날짜별 화 수(`/api/uploads`, 기간 = 이 지표의 기간). 없으면 연재 줄을 그리지 않는다(2025 공모전 — 기록하지 않는다). */
-  uploads?: UploadDays;
+  uploads?: UploadsState;
 }
 
 const TABLE_FOLD = 14;
@@ -140,10 +140,11 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
   // ── 증가량 묶음 ──
   // 연재 줄: 양 대신 '올린 날 / 쉰 날'을 칸으로 칠한다. 회차 수 차이가 아니라 연재 기록(실제 회차 목록)에서 센 값이다.
   const dates = points.map(p => p.date);
-  const upDays: UploadDays = Object.fromEntries(dates.map(d => [d, uploads?.[d] ?? null]));
+  const loaded = typeof uploads === 'object';
+  const upDays: UploadsState = loaded ? Object.fromEntries(dates.map(d => [d, uploads[d] ?? null])) as UploadDays : uploads ?? 'error';
   // 요약은 '며칠 중 며칠' 만 — 연속 연재·휴재는 칸으로 보이고 연재 주기에 따라 갈려 헷갈린다(2026-10-05).
-  const up = uploadSummary(upDays);
-  const uploadTotal = up.known > 0 ? (
+  const up = uploadSummary(typeof upDays === 'object' ? upDays : {});
+  const uploadTotal = uploads === 'loading' ? '불러오는 중' : uploads === 'error' ? '불러오지 못했습니다' : up.known > 0 ? (
     <>{up.known}일 중 <b>{up.uploaded}일</b> 연재
       {summary?.d.eps != null ? <> · 기간 <b>{signed(summary.d.eps)}화</b></> : null}
     </>

@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import type { UploadDays } from '../../utils/uploads';
+import type { UploadsState } from '../../utils/uploads';
 
 /**
  * 연재 줄의 칸들(SVG <g>). 작품 상세 지표와 랭킹 행 펼침이 같은 규칙으로 그린다. 값은 연재 기록(실제 회차 목록)의 날짜별 화 수다.
@@ -8,12 +8,18 @@ import type { UploadDays } from '../../utils/uploads';
  *  - 쉰 날(확정): 빗금 칸
  *  - 확정할 수 없는 날(아직 안 끝난 날에 안 보임 · 마지막 확인 뒤 · 다 받지 못한 앞부분): ?
  *  - 첫 회차 앞(아직 없던 작품): 빈칸
+ * 받는 중이면 칸 자리에 깜빡이는 막대 하나, 실패하면 아무것도 그리지 않는다(어느 쪽도 ? 로 칠하지 않는다 — 틀린 정보다).
  */
 export default function UploadCells({ dates, days, X, cw, h, y = 0, hover = null, showCount = true }: {
-  dates: string[]; days: UploadDays; X: (i: number) => number; cw: number; h: number; y?: number; hover?: number | null; showCount?: boolean;
+  dates: string[]; days: UploadsState; X: (i: number) => number; cw: number; h: number; y?: number; hover?: number | null; showCount?: boolean;
 }) {
   const hatch = `hatch-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const rx = Math.min(3, h / 4);
+  if (days === 'error' || dates.length === 0) return null;
+  if (days === 'loading') {
+    const x0 = X(0) - cw / 2;
+    return <rect x={x0} y={y + h / 2 - Math.min(3, h / 4)} width={X(dates.length - 1) + cw / 2 - x0} height={Math.min(6, h / 2)} rx={3} className="mx-day__loading" />;
+  }
   return (
     <g>
       <defs>
