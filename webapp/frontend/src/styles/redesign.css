@@ -448,7 +448,10 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .an-sec > h2 + :not(.inline-nums) { margin-top: 1rem; }
 
 /* ── 작가(2026-09-30) ── */
-.author-table { margin-top: 1.25rem; }
+.author-table { margin-top: 0.4rem; }
+/* 제목 줄과 표·빈 문구 사이가 54~85px 로 벌어졌다(메타 <p> 의 Bootstrap 아래 여백 + .page-shell gap + 위 여백 + 빈 문구 3rem) — 약 24px 로. */
+.author-page .page-title__meta { margin-bottom: 0; }
+.author-page .empty-line { padding: 0.4rem 0 2rem; }
 .author-out { display: flex; flex-direction: column; font-size: 0.875rem; color: var(--np-text-faint); }
 .author-out small { font-size: 0.75rem; }
 .rank-mrow--author { grid-template-columns: 48px minmax(0, 1fr); }
