@@ -13,17 +13,16 @@
     'EP.N' 은 순서라 가장 오래된 공개 회차가 늘 이 번호)가 보이면 끝.
   * 회차 키는 고유 번호(`span.episode_count_view` 의 `novel_count_view_N`). 'EP.N' 은 순서라 바뀔 수 있다.
   * 날짜: 'YY.MM.DD' 또는 'N초전·N분전·N시간전'(그날 올린 회차 — 받은 시각에서 빼 KST 날짜로).
-  * 조회수 칸이 없는 '공개예정 N시간후' 는 예약 회차 — 연재로 세지 않고 `scheduled` 에만 남긴다(감시용).
+  * 예약 회차는 일반 칸이 아닌 따로 된 줄(`tr.ep_style5`)에 '공개예정 / N시간후'로 나온다 — 연재로 세지 않고 `scheduled` 에만
+    [고유 번호, 제목, 원문, 받은 시각]으로 남긴다(감시용). 해석·끝 판정은 `crawler/episode_history.py`.
 
     python scripts/backfill_episode_history.py --dry-run --limit 3        # 3편만 받아 보고 저장하지 않음
     python scripts/backfill_episode_history.py --only contest             # 공모전만
     python scripts/backfill_episode_history.py                            # 전체(이어 받기)
 """
 import argparse
-import io
 import json
 import os
-import re
 import sys
 import threading
 import time
@@ -31,7 +30,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 import requests
-from bs4 import BeautifulSoup
 
 KST = timezone(timedelta(hours=9))
 URL = 'https://novelpia.com/proc/episode_list'
@@ -82,40 +80,8 @@ def fetch_page(nid, page, limiter):
     raise RuntimeError(f'{nid} page {page}: 5번 실패')
 
 
-_REL = re.compile(r'(\d+)\s*(초|분|시간)\s*전')
-
-
-def to_date(text, fetched_at):
-    t = (text or '').strip()
-    m = re.match(r'^(\d{2})\.(\d{2})\.(\d{2})$', t)
-    if m:
-        return f'20{m[1]}-{m[2]}-{m[3]}'
-    m = _REL.search(t)
-    if m:
-        n, unit = int(m[1]), m[2]
-        delta = {'초': timedelta(seconds=n), '분': timedelta(minutes=n), '시간': timedelta(hours=n)}[unit]
-        return (fetched_at - delta).date().isoformat()
-    return None
-
-
-def parse(html, fetched_at):
-    """목록 한 쪽 → (회차들, 예약 회차 원문들, 그 쪽의 칸 수). 칸 수는 조회수 칸 없는 항목(비공개·예약 등)까지 센다 — 끝 판정용."""
-    soup = BeautifulSoup(html, 'html.parser')
-    eps, scheduled = [], []
-    divs = soup.select('div.ep_style2')
-    for d in divs:
-        sp = d.select_one('span.episode_count_view')
-        m = re.search(r'novel_count_view_(\d+)', ' '.join(sp.get('class', []))) if sp else None
-        text = re.sub(r'\s+', ' ', d.get_text(' ', strip=True))
-        if not m:
-            if '공개예정' in text or '시간후' in text or '분후' in text:
-                scheduled.append([text[:120], fetched_at.isoformat()])
-            continue
-        num = d.select_one('span:first-child')
-        b = d.select_one('b')
-        raw_date = b.get_text(strip=True) if b else ''
-        eps.append([m.group(1), num.get_text(strip=True) if num else None, to_date(raw_date, fetched_at), raw_date])
-    return eps, scheduled, len(divs)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'crawler'))
+import episode_history as eh  # noqa: E402 — 해석·끝 판정은 파이프라인과 같은 모듈(crawler/episode_history.py)
 
 
 def collect(nid, source, limiter):
@@ -128,19 +94,14 @@ def collect(nid, source, limiter):
             status = 'http_error'
             break
         pages_raw.append({'page': page, 'fetched_at': fetched_at.isoformat(), 'html': html})
-        got, sch, slots = parse(html, fetched_at)
+        got, sch, slots = eh.parse_page(html, fetched_at)
         if page == 0:
             scheduled = sch
         new = [e for e in got if e[0] not in seen]
         for e in new:
             seen.add(e[0])
             eps.append(e)
-        # 끝: 새 고유 번호가 없음(마지막 쪽을 넘기면 같은 쪽이 다시 온다), 또는 가장 오래된 회차(EP.0·EP.1)가 보임.
-        # 'EP.N' 은 순서라 가장 오래된 공개 회차는 늘 EP.0 이나 EP.1 이다. 쪽당 칸 수로는 판정하지 않는다 — 삭제가 있던 작품은
-        # 첫 쪽이 20칸보다 적고 다음 쪽이 이어진다(378108: 19칸 → 20칸 → …).
-        # EP.1 이 꽉 찬 쪽(20칸)의 맨 끝이면 프롤로그(EP.0)가 다음 쪽에 있을 수 있어 한 쪽 더 본다.
-        labels = [e[1] for e in got]
-        if not new or 'EP.0' in labels or ('EP.1' in labels and not (labels[-1] == 'EP.1' and slots >= 20)):
+        if eh.is_last_page(len(new), [e[1] for e in got], slots):
             break
     else:
         status = 'max_pages'
