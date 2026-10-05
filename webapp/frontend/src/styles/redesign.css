@@ -512,12 +512,19 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 
 /* ── 일간 랭킹 행 펼침(2026-10-01): 30일 순위선+연재 줄 / 작품 소개 / 수치. 제목 열(116px)에서 시작 ── */
 /* 행 펼침: [이름표 + 순위선] | 작품 소개 2줄 | 작품 정보 보기 — 한 줄, 세로 가운데. 왼쪽 끝은 표가 제목 칸에 맞춘다(RankTable expandFrom). */
-.novel-expand { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2.75rem; align-items: center; padding: 0.7rem 0.25rem 0.8rem 0; font-size: 0.875rem; color: var(--np-text-secondary); }
+.novel-expand { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 2.5rem; align-items: center; padding: 0.7rem 0.25rem 0.8rem 0; font-size: 0.875rem; color: var(--np-text-secondary); }
 .novel-expand--loading { display: block; min-height: 64px; color: var(--np-text-faint); }
 .novel-expand__trend { display: flex; align-items: center; gap: 0.9rem; }
 .novel-expand__meta { display: flex; flex-direction: column; font-size: 0.6875rem; line-height: 1.45; color: var(--np-text-faint); white-space: nowrap; }
 .novel-expand__meta b { margin-bottom: 1px; font-size: 0.75rem; font-weight: 700; color: var(--np-text-heading); }
 .novel-expand__svg { overflow: visible; }
+.novel-expand__upload { display: flex; flex-direction: column; gap: 7px; }
+.novel-expand__track { stroke: var(--np-border); stroke-width: 1; }
+.novel-expand__meta--row { flex-direction: row; align-items: baseline; gap: 0.5rem; }
+.novel-expand__meta--row b { margin: 0; }
+.novel-expand__meta--row span b { margin: 0; font-size: inherit; color: var(--np-text-heading); }
+/* 좁은 PC 폭(표가 모바일 행으로 바뀌기 전)에서는 소개글 칸이 너무 좁아져 연재 줄을 뺀다 — 작품 상세에 있다. */
+@media (max-width: 1279.98px) { .novel-expand { grid-template-columns: auto minmax(0, 1fr) auto; } .novel-expand__upload { display: none; } }
 .novel-expand__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-surface-alt); stroke-width: 3px; stroke-linejoin: round; }
 .novel-expand__none { margin: 0; width: 260px; color: var(--np-text-faint); }
 .novel-expand__synopsis { margin: 0; white-space: pre-line; font-size: 0.875rem; line-height: 1.6; color: var(--np-text-primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

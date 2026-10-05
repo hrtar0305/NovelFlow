@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getContestNovelTrend, getNovelTrend } from '../../services/api';
+import UploadCells from '../novel/UploadCells';
 import { formatDateKo } from '../../utils/format';
 import { previousCalendarDay } from '../../utils/currentRank';
 import { windowOf } from '../../utils/trendSummary';
-import { buildMetricPoints, summarizeMetrics, type MetricRow } from '../../utils/metricSeries';
+import { buildMetricPoints, summarizeMetrics, uploadStats, type MetricRow } from '../../utils/metricSeries';
 import { contestTrendRow, type ContestTrendRow } from '../../utils/contestNovels';
 
 const WINDOW = 30;
@@ -12,6 +13,9 @@ const WINDOW = 30;
 const W = 260;
 const H = 40;
 const P = 6;
+/** 연재 줄 폭·높이 — 순위선 옆, 소개글 앞(2026-10-05: 소개가 짧으면 오른쪽이 비었다). */
+const UW = 168;
+const UH = 12;
 
 interface Props {
   novelId: string;
@@ -28,7 +32,7 @@ interface Props {
 
 /**
  * 랭킹 표의 행 펼침. **표에 없는 것 두 가지만** 둔다(2026-10-04 축소 — 자세한 것은 작품 상세에서):
- * 최근 30일 순위선(지금·최고) / 작품 소개 2줄 / 작품 정보 보기 — 한 줄로 늘어놓아 높이를 줄인다. 연재 줄·기간 증가량·연재 상태는 상세로 옮겼다.
+ * 최근 30일 순위선(지금·최고) / 연재 줄(그 기간에 올린 날) / 작품 소개 2줄 / 작품 정보 보기 — 한 줄로 늘어놓아 높이를 줄인다. 연재 줄·기간 증가량·연재 상태는 상세로 옮겼다.
  * 펼칠 때 30일 + 기준일 하루치를 한 번 받는다. 공모전 표도 같은 펼침을 쓴다(`contest`).
  * 위치는 표가 정한다 — RankTable `expandFrom="title"` 이 제목 칸 왼쪽에 맞춘다.
  */
@@ -66,7 +70,14 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
   if (state === 'error') return <div className="novel-expand novel-expand--loading">추이를 불러오지 못했습니다.</div>;
 
   const s = summarizeMetrics(points);
+  const up = uploadStats(points);
   const n = points.length;
+  // 칸 폭은 30일 기준으로 고정하고 오른쪽(마지막 날)에 붙인다 — 기간이 짧으면(공모전 초반 4일) 칸이 늘어나 줄 전체를 덮었다.
+  const slot = (UW - 6) / (WINDOW - 1);
+  const UX = (i: number) => UW - 3 - (n - 1 - i) * slot;
+  const ucw = Math.max(2, slot - 1.5);
+  const upSummary = up.streak > 1 ? <>지금 <b>{up.streak}일</b> 연속</> : up.resting > 0 ? <><b>{up.resting}일째</b> 쉬는 중</>
+    : up.known > 0 ? <>{up.known}일 중 <b>{up.uploaded}일</b></> : '기록 없음';
   const X = (i: number) => (n <= 1 ? W / 2 : P + (i / (n - 1)) * (W - 2 * P));
   const ranks = points.map(p => (p.rec ? p.rank : null));
   const vals = ranks.filter((r): r is number => r != null);
@@ -106,6 +117,14 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
             {lastI >= 0 ? <><circle cx={X(lastI)} cy={Y(ranks[lastI]!)} r={4} className="mx-mark" />{label(lastI, `${ranks[lastI]}위`, 'start')}</> : null}
           </svg>
         ) : <p className="novel-expand__none">{contest ? '이 기간에 순위가 매겨진 날이 없습니다.' : '이 기간에 순위권 기록이 없습니다.'}</p>}
+      </div>
+      <div className="novel-expand__upload">
+        <div className="novel-expand__meta novel-expand__meta--row"><b>연재</b><span>{upSummary}</span></div>
+        <svg width={UW} height={UH} className="mx-svg" role="img" aria-label={`${n}일 연재`}>
+          {/* 30일 자리를 옅은 선으로 깐다 — 기간이 짧으면 칸이 오른쪽에만 있어 왼쪽이 빈 채 떠 보였다. */}
+          <line x1={0} x2={UW} y1={UH / 2} y2={UH / 2} className="novel-expand__track" />
+          <UploadCells points={points} X={UX} cw={ucw} h={UH} showCount={false} />
+        </svg>
       </div>
       {text ? <p className="novel-expand__synopsis">{text}</p> : <p className="novel-expand__synopsis is-empty">작품 소개가 없습니다.</p>}
       <Link to={contest ? `/contests/${contest.year}/novels/${novelId}` : `/novels/${novelId}`} className="novel-expand__go" onClick={e => e.stopPropagation()}>작품 정보 보기</Link>
