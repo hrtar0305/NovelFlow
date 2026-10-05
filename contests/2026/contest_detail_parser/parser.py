@@ -291,7 +291,7 @@ def _history_table():
     return _history_table_obj
 
 
-def _attach_history(session, novel_id, pages, crawled_at, write, execution_id, table=None, conflict=None):
+def _attach_history(session, novel_id, pages, crawled_at, write, execution_id, table=None, conflict=None, out_of_time=None):
     """연재 기록 갱신 — 매일 전 작품의 최신순 목록을 마지막 확인일까지 본다(회차 수가 같아도: 삭제 후 재업로드는 고유 번호가 달라
     여기서 잡힌다). 잔류율이 이미 받은 최신순 쪽은 다시 받지 않고, 새로 받은 쪽은 `pages` 에 더해 원본 묶음에 들어간다.
     처음 본 시각 = 상세를 받은 시각(`crawled_at`, 재시도에도 같다). `write=False`(그림자 실행)면 쓰지 않고 셈만 돌려준다.
@@ -306,7 +306,10 @@ def _attach_history(session, novel_id, pages, crawled_at, write, execution_id, t
     def fetch(n):
         return extract._episode_list_html(session, novel_id, 'UP', n, pages), at
 
-    r = eh.collect(fetch, old, prefetched=prefetched)
+    def fetch_down(n):   # 다 받지 못한 기록을 오래된 쪽부터 채울 때
+        return extract._episode_list_html(session, novel_id, 'DOWN', n, pages), at
+
+    r = eh.collect(fetch, old, prefetched=prefetched, fetch_down=fetch_down, out_of_time=out_of_time)
     known = (old or {}).get('Episodes') or {}
     seen_ids = {e[0] for e in r['seen']}
     summary = {'new': sum(1 for e in r['seen'] if e[0] not in known and e[2]),
@@ -367,7 +370,8 @@ def parse_dmap_batch(event, context):
                 item, pages, _ok = _parse_one(session, novel_id, crawl_date, execution_id)
                 if _ok:
                     try:
-                        h = _attach_history(session, novel_id, pages, item.get("CrawledAt"), write=not bi.get('dry_run'), execution_id=execution_id)
+                        h = _attach_history(session, novel_id, pages, item.get("CrawledAt"), write=not bi.get('dry_run'), execution_id=execution_id,
+                                            out_of_time=over_budget)
                         for k in ('new', 'gone', 'pages'):
                             history[k] += h[k]
                     except Exception as he:  # noqa: BLE001 — 기록은 다음 확인이 마지막 확인일부터 채운다. 작품 처리는 막지 않는다.
