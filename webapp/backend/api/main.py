@@ -454,7 +454,7 @@ def _fetch_rank_tag_rows_by_date(date: str) -> list[dict]:
         'KeyConditionExpression': '#d = :d',
         'ExpressionAttributeNames': {'#d': 'Date'},
         'ExpressionAttributeValues': {':d': {'S': date}},
-        'ProjectionExpression': 'ID, Ranking, Tags, IsAdult',
+        'ProjectionExpression': 'ID, Ranking, Score, Tags, IsAdult',
     }
     while True:
         db_response = ddb_client.query(**query_args)
@@ -480,7 +480,9 @@ def _prefetch_rank_tag_rows(dates: list[str]) -> dict[str, list[dict]] | None:
 
 def _tag_stats_without_blocked(date: str, scores_log: dict, counts_total: dict,
                                counts_top100: dict,
-                               rows: list[dict] | None = None) -> tuple[dict, dict, dict]:
+                               rows: list[dict] | None = None,
+                               score_sum: dict | None = None,
+                               score_total: int | None = None) -> tuple[dict, dict, dict, dict | None, int | None]:
     """저장된 태그 집계에서 차단 소설의 기여분을 뺀다.
 
     STATS 항목은 이미 전체 소설로 집계된 값이지만, 세 지표가 **모두 소설 단위
@@ -506,12 +508,13 @@ def _tag_stats_without_blocked(date: str, scores_log: dict, counts_total: dict,
     읽는다. `rows` 를 주면(기간 엔드포인트가 미리 병렬로 읽은 것) 다시 조회하지 않는다.
     """
     if not HIDE_ADULT_CONTENT:
-        return scores_log, counts_total, counts_top100
+        return scores_log, counts_total, counts_top100, score_sum, score_total
     blocked = _adult_blocklist()
 
     scores_log = dict(scores_log)
     counts_total = dict(counts_total)
     counts_top100 = dict(counts_top100)
+    score_sum = dict(score_sum) if score_sum is not None else None
 
     for item in (rows if rows is not None else _fetch_rank_tag_rows_by_date(date)):
         if not _is_adult_item(item, blocked):
@@ -520,7 +523,13 @@ def _tag_stats_without_blocked(date: str, scores_log: dict, counts_total: dict,
         if not isinstance(rank, int) or rank <= 0:
             continue
         weight = 1 / math.log(rank + 1)
+        score = int(item.get('Score') or 0)
+        # 점유율의 분모(그날 전체 랭킹 점수)에서도 뺀다 — 태그 쪽만 빼면 숨긴 작품 몫만큼 점유율이 낮게 나온다.
+        if score_total is not None:
+            score_total = int(score_total) - score
         for tag in (item.get('Tags') or []):
+            if score_sum is not None and tag in score_sum:
+                score_sum[tag] = int(score_sum[tag]) - score
             if tag in counts_total:
                 counts_total[tag] = int(counts_total[tag]) - 1
             if tag in scores_log:
@@ -533,7 +542,33 @@ def _tag_stats_without_blocked(date: str, scores_log: dict, counts_total: dict,
             counts_total.pop(tag, None)
             scores_log.pop(tag, None)
             counts_top100.pop(tag, None)
-    return scores_log, counts_total, counts_top100
+            if score_sum is not None:
+                score_sum.pop(tag, None)
+    return scores_log, counts_total, counts_top100, score_sum, score_total
+
+
+def _one_day_tag_rows(counts: dict, top100: dict | None, score_sum: dict | None,
+                      score_total: int | None, ranked_total: int | None) -> list[dict]:
+    """태그 랭킹 하루 판정의 행(DECISIONS 2026-10-06): 작품 수 · 100위 안 작품 수 · 인기 점수(랭킹 점수 점유율).
+
+    순서 = 점유율 내림차순, 동점은 태그 이름 — 동점 순서가 날마다 바뀌어 가짜 변동이 생겼다. 점수 필드가 없는 날(소급 전 ·
+    적재 실패)은 점유율을 비우고 작품 수 순으로 낸다(터지지 않게). 구역 판정은 화면(tagZones.ts)이 n · t · N 으로 한다.
+    """
+    has_score = score_sum is not None and bool(score_total)
+    rows = []
+    for tag, n in counts.items():
+        n = int(n)
+        if n <= 0:
+            continue
+        rows.append({
+            'tag': tag, 'count': n, 'top100': int((top100 or {}).get(tag, 0)),
+            'score_share': float((score_sum or {}).get(tag, 0)) / float(score_total) if has_score else None,
+            'ranked_total': int(ranked_total) if ranked_total else None,
+        })
+    rows.sort(key=(lambda r: (-r['score_share'], r['tag'])) if has_score else (lambda r: (-r['count'], r['tag'])))
+    for i, r in enumerate(rows, 1):
+        r['Rank'] = i
+    return rows
 
 
 def _is_adult_item(item: dict, blocked: frozenset) -> bool:
@@ -818,11 +853,14 @@ class NovelDetails(BaseModel):
 
 class TagRankData(BaseModel):
     tag: str
-    power_score: float
+    power_score: float  # 구 인기 점수 Σ1/ln(rank+1) — 기간 페이지 호환으로 남긴다(화면은 score_share)
     local_lift: Optional[float] = None  # top100 vs bottom400 상대적 표현도 (구 데이터는 null)
     count: int
-    Rank: int
+    Rank: int  # 인기 점수(score_share) 순, 동점은 태그 이름
     rank_change: Optional[Any] = None  # 전일 대비 순위 변화 (양수=상승, 음수=하락, 'New'=신규)
+    top100: Optional[int] = None  # 100위 안 작품 수
+    score_share: Optional[float] = None  # 인기 점수 = 그날 전체 랭킹 점수(공모전은 조회 증가) 중 이 태그 작품들의 몫. 필드 없는 날은 null
+    ranked_total: Optional[int] = None  # 그날 순위 작품 수 N(구역 판정의 기준)
 
 class ContestTagRankData(BaseModel):
     tag: str
@@ -1209,49 +1247,35 @@ def get_tags_by_date(date: str, response: Response):
         counts_top100 = item.get('TagCountsTop100', {})  # 구 데이터에는 없을 수 있음
         has_top100_data = bool(counts_top100)
 
-        # 차단 소설의 기여분을 뺀다. 세 지표가 소설 단위 단순 합이라 성립한다.
-        scores_log, counts_total, counts_top100 = _tag_stats_without_blocked(
-            date, scores_log, counts_total, counts_top100
+        # 차단 소설의 기여분을 뺀다. 지표가 모두 소설 단위 단순 합이라 성립한다(점유율의 분모 ScoreTotal 포함).
+        scores_log, counts_total, counts_top100, score_sum, score_total = _tag_stats_without_blocked(
+            date, scores_log, counts_total, counts_top100, None, item.get('TagScoreSum'), item.get('ScoreTotal')
         )
 
-        tag_data = []
-        for tag in scores_log.keys():
-            count_total = int(counts_total.get(tag, 0))
-            count_top100 = int(counts_top100.get(tag, 0))
-            tag_data.append({
-                'tag': tag,
-                'power_score': scores_log.get(tag, 0),
-                'local_lift': _compute_local_lift(count_top100, count_total) if has_top100_data else None,
-                'count': count_total,
-            })
+        # 하루 판정(2026-10-06): 순서 = 인기 점수(랭킹 점수 점유율), 동점은 태그 이름.
+        sorted_data = _one_day_tag_rows(counts_total, counts_top100, score_sum, score_total, item.get('RankedTotal'))
+        for tag_item in sorted_data:
+            tag_item['power_score'] = float(scores_log.get(tag_item['tag'], 0))
+            tag_item['local_lift'] = _compute_local_lift(tag_item['top100'], tag_item['count']) if has_top100_data else None
+        sorted_data = json.loads(json.dumps(sorted_data, cls=DecimalEncoder))
 
-        processed_data = json.loads(json.dumps(tag_data, cls=DecimalEncoder))
-
-        # power_score 기준 정렬 후 순위 부여
-        sorted_data = sorted(processed_data, key=lambda x: x.get('power_score', 0), reverse=True)
-        for i, tag_item in enumerate(sorted_data):
-            tag_item['Rank'] = i + 1
-
-        # 전날 데이터 조회하여 rank_change 계산 (power_score 기준)
+        # 전날 데이터 조회하여 rank_change 계산 (같은 기준 — 인기 점수 순위)
         prev_rank_map = {}
         try:
             prev_date = (datetime.strptime(date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
             prev_db_response = table.get_item(
                 Key={'ID': f'STATS#{prev_date}', 'Date': prev_date},
-                ProjectionExpression='TagWeightedScoresLogarithmic, TagCounts'
+                ProjectionExpression='TagCounts, TagCountsTop100, TagScoreSum, ScoreTotal, RankedTotal'
             )
             prev_item = prev_db_response.get('Item')
             if prev_item:
                 # 전날도 같은 기준으로 빼지 않으면 rank_change가 틀린다.
-                prev_scores_raw, _, _ = _tag_stats_without_blocked(
-                    prev_date,
-                    prev_item.get('TagWeightedScoresLogarithmic', {}),
-                    prev_item.get('TagCounts', {}),
-                    {},
+                _, p_counts, p_top, p_sum, p_total = _tag_stats_without_blocked(
+                    prev_date, {}, prev_item.get('TagCounts', {}), prev_item.get('TagCountsTop100', {}),
+                    None, prev_item.get('TagScoreSum'), prev_item.get('ScoreTotal'),
                 )
-                prev_scores = json.loads(json.dumps(dict(prev_scores_raw), cls=DecimalEncoder))
-                sorted_prev = sorted(prev_scores.items(), key=lambda x: x[1], reverse=True)
-                prev_rank_map = {tag: i + 1 for i, (tag, _) in enumerate(sorted_prev)}
+                prev_rank_map = {r['tag']: r['Rank'] for r in
+                                 _one_day_tag_rows(p_counts, p_top, p_sum, p_total, prev_item.get('RankedTotal'))}
         except Exception as e:
             logger.warning(f"Failed to fetch previous day tag ranks for rank_change: {e}")
 
@@ -1661,12 +1685,11 @@ def _contest_daily_tag_ranking(tbl, date: str) -> Optional[list]:
     scores = item.get('TagWeightedScoresLogarithmic', {}) or {}
     counts = item.get('TagCounts', {}) or {}
     top = item.get('TagCountsTop100', {}) or {}
-    rows = [{'tag': t, 'power_score': float(v), 'count': int(counts.get(t, 0)),
-             'local_lift': _compute_local_lift(int(top.get(t, 0)), int(counts.get(t, 0)), rest_total=ranked_total - 100, min_top=2)}
-            for t, v in scores.items()]
-    rows.sort(key=lambda x: (-x['power_score'], x['tag']))
-    for i, r in enumerate(rows, 1):
-        r['Rank'] = i
+    # 하루 판정(2026-10-06): 순서 = 인기 점수(그날 조회 증가 점유율), 동점은 태그 이름.
+    rows = _one_day_tag_rows(counts, top, item.get('TagScoreSum'), item.get('ScoreTotal'), ranked_total)
+    for r in rows:
+        r['power_score'] = float(scores.get(r['tag'], 0))
+        r['local_lift'] = _compute_local_lift(r['top100'], r['count'], rest_total=ranked_total - 100, min_top=2)
     return rows
 
 
@@ -1726,7 +1749,7 @@ def get_tag_series(start_date: str, end_date: str, response: Response):
             unprocessed = {
                 table.name: {
                     'Keys': keys[i:i + 100],
-                    'ProjectionExpression': 'ID, #d, TagWeightedScoresLogarithmic, TagCounts, TagCountsTop100',
+                    'ProjectionExpression': 'ID, #d, TagWeightedScoresLogarithmic, TagCounts, TagCountsTop100, TagScoreSum, ScoreTotal, RankedTotal',
                     'ExpressionAttributeNames': {'#d': 'Date'},
                 }
             }
@@ -1740,7 +1763,8 @@ def get_tag_series(start_date: str, end_date: str, response: Response):
                     time.sleep(backoff)
                     backoff = min(backoff * 2, 1.0)
 
-        present = [d for d in dates if d in items_by_date]
+        # 인기 점수 재료(ScoreTotal)가 없는 날은 비운다 — 다른 기준의 순위를 섞어 잇지 않는다(소급 전 · 적재 실패).
+        present = [d for d in dates if d in items_by_date and items_by_date[d].get('ScoreTotal') is not None]
         if not present:
             raise HTTPException(status_code=404, detail="No tag statistics found in the given range.")
 
@@ -1750,28 +1774,28 @@ def get_tag_series(start_date: str, end_date: str, response: Response):
         series: dict = {}
         for idx, d in enumerate(present):
             item = items_by_date[d]
-            scores, counts, counts_top = _tag_stats_without_blocked(
+            _, counts, counts_top, ssum, stot = _tag_stats_without_blocked(
                 d,
                 item.get('TagWeightedScoresLogarithmic', {}) or {},
                 item.get('TagCounts', {}) or {},
                 item.get('TagCountsTop100', {}) or {},
                 rows_by_date.get(d),
+                item.get('TagScoreSum'), item.get('ScoreTotal'),
             )
             has_top100 = bool(counts_top)
-            ordered = sorted(scores.items(), key=lambda kv: float(kv[1]), reverse=True)
-            for rank0, (tag, score) in enumerate(ordered):
+            for r in _one_day_tag_rows(counts, counts_top, ssum, stot, item.get('RankedTotal')):
+                tag = r['tag']
                 slot = series.get(tag)
                 if slot is None:
                     n = len(present)
-                    slot = {'rank': [None] * n, 'count': [None] * n,
-                            'score': [None] * n, 'lift': [None] * n}
+                    slot = {'rank': [None] * n, 'count': [None] * n, 'score': [None] * n,
+                            'top': [None] * n, 'lift': [None] * n}
                     series[tag] = slot
-                total = int(counts.get(tag, 0))
-                slot['rank'][idx] = rank0 + 1
-                slot['count'][idx] = total
-                slot['score'][idx] = float(score)
-                slot['lift'][idx] = (_compute_local_lift(int(counts_top.get(tag, 0)), total)
-                                     if has_top100 else None)
+                slot['rank'][idx] = r['Rank']
+                slot['count'][idx] = r['count']
+                slot['score'][idx] = r['score_share']   # 인기 점수(점유율) — 하루 판정과 같은 값
+                slot['top'][idx] = r['top100']
+                slot['lift'][idx] = _compute_local_lift(r['top100'], r['count']) if has_top100 else None
 
         response.headers["Cache-Control"] = "public, max-age=300"
         return json.loads(json.dumps({'dates': present, 'tags': series}, cls=DecimalEncoder))
@@ -2211,7 +2235,7 @@ def analyze_tag_trends(start_date: str, end_date: str, response: Response, _: Op
                 continue
             
             idx = date_map[item_date]
-            scores_log, counts, counts_top100 = _tag_stats_without_blocked(
+            scores_log, counts, counts_top100, _, _ = _tag_stats_without_blocked(
                 item_date,
                 item.get('TagWeightedScoresLogarithmic', {}) or {},
                 item.get('TagCounts', {}) or {},
