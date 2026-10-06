@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTEST_RULES, formatLift, formatShare, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
+import { CONTEST_RULES, formatLift, formatShare, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
 
 const t = (Rank: number, count: number, local_lift: number | null, rank_change: DailyTag['rank_change'] = 0, power_score = 10 - Rank): DailyTag =>
   ({ Rank, tag: `t${Rank}`, count, local_lift, rank_change, power_score });
@@ -88,3 +88,12 @@ describe('formatShare / formatLift', () => {
     expect(formatLift(null)).toBe('–');
   });
 });
+
+describe('formatTop', () => {
+  it('평균이 10% 이상(데일리)이면 정수 %, 그보다 작으면(공모전 3.4%) 소수 한 자리 — 3.41% 와 3.34% 가 둘 다 3% 로 보였다', () => {
+    expect(formatTop({ count: 150, top100: 37, ranked_total: 500 })).toBe('37편 · 25%');
+    expect(formatTop({ count: 381, top100: 13, ranked_total: 2981 })).toBe('13편 · 3.4%');
+    expect(formatTop({ count: 10, top100: null, ranked_total: 500 })).toBe('–');
+  });
+});
+

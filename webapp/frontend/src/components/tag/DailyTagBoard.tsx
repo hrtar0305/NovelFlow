@@ -6,7 +6,7 @@ import RankTable, { type RankColumn } from '../ranking/RankTable';
 import TagTerrainMap from './TagTerrainMap';
 import { useMediaQuery } from '../../hooks/useIsMobile';
 import {
-  DAILY_RULES, DEFAULT_TAG_SORT, ZONE_LABEL, ZONE_ORDER, formatShare, nextTagSort, sortTags, withZones, zoneCounts, zoneLines,
+  DAILY_RULES, DEFAULT_TAG_SORT, ZONE_LABEL, ZONE_ORDER, formatShare, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneLines,
   type DailyTag, type TagSort, type TagSortKey, type ZonedTag, type ZoneKey, type ZoneRules,
 } from '../../utils/tagZones';
 import { formatInt } from '../../utils/format';
@@ -23,8 +23,6 @@ type Row = ZonedTag<DailyTag>;
 const ZoneName = ({ zone, edge }: { zone: ZoneKey | null; edge?: boolean }) => (zone
   ? <span className={`zone-name zone-name--${zone}`}><i className="zone-dot" aria-hidden="true" />{ZONE_LABEL[zone]}{edge ? <span className="zone-edge">경계</span> : null}</span>
   : <span className="zone-name zone-name--none">–</span>);
-
-const topText = (t: DailyTag) => (t.top100 != null ? `${t.top100}편 · ${t.count ? Math.round((t.top100 / t.count) * 100) : 0}%` : '–');
 
 interface DailyTagBoardProps {
   tags: DailyTag[];
@@ -108,7 +106,7 @@ export default function DailyTagBoard({
     // 순위가 인기 점수 순이라 순위순(기본)일 때도 점수를 굵게 둔다.
     { key: 'score', header: '인기 점수', aside: <FootnoteRef id="score" n={1} />, width: '104px', sortKey: 'score_share', align: 'right', render: t => strongIf(['score_share', 'Rank'], formatShare(t.score_share)) },
     { key: 'count', header: '작품 수', width: '80px', sortKey: 'count', align: 'right', render: t => strongIf(['count'], formatInt(t.count)) },
-    { key: 'top', header: '100위 안', aside: <FootnoteRef id="top" n={2} />, width: '112px', sortKey: 'top_share', align: 'right', render: t => strongIf(['top_share'], topText(t)) },
+    { key: 'top', header: '100위 안', aside: <FootnoteRef id="top" n={2} />, width: '112px', sortKey: 'top_share', align: 'right', render: t => strongIf(['top_share'], formatTop(t)) },
   ];
 
   const mobileRow = (t: Row) => (
@@ -116,7 +114,7 @@ export default function DailyTagBoard({
       <div className="rank-mrow__rank"><span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span><ChangeMark value={t.rank_change} /></div>
       <div className="rank-mrow__main">
         <span className="rank-title">{t.tag}</span>
-        <p>{t.zone ? <><ZoneName zone={t.zone} edge={t.edge} /> · </> : null}인기 <b>{formatShare(t.score_share)}</b> · 작품 <b>{formatInt(t.count)}</b> · 100위 안 <b>{topText(t)}</b></p>
+        <p>{t.zone ? <><ZoneName zone={t.zone} edge={t.edge} /> · </> : null}인기 <b>{formatShare(t.score_share)}</b> · 작품 <b>{formatInt(t.count)}</b> · 100위 안 <b>{formatTop(t)}</b></p>
       </div>
     </div>
   );

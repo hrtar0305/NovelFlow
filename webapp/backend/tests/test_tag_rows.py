@@ -20,6 +20,12 @@ class OneDayRows(unittest.TestCase):
         rows = M._one_day_tag_rows({'a': 3, 'b': 9}, {'a': 1}, None, None, None)
         self.assertEqual([(r['tag'], r['score_share'], r['top100']) for r in rows], [('b', None, 0), ('a', None, 1)])
 
+    def test_no_top100_map_means_unknown_not_zero(self):
+        # 2026-04-13 이전 STATS 에는 100위 안 집계가 없다 — 0 으로 내면 화면이 흔한 태그를 전부 '100위 안 0편 · 과포화'로 판정한다.
+        for top in (None, {}):
+            rows = M._one_day_tag_rows({'a': 30}, top, {'a': 100}, 1000, 300)
+            self.assertIsNone(rows[0]['top100'])
+
     def test_missing_tag_in_score_sum(self):
         rows = M._one_day_tag_rows({'a': 3}, {}, {}, 1000, 500)
         self.assertEqual(rows[0]['score_share'], 0.0)

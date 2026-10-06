@@ -561,7 +561,8 @@ def _one_day_tag_rows(counts: dict, top100: dict | None, score_sum: dict | None,
         if n <= 0:
             continue
         rows.append({
-            'tag': tag, 'count': n, 'top100': int((top100 or {}).get(tag, 0)),
+            # 100위 안 집계가 없는 날(2026-04-13 이전 STATS)은 0 이 아니라 모름 — 0 이면 흔한 태그가 전부 '0편 · 과포화'로 판정됐다.
+            'tag': tag, 'count': n, 'top100': int(top100.get(tag, 0)) if top100 else None,
             'score_share': float((score_sum or {}).get(tag, 0)) / float(score_total) if has_score else None,
             'ranked_total': int(ranked_total) if ranked_total else None,
         })
@@ -1689,7 +1690,8 @@ def _contest_daily_tag_ranking(tbl, date: str) -> Optional[list]:
     rows = _one_day_tag_rows(counts, top, item.get('TagScoreSum'), item.get('ScoreTotal'), ranked_total)
     for r in rows:
         r['power_score'] = float(scores.get(r['tag'], 0))
-        r['local_lift'] = _compute_local_lift(r['top100'], r['count'], rest_total=ranked_total - 100, min_top=2)
+        r['local_lift'] = (_compute_local_lift(r['top100'], r['count'], rest_total=ranked_total - 100, min_top=2)
+                           if r['top100'] is not None else None)
     return rows
 
 

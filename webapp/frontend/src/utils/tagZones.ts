@@ -111,3 +111,11 @@ export function sortTags<T extends DailyTag>(rows: T[], sort: TagSort): T[] {
 export const formatLift = (v?: number | null): string => (v != null && Number.isFinite(v) ? `${v.toFixed(1)}×` : DASH);
 /** 인기 점수(점유율 0~1) → '66.8%' */
 export const formatShare = (v?: number | null): string => (v != null && Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : DASH);
+/** 100위 안 비율 → 비율 소수 자리. 평균(100/N)이 10% 아래면(공모전 3% 대) 한 자리 — 정수로 자르면 평균 근처 태그가 모두 같은 숫자였다. */
+export const sharePct = (share: number, N: number | null | undefined): string =>
+  (N && 100 / N < 0.1 ? `${(share * 100).toFixed(1)}%` : `${Math.round(share * 100)}%`);
+
+/** 100위 안 'N편 · x%' */
+export const formatTop = (t: { count: number; top100?: number | null; ranked_total?: number | null }): string =>
+  (t.top100 != null && t.count > 0 ? `${t.top100}편 · ${sharePct(t.top100 / t.count, t.ranked_total)}` : DASH);
+
