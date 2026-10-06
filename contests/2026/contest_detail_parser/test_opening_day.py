@@ -19,5 +19,16 @@ class OpeningDay(unittest.TestCase):
         self.assertEqual(C.opening_day_ids('2026-09-30', '2026-10-01', items), set())
 
 
+class DailyTagScore(unittest.TestCase):
+    def test_view_delta_sum_and_total(self):
+        # 공모전 태그의 인기 점수 재료 = 일간 순위가 있는 작품의 그날 조회 증가 합(데일리의 랭킹 점수 자리).
+        items = [{'ID': '1', 'DailyRank': 1, 'ViewDelta': 900, 'Tags': ['a', 'b']},
+                 {'ID': '2', 'DailyRank': 2, 'ViewDelta': 100, 'Tags': ['a', 'b']},
+                 {'ID': '3', 'View': 5, 'Tags': ['a']}]                       # 일간 순위 없음 → 빠짐
+        s = C.daily_tag_stats(items)
+        self.assertEqual(s['TagScoreSum'], {'a': 1000, 'b': 1000})
+        self.assertEqual((s['ScoreTotal'], s['RankedTotal']), (1000, 2))
+
+
 if __name__ == '__main__':
     unittest.main()
