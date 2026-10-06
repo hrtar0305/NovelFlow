@@ -6,7 +6,7 @@
     "Defaults": {
       "Type": "Pass",
       "Parameters": {
-        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false, \"inject_fail_mod\": 0, \"reprocess\": false, \"fail_first_attempt\": false, \"accept_partial\": false, \"concurrency\": 10, \"history_concurrency\": 10}'), $$.Execution.Input, false)",
+        "args.$": "States.JsonMerge(States.StringToJson('{\"target_date\": \"\", \"skip_discovery\": false, \"raw\": true, \"dry_run\": false, \"inject_fail_mod\": 0, \"reprocess\": false, \"fail_first_attempt\": false, \"accept_partial\": false, \"concurrency\": 20, \"history_concurrency\": 20}'), $$.Execution.Input, false)",
         "Discover": {
           "done": true,
           "fallback": false,
@@ -341,7 +341,7 @@
             },
             "FirstRound": {
               "Type": "Pass",
-              "Comment": "첫 라운드: 전체 목록, 20편 묶음, 동시 10(실행 입력 concurrency 로 바꾼다 — 시험용). 묶음은 EXPRESS 자식(최대 5분) 안에 끝나야 한다 — 처리량은 동시 수가 정하고 묶음 크기는 자식 하나의 소요만 정하므로 줄여도 느려지지 않는다(파서 시간 예산 170초 + ParseBatch 280초 제한).",
+              "Comment": "첫 라운드: 전체 목록, 20편 묶음, 동시 20(실행 입력 concurrency — 2026-10-06 그림자 실행: 10 → 20 에서 묶음당 시간 그대로·오류 0, 값 받기 5분 20초 → 2분 43초). 묶음은 EXPRESS 자식(최대 5분) 안에 끝나야 한다 — 처리량은 동시 수가 정하고 묶음 크기는 자식 하나의 소요만 정하므로 줄여도 느려지지 않는다(파서 시간 예산 170초 + ParseBatch 280초 제한).",
               "ResultPath": "$.Work",
               "Next": "ParseMap",
               "Parameters": {
