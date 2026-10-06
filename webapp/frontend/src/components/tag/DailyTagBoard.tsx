@@ -4,23 +4,27 @@ import ChangeMark from '../ui/ChangeMark';
 import Footnotes, { FootnoteRef } from '../ui/Footnotes';
 import RankTable, { type RankColumn } from '../ranking/RankTable';
 import TagTerrainMap from './TagTerrainMap';
+import { useMediaQuery } from '../../hooks/useIsMobile';
 import {
-  DEFAULT_TAG_SORT, ZONE_LABEL, ZONE_ORDER, formatLift, mainstreamCut, nextTagSort, sortTags, withZones, zoneCounts,
-  type DailyTag, type TagSort, type TagSortKey, type ZonedTag, type ZoneKey,
+  DAILY_RULES, DEFAULT_TAG_SORT, ZONE_LABEL, ZONE_ORDER, formatShare, nextTagSort, sortTags, withZones, zoneCounts, zoneLines,
+  type DailyTag, type TagSort, type TagSortKey, type ZonedTag, type ZoneKey, type ZoneRules,
 } from '../../utils/tagZones';
 import { formatInt } from '../../utils/format';
 
 /**
- * 2-track 태그 순위판(표 + 구역 필터 + 지형 지도). 데일리 태그 랭킹과 2026~ 공모전 태그 랭킹(일간 순위 기준)이 같이 쓴다.
- * 산식은 백엔드와 한 글자도 어긋나면 안 된다(`main.py` 의 `_compute_local_lift`, 적재의 `TagWeightedScoresLogarithmic`).
+ * 태그 순위판 — 구역 칩 → 지형 지도 → 표(상위 50 + 전체 보기) → 각주. 데일리 태그 랭킹과 2026~ 공모전 태그 랭킹이 같이 쓴다.
+ * **그날 하루로 판단한다**(DECISIONS 2026-10-06): 작품 수 · 100위 안(t편 · 비율) · 인기 점수(랭킹 점수 점유율), 구역 3개 + 경계.
+ * 지도는 표 아래(1~3만 px)에 묻혀 보이지 않아 표 위로 올렸다. 폰은 칩이 요약을 맡고 지도는 펼쳐야 보인다.
  */
 
 type Zone = 'all' | ZoneKey;
 type Row = ZonedTag<DailyTag>;
 
-const ZoneName = ({ zone }: { zone: ZoneKey | null }) => (zone
-  ? <span className={`zone-name zone-name--${zone}`}><i className="zone-dot" aria-hidden="true" />{ZONE_LABEL[zone]}</span>
+const ZoneName = ({ zone, edge }: { zone: ZoneKey | null; edge?: boolean }) => (zone
+  ? <span className={`zone-name zone-name--${zone}`}><i className="zone-dot" aria-hidden="true" />{ZONE_LABEL[zone]}{edge ? <span className="zone-edge">경계</span> : null}</span>
   : <span className="zone-name zone-name--none">–</span>);
+
+const topText = (t: DailyTag) => (t.top100 != null ? `${t.top100}편 · ${t.count ? Math.round((t.top100 / t.count) * 100) : 0}%` : '–');
 
 interface DailyTagBoardProps {
   tags: DailyTag[];
@@ -28,23 +32,19 @@ interface DailyTagBoardProps {
   error: string | null;
   /** 날짜가 바뀌면 펼친 행을 닫는다. */
   resetKey: string | undefined;
-  /** 각주 문구: 점수에 쓰는 순위('순위' / '일간 순위'), 집중도의 위·아래 묶음('상위 100위 안' / '100위 밖'). */
-  rankBasis: string;
-  topLabel: string;
-  restLabel: string;
+  /** 인기 점수의 재료 이름(데일리 '랭킹 점수', 공모전 '조회 증가') */
+  scoreLabel: string;
+  /** 구역 판정 기준(공모전은 숨은 강자에 100위 안 6편 — tagZones.CONTEST_RULES) */
+  rules?: ZoneRules;
   ariaLabel: string;
   emptyText: string;
-  /** 지도를 그릴 수 없을 때(집중도가 없는 날)의 한 줄. */
-  noMapText: string;
-  /** 집중도 각주 끝에 붙는 판별 규칙(공모전: 상위 100 안 1편뿐인 태그 제외). */
-  liftRule?: string;
   /** 있으면 행을 눌러 펼친다. */
   renderExpanded?: (t: Row) => ReactNode;
   onOpenTag?: (tag: string | null) => void;
 }
 
 export default function DailyTagBoard({
-  tags, loading, error, resetKey, rankBasis, topLabel, restLabel, ariaLabel, emptyText, noMapText, liftRule, renderExpanded, onOpenTag,
+  tags, loading, error, resetKey, scoreLabel, rules = DAILY_RULES, ariaLabel, emptyText, renderExpanded, onOpenTag,
 }: DailyTagBoardProps) {
   const [sort, setSort] = useState<TagSort>(DEFAULT_TAG_SORT);
   const [zone, setZone] = useState<Zone>('all');
@@ -52,29 +52,35 @@ export default function DailyTagBoard({
   const [searchInput, setSearchInput] = useState('');
   const [openTag, setOpenTagState] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  const mobile = useMediaQuery('(max-width: 767.98px)');
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const setOpenTag = useCallback((tag: string | null) => { setOpenTagState(tag); onOpenTag?.(tag); }, [onOpenTag]);
   useEffect(() => { setOpenTagState(null); }, [resetKey]);
 
+  const N = tags[0]?.ranked_total ?? null;
+  const lines = zoneLines(N, rules);
   const notes = useMemo(() => [
-    { id: 'zone', content: <>구역 = 작품 수가 그날 상위 25% 안인지 × 상위권 집중도가 1.0 이상인지. 오늘의 대세는 둘 다, 숨은 강자는 적게 쓰이지만 상위권에 몰린 태그, 과포화는 많이 쓰이지만 덜 몰린 태그, 오늘 약세는 둘 다 아닌 태그입니다.</> },
-    { id: 'lift', content: <>상위권 집중도 = {topLabel}에서의 등장 비율 ÷ {restLabel}에서의 등장 비율. 1.0이면 순위와 무관하게 고르게 쓰인 태그입니다. 작품 5편 미만인 태그는 계산하지 않습니다.{liftRule ? ` ${liftRule}` : ''}</> },
-    { id: 'power', content: <>인기 점수 = 태그가 달린 작품마다 1 ÷ ln({rankBasis} + 1)을 더한 값. 상위 작품일수록 크게 반영되며, 태그 순위가 이 점수 순입니다.</> },
-  ], [rankBasis, topLabel, restLabel, liftRule]);
+    { id: 'score', content: <>인기 점수 = 오늘 순위 작품{N ? ` ${formatInt(N)}편` : ''}이 받은 {scoreLabel} 가운데 이 태그가 달린 작품들이 차지하는 몫. 한 작품에 태그가 여럿이라 태그끼리 더하면 100%를 넘습니다. 표의 순위가 이 값 순입니다.</> },
+    { id: 'top', content: <>100위 안 = 이 태그 작품 가운데 100위 안에 든 작품 수와 그 비율. 평균은 {lines ? `${Math.round(lines.p0 * 1000) / 10}%` : '100 ÷ 순위 작품 수'}입니다.</> },
+    { id: 'zone', content: <>구역 — 대세: {lines ? `${lines.cut}편` : '6%'} 이상 쓰이면서 100위 안 비율이 평균 이상 · 과포화: 많이 쓰이지만 평균 미만 · 숨은 강자: 적게 쓰이지만 100위 안에 {rules.gemMinTop}편 이상, 평균의 {rules.gemMult}배 이상. 경계는 비율이 평균의 ±{Math.round(rules.edge * 100)}% 안이라 하루 사이 바뀔 수 있는 태그. 시들어 가는 태그는 태그 트렌드(기간)에서 봅니다.</> },
+  ], [N, lines, scoreLabel, rules]);
 
-  const zoned = useMemo(() => withZones(tags), [tags]);
-  const cut = useMemo(() => mainstreamCut(tags), [tags]);
+  const zoned = useMemo(() => withZones(tags, rules), [tags, rules]);
   const counts = useMemo(() => zoneCounts(zoned), [zoned]);
-  const hasZones = cut != null;
-  // 구역이 없는 날(집중도 이전)에는 구역 버튼이 숨으므로, 다른 날에 골라 둔 구역이 남아 표를 비우지 않게 무시한다.
+  const hasZones = lines != null && zoned.some(t => t.zone);
   const activeZone: Zone = hasZones ? zone : 'all';
   const q = search.trim().toLowerCase();
   const rows = useMemo(() => sortTags(
     zoned.filter(t => (activeZone === 'all' || t.zone === activeZone) && (!q || t.tag.toLowerCase().includes(q))), sort,
   ), [zoned, activeZone, q, sort]);
-  const mapRows = useMemo(() => zoned.filter((t): t is Row & { zone: ZoneKey; local_lift: number } => t.zone != null && t.local_lift != null), [zoned]);
+  const mapRows = useMemo(() => zoned.filter((t): t is Row & { top100: number; ranked_total: number } =>
+    t.count >= 5 && t.top100 != null && t.ranked_total != null), [zoned]);
   const matches = useMemo(() => (activeZone !== 'all' || q ? new Set(rows.map(r => r.tag)) : null), [rows, activeZone, q]);
+  // 칩의 대표 태그: 구역마다 인기 점수 상위 3개
+  const leaders = useMemo(() => Object.fromEntries(ZONE_ORDER.map(z => [z,
+    zoned.filter(t => t.zone === z).sort((a, b) => (b.score_share ?? 0) - (a.score_share ?? 0)).slice(0, 3).map(t => t.tag)])) as Record<ZoneKey, string[]>, [zoned]);
 
   const scrollToToolbar = () => {
     const el = toolbarRef.current;
@@ -82,8 +88,7 @@ export default function DailyTagBoard({
   };
   const applySearch = (v: string) => { setSearch(v); scrollToToolbar(); };
   const submitSearch = (e: FormEvent) => { e.preventDefault(); applySearch(searchInput.trim()); };
-  const pickZone = (z: Zone) => { setZone(z); scrollToToolbar(); };
-  // 지도의 원을 누르면 표에서 그 태그를 찾는다(펼칠 수 있는 판이면 펼친다).
+  // 지도의 점을 누르면 표에서 그 태그를 찾는다(펼칠 수 있는 판이면 펼친다).
   const pickFromMap = useCallback((tag: string) => {
     setZone('all');
     setSearch(tag);
@@ -99,11 +104,11 @@ export default function DailyTagBoard({
     { key: 'rank', header: '순위', width: '48px', sortKey: 'Rank', render: t => <span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span> },
     { key: 'chg', header: '변동', width: '52px', sortKey: 'rank_change', render: t => <ChangeMark value={t.rank_change} /> },
     { key: 'tag', header: '태그', width: 'minmax(0,1fr)', render: t => <span className="rank-title">{t.tag}</span> },
-    { key: 'zone', header: '구역', aside: <FootnoteRef id="zone" n={1} />, width: '120px', render: t => <ZoneName zone={t.zone} /> },
-    { key: 'count', header: '작품 수', width: '76px', sortKey: 'count', render: t => strongIf(['count'], formatInt(t.count)) },
-    { key: 'lift', header: '상위권 집중도', aside: <FootnoteRef id="lift" n={2} />, width: '124px', sortKey: 'local_lift', render: t => strongIf(['local_lift'], formatLift(t.local_lift)) },
-    // 순위는 인기 점수로 매기므로 순위순(기본)일 때도 점수를 볼드로 둔다.
-    { key: 'power', header: '인기 점수', aside: <FootnoteRef id="power" n={3} />, width: '100px', sortKey: 'power_score', render: t => strongIf(['power_score', 'Rank'], t.power_score.toFixed(2)) },
+    { key: 'zone', header: '구역', aside: <FootnoteRef id="zone" n={3} />, width: '132px', render: t => <ZoneName zone={t.zone} edge={t.edge} /> },
+    // 순위가 인기 점수 순이라 순위순(기본)일 때도 점수를 굵게 둔다.
+    { key: 'score', header: '인기 점수', aside: <FootnoteRef id="score" n={1} />, width: '104px', sortKey: 'score_share', align: 'right', render: t => strongIf(['score_share', 'Rank'], formatShare(t.score_share)) },
+    { key: 'count', header: '작품 수', width: '80px', sortKey: 'count', align: 'right', render: t => strongIf(['count'], formatInt(t.count)) },
+    { key: 'top', header: '100위 안', aside: <FootnoteRef id="top" n={2} />, width: '112px', sortKey: 'top_share', align: 'right', render: t => strongIf(['top_share'], topText(t)) },
   ];
 
   const mobileRow = (t: Row) => (
@@ -111,22 +116,47 @@ export default function DailyTagBoard({
       <div className="rank-mrow__rank"><span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span><ChangeMark value={t.rank_change} /></div>
       <div className="rank-mrow__main">
         <span className="rank-title">{t.tag}</span>
-        <p>{t.zone ? <><ZoneName zone={t.zone} /> · </> : null}작품 <b>{formatInt(t.count)}</b> · 집중도 <b>{formatLift(t.local_lift)}</b> · 점수 <b>{t.power_score.toFixed(2)}</b></p>
+        <p>{t.zone ? <><ZoneName zone={t.zone} edge={t.edge} /> · </> : null}인기 <b>{formatShare(t.score_share)}</b> · 작품 <b>{formatInt(t.count)}</b> · 100위 안 <b>{topText(t)}</b></p>
       </div>
     </div>
   );
 
   const filtered = activeZone !== 'all' || q !== '';
-  const excluded = tags.length - mapRows.length;
+  const ready = !error && !loading && tags.length > 0;
+  const map = ready && hasZones && mapRows.length > 0 ? (
+    <section className="tag-map" aria-label="태그 지형 지도">
+      {mobile && !mapOpen ? (
+        <button type="button" className="link-button tag-map__open" onClick={() => setMapOpen(true)}>지형 지도 보기</button>
+      ) : (
+        <>
+          <TagTerrainMap rows={mapRows} rules={rules} active={hover ?? openTag} matches={matches} onPick={pickFromMap} onHover={setHover} />
+          <p className="tag-map__note">작품 5편 미만 태그는 그리지 않습니다 · 시들어 가는 태그는 태그 트렌드(기간)에서 봅니다</p>
+        </>
+      )}
+    </section>
+  ) : null;
 
   return (
     <>
+      {ready && hasZones ? (
+        <div className="zone-chips" role="radiogroup" aria-label="구역">
+          <button type="button" role="radio" aria-checked={zone === 'all'} className={`zone-chip${zone === 'all' ? ' is-on' : ''}`} onClick={() => setZone('all')}>
+            <span className="zone-chip__name">전체</span> <span className="zone-chip__n">{formatInt(tags.length)}</span>
+          </button>
+          {ZONE_ORDER.map(z => (
+            <button key={z} type="button" role="radio" aria-checked={zone === z} className={`zone-chip zone-name--${z}${zone === z ? ' is-on' : ''}`} onClick={() => setZone(zone === z ? 'all' : z)}>
+              <span className="zone-chip__name"><i className="zone-dot" aria-hidden="true" />{ZONE_LABEL[z]}</span> <span className="zone-chip__n">{formatInt(counts[z])}</span>
+              {leaders[z].length ? <span className="zone-chip__lead">{leaders[z].join(' · ')}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {map}
+
       <div className="rank-toolbar" ref={toolbarRef}>
         <h2 className="rank-toolbar__title">
           태그 순위
-          <span className="rank-toolbar__count">
-            {filtered ? <>조건에 맞는 <b>{formatInt(rows.length)}</b>개 / {formatInt(tags.length)}개</> : <>{formatInt(tags.length)}개</>}
-          </span>
+          {filtered ? <span className="rank-toolbar__count">조건에 맞는 <b>{formatInt(rows.length)}</b>개</span> : null}
         </h2>
         <form className="toolbar-searchform" role="search" onSubmit={submitSearch}>
           <input className="toolbar-search" type="search" placeholder="태그 검색" aria-label="태그 검색"
@@ -134,18 +164,6 @@ export default function DailyTagBoard({
           <button type="submit" className="toolbar-searchbtn" aria-label="검색"><SearchIcon size={15} aria-hidden="true" /></button>
         </form>
       </div>
-      {hasZones && tags.length > 0 ? (
-        <div className="zone-filter" role="radiogroup" aria-label="구역">
-          <button type="button" role="radio" aria-checked={zone === 'all'} className={zone === 'all' ? 'is-on' : undefined} onClick={() => pickZone('all')}>
-            전체 <span className="zone-filter__n">{formatInt(tags.length)}</span>
-          </button>
-          {ZONE_ORDER.map(z => (
-            <button key={z} type="button" role="radio" aria-checked={zone === z} className={`zone-filter__item zone-name--${z}${zone === z ? ' is-on' : ''}`} onClick={() => pickZone(z)}>
-              <i className="zone-dot" aria-hidden="true" />{ZONE_LABEL[z]} <span className="zone-filter__n">{formatInt(counts[z])}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
 
       {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => window.location.reload()}>다시 시도</button></p>
         : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
@@ -158,31 +176,13 @@ export default function DailyTagBoard({
               renderExpanded,
             } : {})}
             onRowHover={t => setHover(t?.tag ?? null)}
-            // 수백 개를 다 펼치면 아래 지도·각주가 1~3만 px 밑에 묻힌다 — 상위 50개만, 나머지는 '전체 보기'(사용자 2026-10-05).
+            // 수백 개를 다 펼치면 아래 각주가 1~3만 px 밑에 묻힌다 — 상위 50개만, 나머지는 '전체 보기'(사용자 2026-10-05).
             collapseAfter={50} expandOnMobile
             renderMobileRow={mobileRow}
             emptyText={tags.length === 0 ? emptyText : '조건에 맞는 태그가 없습니다.'} />
         )}
 
-      {!error && !loading && tags.length > 0 ? (
-        <>
-          <Footnotes notes={notes} />
-          <section className="tag-map">
-            <div className="tag-map__head">
-              <h2>태그 지형 지도</h2>
-              {hasZones ? <span className="tag-map__meta">태그 {formatInt(mapRows.length)}개{excluded > 0 ? ` · 집중도를 계산하지 않은 ${formatInt(excluded)}개 제외` : ''}</span> : null}
-            </div>
-            {hasZones && cut != null ? (
-              <>
-                <p className="tag-map__axis">가로 작품 수 · 세로 상위권 집중도 · 원 크기 인기 점수 · 이름은 눈에 띄는 태그에만, 원을 누르면 표에서 찾습니다</p>
-                <TagTerrainMap rows={mapRows} cut={cut} active={hover ?? openTag} matches={matches} onPick={pickFromMap} onHover={setHover} />
-              </>
-            ) : (
-              <p className="empty-line">{noMapText}</p>
-            )}
-          </section>
-        </>
-      ) : null}
+      {ready ? <Footnotes notes={notes} /> : null}
     </>
   );
 }

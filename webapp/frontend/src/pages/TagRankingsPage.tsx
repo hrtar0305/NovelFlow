@@ -8,7 +8,6 @@ import ViewSwitch from '../components/ui/ViewSwitch';
 import TagRowExpand, { type TagSeries } from '../components/tag/TagRowExpand';
 import DailyTagBoard from '../components/tag/DailyTagBoard';
 import type { DailyTag } from '../utils/tagZones';
-import { formatInt } from '../utils/format';
 
 /**
  * 태그 랭킹(2026-09-30 개편). 요약 카드·선택 패널·구역 칩 패널·변동 카드를 걷고
@@ -76,12 +75,11 @@ export default function TagRankingsPage() {
           { to: `/tags/rankings${dateParam ? `/${dateParam}` : ''}`, label: '오늘', on: true },
           { to: '/tags/trends', label: '기간 트렌드', on: false },
         ]} />}
-        meta={tags.length ? `일간 랭킹 작품에 달린 태그 ${formatInt(tags.length)}개 · 인기 점수 순` : '일간 랭킹 작품에 달린 태그 · 인기 점수 순'} />
+        meta="일간 랭킹 500편에 달린 태그 · 인기 점수(랭킹 점수 점유율) 순" />
 
       <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
-        rankBasis="순위" topLabel="상위 100위 안" restLabel="100위 밖"
+        scoreLabel="랭킹 점수"
         ariaLabel="태그 순위" emptyText="이 날짜의 태그 랭킹이 없습니다."
-        noMapText="2026년 4월 13일 이전 수집분에는 상위권 집중도가 없어 지도를 그리지 않습니다."
         onOpenTag={setOpenTag}
         renderExpanded={t => (
           <TagRowExpand tag={t.tag} date={dateParam!}

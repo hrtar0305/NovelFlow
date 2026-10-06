@@ -69,11 +69,10 @@
   --np-zone-mainstream: #9a86ff;
   --np-zone-gem: #2cc4ac;
   --np-zone-saturated: #f0a030;
-  --np-zone-cold: #858b96;
+  --np-zone-none: #6b717c;
   --np-zone-mainstream-text: #9a86ff;
   --np-zone-gem-text: #2cc4ac;
   --np-zone-saturated-text: #f0a030;
-  --np-zone-cold-text: #a0a6b1;
 
   --np-banner-start: #121418;
   --np-banner-end: #121418;
@@ -165,11 +164,10 @@
   --np-zone-mainstream: #6247d6;
   --np-zone-gem: #0f9a86;
   --np-zone-saturated: #d9820a;
-  --np-zone-cold: #858b96;
+  --np-zone-none: #a3a8b1;
   --np-zone-mainstream-text: #6247d6;
   --np-zone-gem-text: #0d7f6f;
   --np-zone-saturated-text: #a1600a;
-  --np-zone-cold-text: #6a707b;
 
   --np-banner-start: #ffffff;
   --np-banner-end: #ffffff;

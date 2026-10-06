@@ -363,7 +363,6 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .zone-name--mainstream .zone-dot { background: var(--np-zone-mainstream); }
 .zone-name--gem .zone-dot { background: var(--np-zone-gem); }
 .zone-name--saturated .zone-dot { background: var(--np-zone-saturated); }
-.zone-name--cold .zone-dot { background: var(--np-zone-cold); }
 .zone-filter { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; padding: 0.7rem 0; border-bottom: 1px solid var(--np-border); }
 .zone-filter button { padding: 0 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; font-size: 0.875rem; font-weight: 600; color: var(--np-text-secondary); white-space: nowrap; }
 .zone-filter button.is-on { color: var(--np-text-heading); border-bottom-color: var(--np-text-heading); }
@@ -374,18 +373,30 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 /* 폰에서 펼친 태그 행: 순위선 · 수치 · 링크를 세로로 쌓는다(가로로 두면 360px 를 넘는다). */
 .rank-table__expand--m .row-expand { flex-direction: column; align-items: flex-start; gap: 0.6rem; padding: 0.75rem 0 1rem; }
 .rank-table__expand--m .row-expand__go { margin-left: 0; }
-.tag-map { padding: 1.5rem 0 2.5rem; border-top: 1px solid var(--np-border); }
+.tag-map { padding: 0.5rem 0 1rem; }
+.tag-map__note { margin: 0.2rem 0 0; font-size: 0.8125rem; color: var(--np-text-faint); }
+.tag-map__open { margin: 0.25rem 0 0.5rem; font-size: 0.875rem; }
+/* 구역 칩 — 태그 수와 대표 3개. 누르면 지도·표가 함께 걸러진다(다시 누르면 전체). */
+.zone-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.25rem 0 0.75rem; }
+.zone-chip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.3rem; min-width: 0; padding: 0.55rem 0.8rem; border: 1px solid var(--np-border); border-radius: var(--np-radius-sm); background: none; text-align: left; color: var(--np-text-secondary); }
+.zone-chip.is-on { border-color: var(--np-text-heading); }
+.zone-chip__name { font-size: 0.875rem; font-weight: 700; color: var(--np-text-heading); }
+.zone-chip__n { font-size: 0.8125rem; color: var(--np-text-secondary); }
+.zone-chip__lead { font-size: 0.75rem; color: var(--np-text-faint); max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-chip__lead { flex-basis: 100%; }
+@media (max-width: 767.98px) { .zone-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .zone-chip__lead { max-width: 100%; } }
+.zone-edge { margin-left: 0.35rem; padding: 0 0.3rem; border: 1px solid var(--np-border); border-radius: 3px; font-size: 0.6875rem; font-weight: 600; color: var(--np-text-faint); }
 .tag-map__head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
 .tag-map__head h2 { margin: 0; font-size: 1.1875rem; font-weight: 800; letter-spacing: -0.02em; color: var(--np-text-heading); }
 .tag-map__meta { font-size: 0.875rem; color: var(--np-text-secondary); }
 .tag-map__axis { margin: 0.4rem 0 0.8rem; font-size: 0.8125rem; color: var(--np-text-faint); }
-.tag-map__chart { height: clamp(460px, 46vw, 620px); }
+.tag-map__chart { height: clamp(320px, 34vw, 400px); }
+.tag-map__avg { font-size: 11px; font-weight: 600; fill: var(--np-text-secondary); }
 .tag-map__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-canvas); stroke-width: 3px; stroke-linejoin: round; }
 .tag-map__zone { font-size: 12px; font-weight: 800; }
 .tag-map__zone--mainstream { fill: var(--np-zone-mainstream-text); }
 .tag-map__zone--gem { fill: var(--np-zone-gem-text); }
 .tag-map__zone--saturated { fill: var(--np-zone-saturated-text); }
-.tag-map__zone--cold { fill: var(--np-zone-cold-text); }
 @media (max-width: 767.98px) {
   .tag-map__chart { height: 360px; }
   /* 좁은 화면에서 상시 라벨은 서로 겹친다 — 강조된 태그만 남긴다. */

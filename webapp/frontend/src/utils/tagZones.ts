@@ -1,25 +1,29 @@
 import { DASH } from './format';
 
 /**
- * 일간 태그 랭킹의 구역 분류와 정렬(2026-09-30 페이지에서 분리).
+ * 태그 랭킹의 구역 판정과 정렬 — **그날 하루의 데이터로만** 판단한다(DECISIONS 2026-10-06, 흐름은 태그 트렌드 몫).
  *
- * 사용량(등장 작품 수) × 성과(상위권 집중도)로 네 구역을 나눈다.
- *  - 사용량 경계: 그날 집중도가 있는 태그들의 작품 수 P75 — 고정 숫자는 표본이 300→500으로
- *    바뀐 과거 날짜에서 깨진다.
- *  - 성과 경계: 집중도 1.0(상위 100위 안/밖 등장 비율이 같은 지점).
- *  - 집중도가 없는 태그(등장 5작품 미만, 적재 단계에서 계산하지 않음)는 구역이 없다.
+ * N = 그날 순위 작품 수(데일리 500), p0 = 100/N = 평균 100위 안 비율(데일리 20%), cut = ceil(cutShare·N)(데일리 30편).
+ *  - 대세: n ≥ cut, 100위 안 비율 ≥ p0 / 과포화: n ≥ cut, 비율 < p0 — 비율이 평균의 ±edge 안이면 '경계'(데일리 ±2%p).
+ *  - 숨은 강자: 5 ≤ n < cut, 100위 안 gemMinTop 편 이상, 비율 ≥ gemMult·p0.
+ *  - 그 밖은 구역 없음(지도에서는 이름 없는 회색 바탕 — 하루 자료로 '시들어 감'을 말할 수 없어 '오늘 약세'는 없앴다).
+ * 측정·근거: scripts/measure_tag_zones.py(같은 규칙 — 바꾸면 둘 다). 데일리 14일 하루 구역 바뀜 약 2개.
  */
-export type ZoneKey = 'mainstream' | 'gem' | 'saturated' | 'cold';
+export type ZoneKey = 'mainstream' | 'gem' | 'saturated';
 
-/** 지도의 사분면과 같은 읽기 순서가 아니라, 필터 줄에서 '대세 → 약세' 순으로 읽힌다. */
-export const ZONE_ORDER: ZoneKey[] = ['mainstream', 'gem', 'saturated', 'cold'];
+/** 필터 줄·칩의 읽기 순서 */
+export const ZONE_ORDER: ZoneKey[] = ['mainstream', 'gem', 'saturated'];
 
 export const ZONE_LABEL: Record<ZoneKey, string> = {
-  mainstream: '오늘의 대세',
+  mainstream: '대세',
   gem: '숨은 강자',
   saturated: '과포화',
-  cold: '오늘 약세',
 };
+
+export interface ZoneRules { cutShare: number; gemMult: number; gemMinTop: number; edge: number }
+export const DAILY_RULES: ZoneRules = { cutShare: 0.06, gemMult: 1.5, gemMinTop: 4, edge: 0.1 };
+/** 공모전(N 약 3,000)은 100위가 전체의 3% 라 100위 안 편수가 작다 — 숨은 강자에 6편(개막 5일 측정: 하루 바뀜 8.5 → 4.2개). */
+export const CONTEST_RULES: ZoneRules = { ...DAILY_RULES, gemMinTop: 6 };
 
 export interface DailyTag {
   Rank: number;
@@ -28,35 +32,48 @@ export interface DailyTag {
   local_lift?: number | null;
   count: number;
   rank_change?: number | 'New' | null;
+  /** 100위 안 작품 수 */
+  top100?: number | null;
+  /** 인기 점수 = 그날 전체 랭킹 점수(공모전은 조회 증가) 중 이 태그 작품들의 몫(0~1) */
+  score_share?: number | null;
+  /** 그날 순위 작품 수 N */
+  ranked_total?: number | null;
 }
 
-export type ZonedTag<T extends DailyTag = DailyTag> = T & { zone: ZoneKey | null };
+export type ZonedTag<T extends DailyTag = DailyTag> = T & { zone: ZoneKey | null; edge: boolean };
 
-/** 집중도가 있는 태그들의 작품 수 P75. 그런 태그가 없으면(구 수집분) null. */
-export function mainstreamCut(tags: DailyTag[]): number | null {
-  const counts = tags.filter(t => t.local_lift != null).map(t => t.count).sort((a, b) => a - b);
-  if (counts.length === 0) return null;
-  return counts[Math.min(counts.length - 1, Math.floor(counts.length * 0.75))];
+/** 평균 100위 안 비율 p0 와 흔한 태그 기준 cut. N 이 100 이하면(비율 판정이 무의미) null. */
+export function zoneLines(N: number | null | undefined, rules: ZoneRules = DAILY_RULES): { p0: number; cut: number; gemShare: number } | null {
+  if (!N || N <= 100) return null;
+  const p0 = 100 / N;
+  return { p0, cut: Math.ceil(rules.cutShare * N), gemShare: rules.gemMult * p0 };
 }
 
-export function zoneOf(count: number, lift: number | null | undefined, cut: number | null): ZoneKey | null {
-  if (lift == null || cut == null) return null;
-  if (count >= cut) return lift >= 1 ? 'mainstream' : 'saturated';
-  return lift >= 1 ? 'gem' : 'cold';
+export function zoneOf(
+  t: { count: number; top100?: number | null; ranked_total?: number | null },
+  rules: ZoneRules = DAILY_RULES,
+): { zone: ZoneKey | null; edge: boolean } {
+  const lines = zoneLines(t.ranked_total, rules);
+  if (!lines || t.top100 == null || t.count < 5) return { zone: null, edge: false };
+  const share = t.top100 / t.count;
+  if (t.count >= lines.cut) {
+    return { zone: share >= lines.p0 ? 'mainstream' : 'saturated', edge: Math.abs(share / lines.p0 - 1) <= rules.edge + 1e-9 };
+  }
+  if (t.top100 >= rules.gemMinTop && share >= lines.gemShare - 1e-9) return { zone: 'gem', edge: false };
+  return { zone: null, edge: false };
 }
 
-export function withZones<T extends DailyTag>(tags: T[]): ZonedTag<T>[] {
-  const cut = mainstreamCut(tags);
-  return tags.map(t => ({ ...t, zone: zoneOf(t.count, t.local_lift, cut) }));
+export function withZones<T extends DailyTag>(tags: T[], rules: ZoneRules = DAILY_RULES): ZonedTag<T>[] {
+  return tags.map(t => ({ ...t, ...zoneOf(t, rules) }));
 }
 
 export function zoneCounts(rows: { zone: ZoneKey | null }[]): Record<ZoneKey, number> {
-  const out: Record<ZoneKey, number> = { mainstream: 0, gem: 0, saturated: 0, cold: 0 };
+  const out: Record<ZoneKey, number> = { mainstream: 0, gem: 0, saturated: 0 };
   for (const r of rows) if (r.zone) out[r.zone] += 1;
   return out;
 }
 
-export type TagSortKey = 'Rank' | 'rank_change' | 'count' | 'local_lift' | 'power_score';
+export type TagSortKey = 'Rank' | 'rank_change' | 'count' | 'local_lift' | 'power_score' | 'score_share' | 'top_share';
 export interface TagSort { key: TagSortKey; direction: 'ascending' | 'descending'; }
 export const DEFAULT_TAG_SORT: TagSort = { key: 'Rank', direction: 'ascending' };
 
@@ -72,6 +89,7 @@ const sortValue = (t: DailyTag, key: TagSortKey): number | null => {
     if (t.rank_change === 'New') return Infinity;
     return typeof t.rank_change === 'number' ? t.rank_change : null;
   }
+  if (key === 'top_share') return t.top100 != null && t.count > 0 ? t.top100 / t.count : null;
   const v = t[key];
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 };
@@ -91,3 +109,5 @@ export function sortTags<T extends DailyTag>(rows: T[], sort: TagSort): T[] {
 }
 
 export const formatLift = (v?: number | null): string => (v != null && Number.isFinite(v) ? `${v.toFixed(1)}×` : DASH);
+/** 인기 점수(점유율 0~1) → '66.8%' */
+export const formatShare = (v?: number | null): string => (v != null && Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : DASH);

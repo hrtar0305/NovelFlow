@@ -5,7 +5,7 @@ import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAx
 import { Search as SearchIcon } from 'react-bootstrap-icons';
 import { getContestAvailableDates, getContestDailyTagRankingsByDate, getContestTagRankingsByDate } from '../services/api';
 import DailyTagBoard from '../components/tag/DailyTagBoard';
-import type { DailyTag } from '../utils/tagZones';
+import { CONTEST_RULES, type DailyTag } from '../utils/tagZones';
 import ContestHeader from '../components/contest/ContestHeader';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
@@ -89,13 +89,11 @@ function DailyContestTags() {
       <ContestHeader year={year} date={dateParam ?? null} availableDates={dates} view="tags"
         onDateChange={d => navigate(`/contests/${year}/tags/rankings/${d}`)}
         onYearChange={y => navigate(`/contests/${y}/tags/rankings`)}
-        meta={tags.length ? `${cfg.schedule} · 일간 순위 작품에 달린 태그 ${formatInt(tags.length)}개 · 인기 점수 순` : `${cfg.schedule} · 인기 점수 순`} />
+        meta={`${cfg.schedule} · 일간 순위 작품에 달린 태그 · 인기 점수(조회 증가 점유율) 순`} />
       <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
-        rankBasis="일간 순위" topLabel="일간 순위 100위 안" restLabel="일간 순위가 매겨진 나머지 작품"
+        scoreLabel="조회 증가" rules={CONTEST_RULES}
         ariaLabel="공모전 태그 순위"
         emptyText="이 날짜는 일간 순위가 없어 태그 순위도 없습니다. 일간 순위는 직전 수집일과 비교할 수 있는 다음 날부터 생깁니다."
-        noMapText="상위권 집중도를 계산할 만큼 태그가 모이지 않아 지도를 그리지 않습니다."
-        liftRule="참가작이 많아, 상위 100위 안 1편만으로는 집중도 1.0 이상(몰림)으로 보지 않습니다(우연과 구별되지 않습니다)."
         // 공모전 태그 시계열 API 가 아직 없어 순위선 없이 그 태그의 참가작 목록으로 가는 길만 둔다(DECISIONS 2026-10-03 의 미룸).
         renderExpanded={t => (
           <div className="row-expand row-expand--tag">

@@ -15,7 +15,7 @@ export const SWING_TOP = 10;
 
 export type TagSeriesResponse = {
   dates: string[];
-  tags: Record<string, { rank: (number | null)[]; count: (number | null)[]; score: (number | null)[]; lift: (number | null)[] }>;
+  tags: Record<string, { rank: (number | null)[]; count: (number | null)[]; score: (number | null)[]; top?: (number | null)[]; lift: (number | null)[] }>;
 };
 
 export type TrendPoint = { date: string; rank: number; count: number; score: number; lift: number | null };
