@@ -71,7 +71,7 @@ docker push \
 
 ```bash
 cd data-pipeline
-zip -r data_ingestion_lambda.zip data_ingestion.py package/
+zip -r data_ingestion_lambda.zip data_ingestion.py tag_stats.py package/   # tag_stats.py 빠지면 import 오류로 적재 전체가 멈춘다
 ```
 
 **consolidate 는 `raw_store.py` 와 `zstandard` 가 함께 들어가야 합니다** (원본 묶음 압축).
@@ -98,7 +98,7 @@ npm run build          # dist/ 생성 → S3 업로드 → CloudFront 캐시 무
 - [ ] **백엔드(`main.py`) 변경** → 백엔드 Lambda 재배포 (자동 배포 없음).
 - [ ] **프론트 변경** → `npm run build` → S3 업로드 → CloudFront invalidation.
 - [ ] **크롤러/파서 로직 변경** → Docker 재빌드 → ECR push → Lambda 이미지 갱신.
-- [ ] **적재 로직(`data_ingestion.py`) 변경** → zip 재생성 → Lambda 갱신.
+- [ ] **적재 로직(`data_ingestion.py`·`tag_stats.py`) 변경** → zip 재생성(두 파일 모두) → Lambda 갱신.
 - [ ] 스코어링/집계 로직을 바꿨다면 과거 데이터와의 호환성 확인.
 
 ## 원본 HTML 레이어 (ELT)
