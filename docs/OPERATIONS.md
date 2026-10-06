@@ -203,6 +203,13 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
   빈칸(첫 회차 앞) · 모름 — DECISIONS 2026-10-05 「연재 줄의 칸과 요약」(웹 브랜치).
 - 감시: `python scripts/report_episode_events.py [--days 7]` — 사라진 회차·늦은 등장·다 받지 못한 기록 수(읽기만).
 
+## 태그 랭킹 점수 합 (하루 판정, 2026-10-06)
+
+태그 랭킹의 인기 점수 = 랭킹 점수 점유율. 적재가 `STATS#{date}`(데일리)·`DAILY_TAG_STATS#{date}`(2026 공모전)에 `TagScoreSum`·`ScoreTotal`·`RankedTotal` 을 싣는다.
+- 소급: `python scripts/backfill_tag_score_sum.py --source daily|contest2026 [--since YYYY-MM-DD] --dry-run` → 실제. 저장된 `TagCounts` 와 다시 센 값이 다르면 그 날짜를 건너뛰고 알린다
+  (2026-04-13 이전 STATS 는 1편 태그를 지우기 전이라 가지치기 전 숫자와 견준다). 2026-10-06 데일리 649일 · 공모전 5일 소급(불일치 0).
+- 구역 규칙 측정: `python scripts/measure_tag_zones.py --source daily|contest2026 [--days 14]`(쓰기 없음).
+
 ## 스케줄 (EventBridge, KST)
 
 - 데일리 랭킹 파이프라인: 매일 21:00 — 스케줄 입력 `{"target_novel_count": 500, "scheduled": true}`. `scheduled` 가 있는 실행만
