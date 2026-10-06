@@ -25,7 +25,7 @@ def zone_of(n, t, N, cut_share, gem_mult, gem_min_top, edge):
     share = t / n
     if n >= cut:
         return ('대세' if share >= p0 else '과포화'), abs(share / p0 - 1) <= edge + 1e-9
-    if t >= gem_min_top and share >= gem_mult * p0:
+    if t >= gem_min_top and share >= gem_mult * p0 - 1e-9:   # 화면(tagZones.ts)과 같은 허용 오차 — 1.5·0.2 = 0.30000000000000004
         return '숨은 강자', False
     return None, False
 

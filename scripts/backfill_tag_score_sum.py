@@ -10,6 +10,8 @@
 - 검산: 저장된 `TagCounts` 가 같은 행에서 다시 센 값과 다르면 그 날짜를 쓰지 않고 알린다(정의가 어긋났다는 뜻). 2026-04-13
   이전 STATS 는 1편짜리 태그를 지우기 전이라 저장된 태그가 더 많다 — 가지치기 전 숫자와 같으면 통과하고, 점수 합도 **저장된 태그
   목록에 맞춰**(1편 태그 포함) 싣는다. 그래야 그날 화면의 태그마다 점유율이 있다.
+- 2026-04-13 이전 STATS 에는 `TagCountsTop100`(100위 안 작품 수)도 없다 — 같은 행에서 세어 함께 채운다(저장된 태그 목록 기준).
+  없으면 화면이 그 시기 흔한 태그를 전부 '100위 안 0편 · 과포화'로 판정했다(최종 리뷰 2026-10-06).
 
     python scripts/backfill_tag_score_sum.py --source daily --dry-run
     python scripts/backfill_tag_score_sum.py --source daily
@@ -67,8 +69,8 @@ def contest_rows(ddb, table, date):
 
 
 def _unpruned(rows):
-    """가지치기 없는 태그별 작품 수·점수 합(순위가 있는 행만). 데일리는 Ranking·Score, 공모전은 DailyRank·ViewDelta."""
-    counts, score = {}, {}
+    """가지치기 없는 태그별 작품 수·점수 합·100위 안 작품 수(순위가 있는 행만). 데일리는 Ranking·Score, 공모전은 DailyRank·ViewDelta."""
+    counts, score, top = {}, {}, {}
     for r in rows:
         rank = r.get('Ranking', r.get('DailyRank'))
         if not isinstance(rank, int) or rank <= 0:
@@ -77,7 +79,9 @@ def _unpruned(rows):
         for t in r.get('Tags') or []:
             counts[t] = counts.get(t, 0) + 1
             score[t] = score.get(t, 0) + v
-    return counts, score
+            if rank <= 100:
+                top[t] = top.get(t, 0) + 1
+    return counts, score, top
 
 
 def main():
@@ -94,7 +98,7 @@ def main():
     dates = sorted(d for d in (table.get_item(Key=meta_key).get('Item') or {}).get('dates') or [] if d >= a.since)
     done = skipped = mismatched = 0
     for d in dates:
-        stored = table.get_item(Key={'ID': f'{prefix}{d}', 'Date': d}, ProjectionExpression='TagCounts').get('Item')
+        stored = table.get_item(Key={'ID': f'{prefix}{d}', 'Date': d}, ProjectionExpression='TagCounts, TagCountsTop100').get('Item')
         if not stored:
             skipped += 1
             continue
@@ -104,24 +108,28 @@ def main():
             skipped += 1
             continue
         old = {k: int(v) for k, v in (stored.get('TagCounts') or {}).items()}
-        raw_counts, raw_score = _unpruned(rows)
+        raw_counts, raw_score, raw_top = _unpruned(rows)
         if old == stats['TagCounts']:
             diff = set()
         else:   # 가지치기 전 STATS(2026-04-13 이전)
             diff = {t for t in set(old) | set(raw_counts) if t in old and old.get(t) != raw_counts.get(t)}
             stats['TagScoreSum'] = {t: raw_score.get(t, 0) for t in old}
+            stats['TagCountsTop100'] = {t: raw_top[t] for t in old if raw_top.get(t)}
+        add_top = not stored.get('TagCountsTop100')
         line = f"{d} N={stats['RankedTotal']} total={stats['ScoreTotal']} tags={len(stats['TagScoreSum'])}"
         if diff:
             # 그날 저장 뒤 행이 바뀌었거나(재적재 등) 정의가 어긋났다 — 쓰지 않고 알린다.
             mismatched += 1
             print(line, f'TagCounts 불일치 {len(diff)}개 (예: {sorted(diff)[:5]}) — 건너뜀')
             continue
-        print(line, 'dry-run' if a.dry_run else 'updated')
+        print(line, f"top100 추가 {len(stats['TagCountsTop100'])}개" if add_top else '', 'dry-run' if a.dry_run else 'updated')
         if not a.dry_run:
-            table.update_item(Key={'ID': f'{prefix}{d}', 'Date': d},
-                              UpdateExpression='SET TagScoreSum = :s, ScoreTotal = :t, RankedTotal = :n',
-                              ConditionExpression='attribute_exists(ID)',
-                              ExpressionAttributeValues={':s': stats['TagScoreSum'], ':t': stats['ScoreTotal'], ':n': stats['RankedTotal']})
+            expr, vals = 'SET TagScoreSum = :s, ScoreTotal = :t, RankedTotal = :n', {
+                ':s': stats['TagScoreSum'], ':t': stats['ScoreTotal'], ':n': stats['RankedTotal']}
+            if add_top:
+                expr, vals[':p'] = expr + ', TagCountsTop100 = :p', stats['TagCountsTop100']
+            table.update_item(Key={'ID': f'{prefix}{d}', 'Date': d}, UpdateExpression=expr,
+                              ConditionExpression='attribute_exists(ID)', ExpressionAttributeValues=vals)
         done += 1
     print(f"{a.source}: 날짜 {len(dates)} · {'계산' if a.dry_run else '갱신'} {done} · 통계 없음 {skipped} · 불일치 {mismatched}")
 
