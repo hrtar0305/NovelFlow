@@ -5,7 +5,7 @@ import os
 import json
 import re
 import logging
-import math
+import tag_stats
 from decimal import Decimal
 from ast import literal_eval
 from boto3.dynamodb.conditions import Key
@@ -201,41 +201,16 @@ def process_row(item):
 
 def calculate_and_store_tag_trends(items):
     """
-    Calculates tag trends based on all items and stores them in DynamoDB.
-
-    Metrics:
-    - TagCounts: total appearances in top 500
-    - TagCountsTop100: appearances in top 100 (for Local Lift calculation)
-    - TagWeightedScoresLogarithmic: Power Score = sum(1 / ln(rank + 1))
+    Calculates tag trends based on all items and stores them in DynamoDB (STATS#{date}).
+    계산은 `tag_stats.daily_tag_stats` 한 곳(소급 스크립트와 공유). 필드:
+    - TagCounts / TagCountsTop100: 작품 수, 100위 안 작품 수
+    - TagScoreSum / ScoreTotal / RankedTotal: 태그별 랭킹 점수 합, 그날 전체 합, 순위 작품 수 — 인기 점수(점유율)의 재료(2026-10-06)
+    - TagWeightedScoresLogarithmic: 구 인기 점수 Σ1/ln(rank+1) — 기간 페이지 호환으로 남긴다
     """
     if not items:
         return
 
-    tag_counts = {}
-    tag_counts_top100 = {}
-    tag_weighted_scores_logarithmic = {}
-
-    for item in items:
-        rank = item.get('Ranking')
-        if not isinstance(rank, int) or rank <= 0:
-            continue
-
-        weight_log = 1 / math.log(rank + 1)
-
-        tags = item.get('Tags', [])
-        if isinstance(tags, list):
-            for tag in tags:
-                tag_counts[tag] = tag_counts.get(tag, 0) + 1
-                tag_weighted_scores_logarithmic[tag] = tag_weighted_scores_logarithmic.get(tag, 0) + weight_log
-                if rank <= 100:
-                    tag_counts_top100[tag] = tag_counts_top100.get(tag, 0) + 1
-
-    # Pruning: remove tags appearing only once to keep DynamoDB item under 400KB
-    rare_tags = {t for t, c in tag_counts.items() if c < 2}
-    for t in rare_tags:
-        tag_counts.pop(t, None)
-        tag_counts_top100.pop(t, None)
-        tag_weighted_scores_logarithmic.pop(t, None)
+    stats = tag_stats.daily_tag_stats(items)
 
     # Get date from the first item
     date = items[0]['Date']
@@ -245,9 +220,12 @@ def calculate_and_store_tag_trends(items):
         'ID': f'STATS#{date}',
         'Date': date,
         'DataType': 'TAG_TRENDS',
-        'TagCounts': tag_counts,
-        'TagCountsTop100': tag_counts_top100,
-        'TagWeightedScoresLogarithmic': {k: Decimal(str(v)) for k, v in tag_weighted_scores_logarithmic.items()},
+        'TagCounts': stats['TagCounts'],
+        'TagCountsTop100': stats['TagCountsTop100'],
+        'TagWeightedScoresLogarithmic': {k: Decimal(str(v)) for k, v in stats['TagWeightedScoresLogarithmic'].items()},
+        'TagScoreSum': stats['TagScoreSum'],
+        'ScoreTotal': stats['ScoreTotal'],
+        'RankedTotal': stats['RankedTotal'],
     }
 
     try:
