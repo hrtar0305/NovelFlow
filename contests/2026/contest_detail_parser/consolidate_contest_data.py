@@ -253,22 +253,27 @@ def daily_tag_stats(items):
     - 상위권 집중도는 백엔드가 계산한다 — 데일리는 모수가 500 이라 '나머지 400'이 고정이지만 공모전은 순위가 매겨진
       작품 수가 날마다 달라 `RankedTotal` 을 함께 싣는다(나머지 = RankedTotal − 100).
     - 등장 2회 미만 태그는 뺀다(데일리와 같은 노이즈 제거). 일간 순위가 없는 날(첫 수집일)은 None.
+    - `TagScoreSum`/`ScoreTotal` = 일간 순위가 있는 작품의 그날 조회 증가(`ViewDelta`) 합 — 태그 랭킹 인기 점수(점유율)의 재료.
+      데일리의 랭킹 점수 자리에 공모전 일간 순위의 기준값을 쓴다(DECISIONS 2026-10-06).
     """
     ranked = [i for i in items if isinstance(i.get('DailyRank'), int)]
     if not ranked:
         return None
-    counts, top100, power = {}, {}, {}
+    counts, top100, power, score = {}, {}, {}, {}
     for it in ranked:
         r = it['DailyRank']
         w = 1 / math.log(r + 1)
+        delta = int(it.get('ViewDelta') or 0)
         for tag in it.get('Tags') or []:
             counts[tag] = counts.get(tag, 0) + 1
             power[tag] = power.get(tag, 0) + w
+            score[tag] = score.get(tag, 0) + delta
             if r <= 100:
                 top100[tag] = top100.get(tag, 0) + 1
     for t in [t for t, c in counts.items() if c < 2]:
-        counts.pop(t, None); top100.pop(t, None); power.pop(t, None)
-    return {'TagCounts': counts, 'TagCountsTop100': top100, 'TagWeightedScoresLogarithmic': power, 'RankedTotal': len(ranked)}
+        counts.pop(t, None); top100.pop(t, None); power.pop(t, None); score.pop(t, None)
+    return {'TagCounts': counts, 'TagCountsTop100': top100, 'TagWeightedScoresLogarithmic': power, 'RankedTotal': len(ranked),
+            'TagScoreSum': score, 'ScoreTotal': sum(int(i.get('ViewDelta') or 0) for i in ranked)}
 
 
 def _store_daily_tag_stats(dynamodb_table, execution_id, items):
@@ -280,6 +285,7 @@ def _store_daily_tag_stats(dynamodb_table, execution_id, items):
     dynamodb_table.put_item(Item={
         'ID': f'DAILY_TAG_STATS#{date}', 'Date': date, 'DataType': 'CONTEST_DAILY_TAG_STATS',
         'TagCounts': stats['TagCounts'], 'TagCountsTop100': stats['TagCountsTop100'], 'RankedTotal': stats['RankedTotal'],
+        'TagScoreSum': stats['TagScoreSum'], 'ScoreTotal': stats['ScoreTotal'],
         'TagWeightedScoresLogarithmic': {k: Decimal(str(v)) for k, v in stats['TagWeightedScoresLogarithmic'].items()},
     })
     _log(logging.INFO, execution_id, f"Stored daily tag stats for {date}.", tags=len(stats['TagCounts']), ranked=stats['RankedTotal'])
