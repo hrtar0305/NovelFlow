@@ -4,7 +4,7 @@ import { formatDateKo, formatInt } from '../../utils/format';
 
 export type TagSeries = {
   dates: string[];
-  tags: Record<string, { rank: (number | null)[]; count: (number | null)[]; score: (number | null)[]; top?: (number | null)[]; lift: (number | null)[] }>;
+  tags: Record<string, { rank: (number | null)[]; count: (number | null)[]; score: (number | null)[]; top?: (number | null)[] }>;
 };
 
 interface Props {

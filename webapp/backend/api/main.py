@@ -1234,7 +1234,8 @@ def _compute_local_lift(count_top100: int, count_total: int, min_count: int = 5,
 def get_tags_by_date(date: str, response: Response):
     """
     특정 날짜의 태그 랭킹 데이터를 조회합니다.
-    - power_score: Σ 1/ln(rank+1) — 시장 지배력 (빈도 × 순위 품질)
+    - 순서 = score_share(인기 점수: 그날 전체 랭킹 점수 중 이 태그 작품들의 몫), 동점은 태그 이름(DECISIONS 2026-10-06)
+    - power_score: 구 인기 점수 Σ 1/ln(rank+1) — 호환으로만 남는다
     - local_lift: top100_rate / bottom400_rate — 순위 관통력/신흥 트렌드 (TagCountsTop100 없는 구 데이터는 null)
     """
     try:
@@ -1699,7 +1700,7 @@ def _contest_daily_tag_ranking(tbl, date: str) -> Optional[list]:
 def get_contest_daily_tags_by_date(year: int, date: str, response: Response):
     """공모전 태그 랭킹 — **일간 순위 기준**(2026~, 대표 순위와 같은 기준 — DECISIONS 2026-10-02).
 
-    데일리 태그 랭킹과 같은 2-track(인기 점수 Σ1/ln(일간 순위+1), 상위권 집중도). 변동은 실제 직전 수집일 대비
+    데일리 태그 랭킹과 같은 하루 판정(인기 점수 = 그날 조회 증가 점유율, 100위 안). 변동은 실제 직전 수집일 대비
     (공모전 규칙 — 달력 −1 아님). 일간 순위가 없는 날(수집 첫날)은 404.
     """
     tbl = _contest_table_for(year)
@@ -1736,7 +1737,7 @@ def get_tag_series(start_date: str, end_date: str, response: Response):
     반환 형태는 날짜 배열 + 태그별 병렬 배열이다. 태그마다 날짜를 반복해 담으면
     응답이 몇 배로 커진다. 특정 날짜에 그 태그가 없으면 해당 자리는 null이다.
 
-    순위는 `/api/ranks/tags/{date}`와 같게 power_score 내림차순으로 매기고,
+    순위는 `/api/ranks/tags/{date}`와 같게 인기 점수(score_share) 순으로 매기고(score = score_share, top = 100위 안 작품 수),
     차단 소설 기여분도 같은 방식으로 뺀다 — 두 화면의 숫자가 어긋나면 안 된다.
     """
     try:
@@ -1784,20 +1785,17 @@ def get_tag_series(start_date: str, end_date: str, response: Response):
                 rows_by_date.get(d),
                 item.get('TagScoreSum'), item.get('ScoreTotal'),
             )
-            has_top100 = bool(counts_top)
             for r in _one_day_tag_rows(counts, counts_top, ssum, stot, item.get('RankedTotal')):
                 tag = r['tag']
                 slot = series.get(tag)
                 if slot is None:
                     n = len(present)
-                    slot = {'rank': [None] * n, 'count': [None] * n, 'score': [None] * n,
-                            'top': [None] * n, 'lift': [None] * n}
+                    slot = {'rank': [None] * n, 'count': [None] * n, 'score': [None] * n, 'top': [None] * n}
                     series[tag] = slot
                 slot['rank'][idx] = r['Rank']
                 slot['count'][idx] = r['count']
                 slot['score'][idx] = r['score_share']   # 인기 점수(점유율) — 하루 판정과 같은 값
                 slot['top'][idx] = r['top100']
-                slot['lift'][idx] = _compute_local_lift(r['top100'], r['count']) if has_top100 else None
 
         response.headers["Cache-Control"] = "public, max-age=300"
         return json.loads(json.dumps({'dates': present, 'tags': series}, cls=DecimalEncoder))

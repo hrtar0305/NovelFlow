@@ -10,8 +10,12 @@ import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import TagRowExpand from '../components/tag/TagRowExpand';
 import DateRangePicker from '../components/novel/DateRangePicker';
-import { MIN_WORKS, SPIKE_MIN, SWING_DAYS, SWING_TOP, buildTagTrends, type TagEdge, type TagSeriesResponse, type TagTrend } from '../utils/tagTrends';
-import { formatInt } from '../utils/format';
+import { MIN_WORKS, SHARE_MIN_CHANGE, SPIKE_MIN_SHARE, buildTagTrends, crossesSampleChange, type TagEdge, type TagSeriesResponse, type TagTrend } from '../utils/tagTrends';
+import { formatShare } from '../utils/tagZones';
+
+/** 점유율 차이 → '+1.2%p'(0 은 부호 없이) */
+const pctp = (v: number) => { const r = Math.round(v * 1000) / 10; return r === 0 ? '0%p' : `${r > 0 ? '+' : '−'}${Math.abs(r).toFixed(1)}%p`; };
+import { formatDateKo, formatInt } from '../utils/format';
 
 /**
  * 태그 트렌드(2026-09-30 개편) — 정한 기간 동안 무엇이 바뀌었나. 태그 랭킹이 '오늘의 지형'을 맡고
@@ -24,28 +28,29 @@ const DEFAULT_DAYS = 7;
 /** 백엔드 /api/trends/tags/series 의 기간 상한(main.py `TAG_RANGE_MAX_DAYS`, 첫날~마지막 날 차이). 넘기면 400이다. */
 const MAX_SPAN_DAYS = 180;
 
-type Tab = 'risers' | 'fallers' | 'entered' | 'left' | 'spikes' | 'swings';
+type Tab = 'risers' | 'fallers' | 'entered' | 'left' | 'spikes';
 const TAB_LABEL: Record<Tab, string> = {
-  risers: '뜬 태그', fallers: '식은 태그', entered: '새로 들어옴', left: '빠짐', spikes: '치솟았다 돌아옴', swings: '많이 출렁임',
+  risers: '뜬 태그', fallers: '식은 태그', entered: '새로 들어옴', left: '빠짐', spikes: '치솟았다 돌아옴',
 };
 const EMPTY_TEXT: Record<Tab, string> = {
-  risers: '이 기간에 순위가 오른 태그가 없습니다.',
-  fallers: '이 기간에 순위가 내린 태그가 없습니다.',
+  risers: `이 기간에 인기 점수가 ${pctp(SHARE_MIN_CHANGE)} 이상 오른 태그가 없습니다.`,
+  fallers: `이 기간에 인기 점수가 ${pctp(SHARE_MIN_CHANGE)} 이상 내린 태그가 없습니다.`,
   entered: '이 기간에 새로 들어온 태그가 없습니다.',
   left: '이 기간에 빠진 태그가 없습니다.',
   spikes: '이 기간에 치솟았다 돌아온 태그가 없습니다.',
-  swings: '이 기간에 출렁인 태그가 없습니다.',
 };
 
 const NOTES = [
+  { id: 'score', content: <>인기 점수 = 그날 순위 작품(500편)이 받은 랭킹 점수 가운데 이 태그가 달린 작품들이 차지하는 몫 — 태그 랭킹과 같은 값입니다. 한 작품에 태그가 여럿이라 태그끼리 더하면 100%를 넘습니다. 순위도 이 값 순입니다.</> },
   { id: 'tau', content: <>순서 일치도 = 첫날과 마지막 날에 다 있는 태그 두 개씩 짝지어, 두 날의 앞뒤가 같으면 +1 · 뒤집히면 −1로 센 평균(Kendall τ). 1이면 순서 그대로, 0이면 무작위입니다.</> },
-  { id: 'elig', content: <>뜬 태그 · 식은 태그 · 치솟았다 돌아옴 · 많이 출렁임은 첫날과 마지막 날 모두, 새로 들어옴은 마지막 날 · 빠짐은 첫날 작품 {MIN_WORKS}편 이상인 태그만 봅니다. 치솟았다 돌아옴은 첫날·마지막 날 중 나은 순위보다 {SPIKE_MIN}계단 이상 위로 갔던 태그, 많이 출렁임은 기록이 {SWING_DAYS}일 이상인 태그 중 최고~최저 폭이 큰 {SWING_TOP}개입니다.</> },
+  { id: 'elig', content: <>작품 {MIN_WORKS}편 이상인 태그만 봅니다(뜬 · 식은 · 치솟음과 위 요약은 첫날과 마지막 날 모두, 새로 들어옴은 마지막 날, 빠짐은 첫날). 뜬 · 식은은 인기 점수가 {pctp(SHARE_MIN_CHANGE)} 이상 바뀐 태그, 치솟았다 돌아옴은 기간 최고가 처음 · 끝보다 {pctp(SPIKE_MIN_SHARE)} 이상 높았다가 그 폭의 절반 안으로 돌아온 태그입니다.</> },
 ];
 
+type SortKey = 'share' | 'rank' | 'count';
 const rank = (n: number) => `${formatInt(n)}위`;
-const pct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v * 100))}%`;
 const strong = (v: ReactNode) => <b className="rank-strong">{v}</b>;
 const tagCell = (tag: string) => <span className="rank-title">{tag}</span>;
+const shares = (a: number, b: number) => <>{formatShare(a)} → {formatShare(b)}</>;
 
 export default function TagTrendsPage() {
   const [available, setAvailable] = useState<string[]>([]);
@@ -58,6 +63,7 @@ export default function TagTrendsPage() {
   const [tab, setTab] = useState<Tab>('risers');
   const [openTag, setOpenTag] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
+  const [sort, setSort] = useState<{ key: SortKey; direction: 'ascending' | 'descending' }>({ key: 'share', direction: 'descending' });
 
   const latest = useMemo(() => (available.length ? parseISO([...available].sort().at(-1)!) : null), [available]);
 
@@ -112,38 +118,42 @@ export default function TagTrendsPage() {
     setEndDate(latest);
   };
   const toggle = (tag: string) => setOpenTag(cur => (cur === tag ? null : tag));
-  const expand = (tag: string) => (series && last
-    ? <TagRowExpand tag={tag} date={last} series={series} novelsHref={`/novels/rankings/${last}?tag=${encodeURIComponent(tag)}`} />
+  // '빠짐'은 마지막 날에 그 태그가 없다 — 작품 보기는 마지막으로 집계된 날로 보낸다.
+  const expand = (tag: string, at = last) => (series && last
+    ? <TagRowExpand tag={tag} date={last} series={series} novelsHref={`/novels/rankings/${at}?tag=${encodeURIComponent(tag)}`} />
     : null);
-  const eligAside = <FootnoteRef id="elig" n={2} />;
+  const eligAside = <FootnoteRef id="elig" n={3} />;
+  const scoreAside = <FootnoteRef id="score" n={1} />;
+
+  // 뜬 · 식은은 변화 · 순위 변동 · 작품 수로 다시 볼 수 있다(기본: 변화 — 뜬은 큰 순, 식은은 작은 순).
+  const onSort = (k: string) => setSort(cur => (cur.key === k ? { key: cur.key, direction: cur.direction === 'ascending' ? 'descending' : 'ascending' } : { key: k as SortKey, direction: 'descending' }));
+  const sortVal = (t: TagTrend) => (sort.key === 'share' ? t.shareChange : sort.key === 'rank' ? t.rankChange : t.last.count);
+  const sorted = (rows: TagTrend[], defaultDesc: boolean) => {
+    // 식은 태그의 '변화'는 내림차순 = 많이 내린 순(값이 작은 순)으로 읽힌다.
+    const invert = sort.key === 'share' && !defaultDesc;
+    const dir = (sort.direction === 'descending') !== invert ? -1 : 1;
+    return [...rows].sort((a, b) => (sortVal(a) - sortVal(b)) * dir || a.tag.localeCompare(b.tag, 'ko'));
+  };
 
   const trendCols: RankColumn<TagTrend>[] = [
     { key: 'tag', header: '태그', aside: eligAside, width: 'minmax(0,1fr)', render: t => tagCell(t.tag) },
-    { key: 'first', header: '첫날', width: '76px', render: t => rank(t.first.rank) },
-    { key: 'last', header: '마지막 날', width: '84px', render: t => rank(t.last.rank) },
-    { key: 'chg', header: '변동', width: '72px', render: t => strong(<ChangeMark value={t.rankChange} />) },
-    { key: 'best', header: '기간 최고', width: '84px', render: t => rank(t.bestRank) },
-    { key: 'count', header: '작품 수', width: '104px', render: t => <>{formatInt(t.first.count)} → {formatInt(t.last.count)}</> },
-    { key: 'score', header: '인기 점수', width: '88px', render: t => pct(t.scoreChange) },
+    { key: 'score', header: '인기 점수', aside: scoreAside, width: '136px', align: 'right', render: t => shares(t.first.score, t.last.score) },
+    { key: 'chg', header: '변화', width: '84px', align: 'right', sortKey: 'share', render: t => strong(pctp(t.shareChange)) },
+    { key: 'rank', header: '순위', width: '160px', align: 'right', sortKey: 'rank', render: t => <>{rank(t.first.rank)} → {rank(t.last.rank)} <ChangeMark value={t.rankChange} /></> },
+    { key: 'count', header: '작품 수', width: '96px', align: 'right', sortKey: 'count', render: t => <>{formatInt(t.first.count)} → {formatInt(t.last.count)}</> },
   ];
   const spikeCols: RankColumn<TagTrend>[] = [
     { key: 'tag', header: '태그', aside: eligAside, width: 'minmax(0,1fr)', render: t => tagCell(t.tag) },
-    { key: 'first', header: '첫날', width: '84px', render: t => rank(t.first.rank) },
-    { key: 'best', header: '기간 최고', width: '88px', render: t => rank(t.bestRank) },
-    { key: 'last', header: '마지막 날', width: '88px', render: t => rank(t.last.rank) },
-    { key: 'spike', header: '치솟은 폭', width: '96px', render: t => strong(`${formatInt(t.spike)}계단`) },
-  ];
-  const swingCols: RankColumn<TagTrend>[] = [
-    { key: 'tag', header: '태그', aside: eligAside, width: 'minmax(0,1fr)', render: t => tagCell(t.tag) },
-    { key: 'best', header: '최고', width: '84px', render: t => rank(t.bestRank) },
-    { key: 'worst', header: '최저', width: '84px', render: t => rank(t.worstRank) },
-    { key: 'swing', header: '폭', width: '88px', render: t => strong(`${formatInt(t.swing)}계단`) },
-    { key: 'last', header: '마지막 날', width: '88px', render: t => rank(t.last.rank) },
+    { key: 'first', header: '첫날', aside: scoreAside, width: '84px', align: 'right', render: t => formatShare(t.first.score) },
+    { key: 'peak', header: '기간 최고', width: '132px', align: 'right', render: t => <>{formatShare(t.peak.score)} <small className="rank-sub">{formatDateKo(t.peak.date)}</small></> },
+    { key: 'last', header: '마지막 날', width: '88px', align: 'right', render: t => formatShare(t.last.score) },
+    { key: 'spike', header: '치솟은 폭', width: '96px', align: 'right', render: t => strong(pctp(t.spike)) },
   ];
   const edgeCols = (which: 'entered' | 'left'): RankColumn<TagEdge>[] => [
     { key: 'tag', header: '태그', width: 'minmax(0,1fr)', render: e => tagCell(e.tag) },
-    { key: 'rank', header: which === 'entered' ? '마지막 날 순위' : '첫날 순위', width: '120px', render: e => strong(rank(e.rank)) },
-    { key: 'count', header: '작품 수', width: '88px', render: e => formatInt(e.count) },
+    { key: 'rank', header: which === 'entered' ? '마지막 날 순위' : '첫날 순위', width: '120px', align: 'right', render: e => strong(rank(e.rank)) },
+    { key: 'score', header: '인기 점수', aside: scoreAside, width: '96px', align: 'right', render: e => formatShare(e.score) },
+    { key: 'count', header: '작품 수', width: '88px', align: 'right', render: e => formatInt(e.count) },
   ];
 
   const trendRow = (t: TagTrend, facts: ReactNode) => (
@@ -157,22 +167,19 @@ export default function TagTrendsPage() {
     switch (tab) {
       case 'risers':
       case 'fallers':
-        return <RankTable<TagTrend> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists[tab]} columns={trendCols}
+        return <RankTable<TagTrend> {...common} ariaLabel={TAB_LABEL[tab]} rows={sorted(lists[tab], tab === 'risers')} columns={trendCols}
+          sort={sort} onSort={onSort}
           onToggleRow={t => toggle(t.tag)} renderExpanded={t => expand(t.tag)}
-          renderMobileRow={t => trendRow(t, <>{rank(t.first.rank)} → <b>{rank(t.last.rank)}</b> <ChangeMark value={t.rankChange} /> · 작품 {t.first.count} → {t.last.count} · 점수 {pct(t.scoreChange)}</>)} />;
+          renderMobileRow={t => trendRow(t, <>인기 {shares(t.first.score, t.last.score)} <b>{pctp(t.shareChange)}</b> · {rank(t.first.rank)} → {rank(t.last.rank)} <ChangeMark value={t.rankChange} /> · 작품 {t.first.count} → {t.last.count}</>)} />;
       case 'spikes':
         return <RankTable<TagTrend> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists.spikes} columns={spikeCols}
           onToggleRow={t => toggle(t.tag)} renderExpanded={t => expand(t.tag)}
-          renderMobileRow={t => trendRow(t, <>{rank(t.first.rank)} → 최고 {rank(t.bestRank)} → {rank(t.last.rank)} · <b>{t.spike}계단</b></>)} />;
-      case 'swings':
-        return <RankTable<TagTrend> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists.swings} columns={swingCols}
-          onToggleRow={t => toggle(t.tag)} renderExpanded={t => expand(t.tag)}
-          renderMobileRow={t => trendRow(t, <>{rank(t.bestRank)} ~ {rank(t.worstRank)} · <b>{t.swing}계단</b> · 마지막 날 {rank(t.last.rank)}</>)} />;
+          renderMobileRow={t => trendRow(t, <>{formatShare(t.first.score)} → 최고 {formatShare(t.peak.score)}({formatDateKo(t.peak.date)}) → {formatShare(t.last.score)} · <b>{pctp(t.spike)}</b></>)} />;
       default:
         return <RankTable<TagEdge> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists[tab]} columns={edgeCols(tab)}
-          onToggleRow={e => toggle(e.tag)} renderExpanded={e => expand(e.tag)}
+          onToggleRow={e => toggle(e.tag)} renderExpanded={e => expand(e.tag, e.lastSeen)}
           renderMobileRow={e => (
-            <div className="rank-mrow rank-mrow--plain"><div className="rank-mrow__main">{tagCell(e.tag)}<p><b>{rank(e.rank)}</b> · 작품 {e.count}</p></div></div>
+            <div className="rank-mrow rank-mrow--plain"><div className="rank-mrow__main">{tagCell(e.tag)}<p><b>{rank(e.rank)}</b> · 인기 {formatShare(e.score)} · 작품 {e.count}</p></div></div>
           )} />;
     }
   };
@@ -198,13 +205,17 @@ export default function TagTrendsPage() {
           { to: '/tags/rankings', label: '오늘', on: false },
           { to: '/tags/trends', label: '기간 트렌드', on: true },
         ]} />}
-        meta={first && last && first !== last ? `수집일 ${windowDates.length}일 · 첫날과 마지막 날의 태그 순위를 견줌` : '첫날과 마지막 날의 태그 순위를 견줌'} />
+        meta={first && last && first !== last ? `수집일 ${windowDates.length}일 · 첫날과 마지막 날의 인기 점수(랭킹 점수 점유율)를 견줌` : '첫날과 마지막 날의 인기 점수(랭킹 점수 점유율)를 견줌'} />
+
+      {first && last && crossesSampleChange(first, last) ? (
+        <p className="period-warn">이 기간 중 수집 범위가 300편 → 500편으로 바뀌어(2025-07-21) 작품 수와 순위는 그대로 견줄 수 없습니다. 인기 점수(점유율)는 비율이라 비교적 견줄 만합니다.</p>
+      ) : null}
 
       {churn && !loading ? (
         <InlineNums items={[
           { label: '평균 순위 이동', value: `${churn.footrule.toFixed(1)}계단` },
-          { label: <>순서 일치도<FootnoteRef id="tau" n={1} /></>, value: churn.tau != null ? churn.tau.toFixed(2) : '–' },
-          { label: '태그', value: `${formatInt(churn.startTags)} → ${formatInt(churn.endTags)}개` },
+          { label: <>순서 일치도<FootnoteRef id="tau" n={2} /></>, value: churn.tau != null ? churn.tau.toFixed(2) : '–' },
+          { label: <>태그({MIN_WORKS}편 이상)</>, value: `${formatInt(churn.startTags)} → ${formatInt(churn.endTags)}개` },
           { label: '양쪽에 다 있음', value: `${formatInt(churn.common)}개` },
         ]} />
       ) : null}

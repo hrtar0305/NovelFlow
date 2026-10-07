@@ -62,7 +62,7 @@ export default function DailyTagBoard({
   const notes = useMemo(() => [
     { id: 'score', content: <>인기 점수 = 오늘 순위 작품{N ? ` ${formatInt(N)}편` : ''}이 받은 {scoreLabel} 가운데 이 태그가 달린 작품들이 차지하는 몫. 한 작품에 태그가 여럿이라 태그끼리 더하면 100%를 넘습니다. 표의 순위가 이 값 순입니다.</> },
     { id: 'top', content: <>100위 안 = 이 태그 작품 가운데 100위 안에 든 작품 수와 그 비율. 평균은 {lines ? `${Math.round(lines.p0 * 1000) / 10}%` : '100 ÷ 순위 작품 수'}입니다.</> },
-    { id: 'zone', content: <>구역 — 대세: {lines ? `${lines.cut}편` : '6%'} 이상 쓰이면서 100위 안 비율이 평균 이상 · 과포화: 많이 쓰이지만 평균 미만 · 숨은 강자: 적게 쓰이지만 100위 안에 {rules.gemMinTop}편 이상, 평균의 {rules.gemMult}배 이상. 경계는 비율이 평균의 ±{Math.round(rules.edge * 100)}% 안이라 하루 사이 바뀔 수 있는 태그. 시들어 가는 태그는 태그 트렌드(기간)에서 봅니다.</> },
+    { id: 'zone', content: <>구역 — 대세: {lines ? `${lines.cut}편` : '6%'} 이상 쓰이면서 100위 안 비율이 평균 이상 · 과포화: 많이 쓰이지만 평균 미만 · 숨은 강자: 적게 쓰이지만 100위 안에 {rules.gemMinTop}편 이상, 평균의 {rules.gemMult}배 이상. 경계는 비율이 평균의 ±{Math.round(rules.edge * 100)}% 안이라 하루 사이 바뀔 수 있는 태그. 뜨고 식는 태그는 태그 트렌드(기간)에서 봅니다.</> },
   ], [N, lines, scoreLabel, rules]);
 
   const zoned = useMemo(() => withZones(tags, rules), [tags, rules]);
@@ -128,7 +128,7 @@ export default function DailyTagBoard({
       ) : (
         <>
           <TagTerrainMap rows={mapRows} rules={rules} active={hover ?? openTag} matches={matches} onPick={pickFromMap} onHover={setHover} />
-          <p className="tag-map__note">작품 5편 미만 태그는 그리지 않습니다 · 시들어 가는 태그는 태그 트렌드(기간)에서 봅니다</p>
+          <p className="tag-map__note">작품 5편 미만 태그는 그리지 않습니다 · 뜨고 식는 태그는 태그 트렌드(기간)에서 봅니다</p>
         </>
       )}
     </section>

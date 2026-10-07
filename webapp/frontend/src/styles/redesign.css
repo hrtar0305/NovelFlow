@@ -577,3 +577,5 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .contest-tags-page > .page-title .page-title__meta,
 .tag-trends-page > .page-title .page-title__meta,
 .analysis-page > .page-title .page-title__meta { margin-bottom: 0; }
+.period-warn { margin: 0; padding: 0.55rem 0.8rem; border-left: 3px solid var(--np-zone-saturated); background: var(--np-surface-alt); font-size: 0.8125rem; color: var(--np-text-secondary); }
+.rank-sub { margin-left: 0.3rem; font-size: 0.75rem; color: var(--np-text-faint); }
