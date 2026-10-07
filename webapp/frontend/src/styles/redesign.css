@@ -423,9 +423,15 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .an-sec:last-child { padding-bottom: 3rem; }
 .an-sec h2 { margin: 0 0 0.5rem; font-size: 1.1875rem; font-weight: 800; letter-spacing: -0.02em; color: var(--np-text-heading); }
 .an-sec h3 { margin: 0 0 0.35rem; font-size: 0.9375rem; font-weight: 700; color: var(--np-text-heading); }
+.an-h3-note { margin-left: 0.35rem; font-size: 0.8125rem; font-weight: 500; color: var(--np-text-faint); }
+.an-sec .inline-nums__item { white-space: nowrap; }
+/* 폰에서 줄을 넘기면 구분선이 줄 앞에 남는다 — 구분선 대신 간격으로 가른다. */
+@media (max-width: 767.98px) {
+  .an-sec .inline-nums { display: flex; flex-wrap: wrap; gap: 0.15rem 1rem; }
+  .an-sec .inline-nums__item::before { display: none !important; }
+}
 .an-sec .inline-nums { margin: 0 0 1rem; }
 .an-sec__foot { margin: 0.9rem 0 0; font-size: 0.8125rem; line-height: 1.7; color: var(--np-text-faint); }
-.an-soft { font-weight: 500; color: var(--np-text-secondary); }
 .an-on { color: var(--np-accent); }
 .an-split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem 2.5rem; }
 @media (max-width: 767.98px) { .an-split { grid-template-columns: 1fr; } }
@@ -443,23 +449,28 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .an-list--combo li { grid-template-columns: minmax(0, 1fr); }
 .an-list--combo li > * { grid-column: 1; }
 .an-combo { font-weight: 700; color: var(--np-text-heading); }
+.an-combo a { color: inherit; text-decoration: none; }
+.an-combo a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .an-combo i { font-style: normal; font-weight: 400; color: var(--np-text-faint); }
 .an-tagline { margin: 0.6rem 0 0; font-size: 0.875rem; line-height: 1.8; color: var(--np-text-secondary); }
-.an-tagline__label { margin-right: 0.6rem; font-weight: 600; color: var(--np-text-heading); }
 .an-tagline a { color: var(--np-text-primary); text-decoration: none; }
 .an-tagline a:hover { text-decoration: underline; text-underline-offset: 3px; }
-.an-tagline__x { color: var(--np-text-faint); }
 .an-table-wrap { overflow-x: auto; }
 .an-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
 .an-table th, .an-table td { padding: 0.6rem 1rem 0.6rem 0; border-top: 1px solid var(--np-border); text-align: left; vertical-align: baseline; white-space: nowrap; }
 .an-table td:has(.an-work) { white-space: normal; min-width: 14rem; }
+.an-table .an-num { text-align: right; }
+/* 제목 칸이 없는 표(순위대별 · 견주기)는 폭을 채우지 않는다 — 넓은 화면에서 숫자가 이름에서 수백 px 떨어졌다. */
+.an-table:not(:has(.an-work)) { width: auto; }
+.an-table:not(:has(.an-work)) :is(th, td):not(:last-child) { padding-right: 2.5rem; }
+.an-table th:last-child, .an-table td:last-child { padding-right: 0; }
 .an-table thead th { border-top: 0; font-size: 0.8125rem; font-weight: 600; color: var(--np-text-secondary); }
 .an-table td b { color: var(--np-text-heading); }
 @media (max-width: 767.98px) {
   .an-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .an-table, .an-table tbody { display: block; }
   .an-table tr { display: flex; flex-wrap: wrap; column-gap: 0.9rem; row-gap: 0.15rem; padding: 0.6rem 0; border-top: 1px solid var(--np-border); }
-  .an-table td { padding: 0; border-top: 0; font-size: 0.875rem; }
+  .an-table td, .an-table td.an-num { padding: 0; border-top: 0; font-size: 0.875rem; text-align: left; }
   .an-table td:has(.an-work) { order: -1; flex: 1 0 100%; min-width: 0; font-size: 0.9375rem; }
   .an-table td[data-label]:not(:has(.an-work))::before { content: attr(data-label) ' '; color: var(--np-text-faint); font-size: 0.8125rem; }
   /* 제목(작품) 칸이 없는 표(순위대별 · 견주기)는 첫 칸이 행 이름이다 — 한 줄을 다 쓰고 이름표를 달지 않는다. */

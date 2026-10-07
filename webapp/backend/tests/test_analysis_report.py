@@ -24,5 +24,17 @@ class RecentlyAdded(unittest.TestCase):
         self.assertEqual(w['recent_added_eps'], 1)
 
 
+class Combinations(unittest.TestCase):
+    def test_near_subset_pair_is_dropped(self):
+        # 버튜버 21편 중 20편이 인터넷방송 — Jaccard 는 0.5 미만이어도 사실상 같은 묶음이라 조합이 아니다.
+        rows = [{'Tags': ['버튜버', '인터넷방송']}] * 20 + [{'Tags': ['버튜버']}] \
+            + [{'Tags': ['인터넷방송']}] * 30 + [{'Tags': ['기타']}] * 200
+        self.assertEqual(AR.tag_combinations(rows, 2, 10, 15), [])
+
+    def test_partial_overlap_pair_stays(self):
+        rows = [{'Tags': ['a', 'b']}] * 10 + [{'Tags': ['a']}] * 20 + [{'Tags': ['b']}] * 20 + [{'Tags': ['기타']}] * 200
+        self.assertEqual([c['tags'] for c in AR.tag_combinations(rows, 2, 10, 15)], [['a', 'b']])
+
+
 if __name__ == '__main__':
     unittest.main()

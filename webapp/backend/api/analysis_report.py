@@ -23,10 +23,6 @@ DELTA_VIEW_FLOOR = 5_000
 # '지금 연재 중'을 보는 창(일). 주 1회 연재도 걸리게 7일.
 RECENT_DAYS = 7
 
-# 주당 회차 분포 버킷. 상한을 열어 두는 마지막 칸이 필요하다 —
-# 주당 30화가 넘는 값이 실제로 관측되는데, 그것을 무엇이라 규정하지는 않는다.
-PACE_BUCKETS = [0, 1, 2, 3, 5, 7, 10, 14, 21, 30]
-
 
 def _pctl(sorted_vals: list[float], p: float) -> float | None:
     if not sorted_vals:
@@ -160,7 +156,6 @@ def churn(snaps: list[dict], bands: list[dict]) -> dict:
         'common': len(common),
         'start_works': len(a['ids']),
         'end_works': len(b['ids']),
-        'turnover': (len(rb) - len(common)) / len(rb) if rb else None,
         'bands': bands,
     }
 
@@ -233,36 +228,21 @@ def pace_distribution(works: dict[str, dict], end_ids: set[str]) -> dict:
 
     한때 '가장 빠르게 연재 중' 순위표를 뒀는데, 그 구조가 문제였다 — 주당 30화가
     넘는 값이 상위에 오르면 화면이 그것을 칭찬처럼 보여 준다. 이 사이트는 통계만
-    보여주고 작품에 대한 판단은 하지 않는다. 그래서 순위표를 없애고 분포와
-    분위수만 둔다. 특정 작품이 분포에서 어디인지는 '같은 순위대와 견주기'가 답한다.
+    보여주고 작품에 대한 판단은 하지 않는다. 그래서 주당 값은 분위수만 낸다(구간별 막대는
+    화면이 쓰지 않아 2026-10-07에 뺐다). 특정 작품이 어디인지는 '같은 순위대와 견주기'가 답한다.
     """
     # 관측 횟수는 **값을 읽은 날**(자리표시 제외, `value_obs`)로 센다 — 순위만 있는 날로는 페이스를 잴 수 없다.
     rows = [w for nid, w in works.items() if nid in end_ids and w['value_obs'] >= 2]
     growing = [w for w in rows if w['added_eps'] > 0]
     flat = [w for w in rows if w['added_eps'] == 0]
-    weird = [w for w in rows if w['added_eps'] < 0]
-    few = [w for nid, w in works.items() if nid in end_ids and w['value_obs'] < 2]
 
     vals = sorted(w['per_week'] for w in growing)
-    hist = []
-    for i, lo in enumerate(PACE_BUCKETS):
-        hi = PACE_BUCKETS[i + 1] if i + 1 < len(PACE_BUCKETS) else None
-        c = sum(1 for v in vals if v >= lo and (hi is None or v < hi))
-        hist.append({
-            'min': lo, 'max': hi,
-            'label': f'{lo}~{hi}' if hi else f'{lo}+',
-            'count': c,
-        })
-
     return {
-        'histogram': hist,
         'median': _pctl(vals, 0.5),
         'p90': _pctl(vals, 0.9),
         'max': vals[-1] if vals else None,
         'growing': len(growing),
         'flat': len(flat),
-        'unmeasurable': len(weird),
-        'too_few_obs': len(few),
     }
 
 
@@ -278,35 +258,14 @@ def tag_counts(rows: list[dict]) -> dict[str, int]:
     return m
 
 
-def tag_lift(subset: list[dict], all_rows: list[dict], top: int = 8) -> list[dict]:
-    """부분집합에서 전체 대비 몇 배로 나오는 태그인지.
-
-    하한이 없으면 목록이 전부 '2편 · 3.5배'로 찬다 — 부분집합이 100편일 때 2편짜리
-    태그는 배수만 크고 뜻이 없다.
-    """
-    if not subset:
-        return []
-    floor = max(4, math.ceil(len(subset) * 0.04))
-    sub, whole = tag_counts(subset), tag_counts(all_rows)
-    n_all = max(len(all_rows), 1)
-    out = []
-    for tag, c in sub.items():
-        if c < floor:
-            continue
-        base = max(whole.get(tag, 1) / n_all, 1e-9)
-        out.append({'tag': tag, 'count': c, 'share': c / len(subset),
-                    'lift': (c / len(subset)) / base})
-    out.sort(key=lambda x: (-x['lift'], -x['count']))
-    return out[:top]
-
-
 def tag_combinations(rows: list[dict], size: int, min_count: int, top: int,
-                     max_jaccard: float = 0.5) -> list[dict]:
+                     max_jaccard: float = 0.5, max_contain: float = 0.8) -> list[dict]:
     """같이 달린 태그 조합(2026-09-30 개편). 흔한 태그끼리는 그냥 자주 만나므로 빈도가 아니라
     **우연히 만날 때보다 몇 배인지**로 줄 세운다.
 
     - 두 태그: 기대값 = c(a)·c(b)/N. 달린 작품이 절반 이상 겹치는 짝(Jaccard ≥ 0.5)은 뺀다 —
-      '현대판타지 + 현대'처럼 사실상 같은 말이라 조합이라 부를 수 없다.
+      '현대판타지 + 현대'처럼 사실상 같은 말이라 조합이라 부를 수 없다. 작은 쪽의 80% 이상이 큰 쪽과 겹치는 짝도
+      뺀다 — '버튜버(21편 중 20편) + 인터넷방송'은 Jaccard 0.4 라 앞 조건을 빠져나갔다(2026-10-07 리뷰).
     - 세 태그: 기대값 = 세 가지로 나눈 '두 태그 짝 + 나머지 하나' 중 가장 큰 값, 즉
       max(c(짝)·c(셋째)/N). 단순 lift(c(a)·c(b)·c(c)/N²)로 세면 이미 강한 짝 하나에 아무 태그나
       붙어도 배수가 커져, 목록이 그 짝의 변주로 찬다. 가장 강한 짝 대비로 세야 '셋이어야 생기는'
@@ -330,7 +289,8 @@ def tag_combinations(rows: list[dict], size: int, min_count: int, top: int,
     def overlaps(a: str, b: str) -> bool:
         both = pair.get((a, b), 0)
         union = solo.get(a, 0) + solo.get(b, 0) - both
-        return union > 0 and both / union >= max_jaccard
+        small = min(solo.get(a, 0), solo.get(b, 0))
+        return union > 0 and (both / union >= max_jaccard or both / small >= max_contain)
 
     out = []
     for key, c in combo.items():
@@ -388,22 +348,3 @@ def band_of(avg_rank: float, quartiles: list[dict]) -> int | None:
         if avg_rank >= q['min'] and (q['max'] is None or avg_rank < q['max']):
             return i
     return None
-
-
-def percentiles(target: dict, peers: list[dict],
-                metrics: list[tuple[str, str]]) -> list[dict]:
-    """같은 구간 안에서 몇 %를 앞서는지. 전체와 견주면 순위가 곧 답이 돼
-    아무것도 새로 알려주지 못한다."""
-    out = []
-    for key, label in metrics:
-        mine = target.get(key)
-        if mine is None:
-            continue
-        vals = [p[key] for p in peers if p.get(key) is not None]
-        if len(vals) < 5:
-            continue
-        out.append({
-            'key': key, 'label': label, 'value': mine,
-            'pct': sum(1 for v in vals if v < mine) / len(vals),
-        })
-    return out

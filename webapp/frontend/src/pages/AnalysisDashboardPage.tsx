@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getAnalysisReport } from '../services/api';
 import PageTitle from '../components/ui/PageTitle';
 import type { AnalysisReport } from './analysis/types';
@@ -15,13 +16,16 @@ import { formatDateDot } from '../utils/format';
  * 페이로드 30MB로 불가능해, 적재가 날짜마다 16KB 압축 스냅샷(`RSNAP#<date>`)을 남기고
  * 백엔드가 `batch_get_item` 한 번으로 계산한다. 이 페이지는 그 결과를 받아 그리기만 한다.
  *
- * 기간은 고정 프리셋(7/30/90일)이다 — 고정하면 하루에 창마다 한 번만 계산되고 CDN이 받아 준다.
+ * 기간은 고정 프리셋(7/30/90일)이다 — 고정하면 하루에 창마다 한 번만 계산되고 CDN이 받아 준다. 고른 기간은 `?days=` 로 남긴다
+ * (공유·새로고침에서 30일로 돌아가지 않게).
  */
 const DAYS = [7, 30, 90] as const;
 type Days = (typeof DAYS)[number];
 
 export default function AnalysisDashboardPage() {
-  const [days, setDays] = useState<Days>(30);
+  const [params, setParams] = useSearchParams();
+  const days: Days = DAYS.find(d => String(d) === params.get('days')) ?? 30;
+  const setDays = (d: Days) => setParams(d === 30 ? {} : { days: String(d) }, { replace: true });
   const [report, setReport] = useState<AnalysisReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +47,8 @@ export default function AnalysisDashboardPage() {
   }, [days, retry]);
 
   // 빠진 날이 있을 때만 적는다 — '수집일 N일 전체'를 굳이 밝히면 뭔가 빼는 게 있나 하고 읽힌다.
-  const meta = report
+  // 바꾸는 동안 이전 기간의 날짜를 남기지 않는다.
+  const meta = report && !loading
     ? `${formatDateDot(report.start)} ~ ${formatDateDot(report.end)}${report.dates_missing > 0 ? ` · 수집이 없는 ${report.dates_missing}일 제외` : ''}`
     : undefined;
 
@@ -53,7 +58,7 @@ export default function AnalysisDashboardPage() {
         nav={
           <div className="period-pick" role="group" aria-label="기간">
             {DAYS.map(d => (
-              <button key={d} type="button" className={d === days ? 'is-on' : undefined} aria-pressed={d === days} onClick={() => setDays(d)}>최근 {d}일</button>
+              <button key={d} type="button" className={d === days ? 'is-on' : undefined} aria-pressed={d === days} onClick={() => setDays(d)}>{d}일</button>
             ))}
           </div>
         }

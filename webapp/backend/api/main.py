@@ -1895,7 +1895,8 @@ def get_analysis_report(days: int, response: Response):
         all_dates = sorted(meta.get('dates') or [], reverse=True)
         if not all_dates:
             raise HTTPException(status_code=404, detail="No collection dates found.")
-        window = sorted(all_dates[:days])          # 오름차순: [0] 시작, [-1] 끝
+        # N일 = 수집일 N+1개(간격 N일). N개로 읽으면 '7일'이 6일 사이의 변화라 '+28화'와 '주당 32.7화'가 어긋났다.
+        window = sorted(all_dates[:days + 1])      # 오름차순: [0] 시작, [-1] 끝
 
         # 1. 압축 스냅샷을 배치로. 날짜별 get_item 이면 90번이라 못 쓴다.
         got: dict[str, dict] = {}
@@ -2040,6 +2041,7 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
             'author_id': lb.get('AuthorID'),
             'tags': (lb.get('Tags') or [])[:3],
             'eps': w.get('last_eps'), 'added_eps': w.get('added_eps'),
+            'recent_added_eps': w.get('recent_added_eps'),
             'rank': w.get('ranks', [None])[-1], 'best_rank': w.get('best_rank'),
             'avg_rank': w.get('avg_rank'),
             'early': base.get('EarlyRetentionRate'),
@@ -2051,16 +2053,18 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
         out.update(extra)
         return out
 
-    # 들어온 작품 = 지금 목록에 있고, **기간 첫날에도 없었고 기간 앞쪽에서도 본 적이
-    # 없는** 작품. 첫날 목록과만 비교하면 전부터 있다가 하루만 빠졌던 작품이 섞인다.
-    entrant_ids = [n for n in end_ids if n not in start_ids and n not in seen_before]
-    entrant_ids.sort(key=lambda n: works[n]['best_rank'] if n in works else 9999)
-    entrants = [row(n, works.get(n, {}), {}) for n in entrant_ids[:30] if n in works]
+    # 들어온 작품 = 지금 목록에 있고 첫날에는 없던 작품 — 빠진 작품(첫날에 있고 지금 없는 작품)과 **같은 기준**이다.
+    # 들어온 쪽만 '예전에 든 적 없는 작품'으로 좁히면 139편이 들고 139편이 나간 달이 '들어온 76 · 빠진 139'로
+    # 읽혀 목록이 줄어드는 것처럼 보였다(2026-10-07 리뷰). 처음 진입은 그 가운데 `first` 로 따로 센다.
+    # 목록은 화면 앞 숫자(지금 순위) 순이다 — 최고 순위로 줄 세우면 보이는 숫자가 1, 12, 28, 24, 111…로 뒤죽박죽이었다.
+    entrant_ids = sorted((n for n in end_ids if n not in start_ids and n in works),
+                         key=lambda n: works[n]['ranks'][-1])
+    entrants = [row(n, works[n], {'first': n not in seen_before}) for n in entrant_ids[:15]]
 
     # 빠진 작품의 제목·태그는 **시작일 행**에서 가져온다(마지막 날 목록에 없으므로).
     leaver_ids = [n for n in start_ids if n not in end_ids]
     leavers = []
-    for n in sorted(leaver_ids, key=lambda n: works[n]['ranks'][0] if n in works else 9999)[:30]:
+    for n in sorted(leaver_ids, key=lambda n: works[n]['ranks'][0] if n in works else 9999)[:15]:
         w = works.get(n)
         if not w:
             continue
@@ -2077,7 +2081,6 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
             'early': base.get('EarlyRetentionRate'), 'recent': base.get('RecentRetentionRate'),
         })
 
-    entrant_rows = [end_by_id[n] for n in entrant_ids if n in end_by_id]
     ratios = sorted(
         (w for n, w in works.items() if n in end_ids and w.get('period_ratio') is not None),
         key=lambda w: -w['period_ratio'],
@@ -2148,14 +2151,13 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
         'totals': {
             'end_works': len(end_rows),
             'entrants': len(entrant_ids),
+            'first_entrants': sum(1 for n in entrant_ids if n not in seen_before),
             'leavers': len(leaver_ids),
         },
         'entrants': entrants,
         'leavers': leavers,
-        'entrant_tags': AR.tag_lift(entrant_rows, end_rows),
-        # 들어온 쪽만 태그를 내면 좌우 비교가 한쪽으로 기운다.
-        'leaver_tags': AR.tag_lift(
-            [start_by_id[n] for n in leaver_ids if n in start_by_id], start_rows),
+        # 들어온·빠진 작품의 '많이 달린 태그'(작품 수 배수)는 뺐다 — 인기 점수로 재는 태그 트렌드와 반대로 말했다
+        # (헌터 ×2.0 인데 트렌드는 식은 태그 −1.55%p, 같은 태그가 양쪽에 동시에). 태그 흐름은 태그 트렌드가 맡는다.
         # 두 목록을 **순위로 가른다.** 전체 상위와 '100위 밖'을 나란히 두면 추천비
         # 상위가 전부 100위 밖일 때 같은 카드가 두 번 나온다(실측 12건 전부 겹쳤다).
         'period_ratio': {
@@ -2165,7 +2167,7 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
             'hidden': [ratio_row(w) for w in ratios if w['ranks'][-1] > 100][:12],
         },
         'pace_top': pace_top,
-        'retention': {'rows': [ratio_row(w) for w in active[:12]]},
+        'retention': {'counted': len(active), 'rows': [ratio_row(w) for w in active[:12]]},
         'diagnose': {'quartiles': quartiles, 'works': diagnose_works},
         'tags': {
             # 두 태그 10편 이상 상위 15, 세 태그 6편 이상 상위 12(2026-09-30).

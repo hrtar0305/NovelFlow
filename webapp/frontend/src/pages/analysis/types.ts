@@ -9,6 +9,8 @@ export interface ReportWork {
   tags: string[];
   eps: number | null;
   added_eps: number | null;
+  /** 마지막 7일에 늘어난 회차 */
+  recent_added_eps: number | null;
   rank: number | null;
   best_rank: number | null;
   avg_rank: number | null;
@@ -17,6 +19,8 @@ export interface ReportWork {
   period_ratio: number | null;
   per_week: number | null;
   observations: number | null;
+  /** 들어온 작품: 수집 시작 이후 처음 목록에 든 작품인가 */
+  first?: boolean;
 }
 
 export interface ReportLeaver {
@@ -35,7 +39,6 @@ export interface ReportLeaver {
   added_eps: number;
 }
 
-export interface TagLift { tag: string; count: number; share: number; lift: number }
 export interface TagCombo { tags: string[]; count: number; lift: number }
 
 export interface Quartile { label: string; min: number; max: number | null; count: number }
@@ -56,11 +59,11 @@ export interface AiSummary {
   generated_at: string | null;
 }
 
-/** '들어온 작품'을 어떻게 판정했는지.
+/** '처음 진입'을 어떻게 판정했는지.
  *
- *  후보(지금 있고 기간 첫날엔 없던 작품)마다 **자기 과거 행**을 한 건 조회해 기간 전에
+ *  들어온 작품(지금 있고 기간 첫날엔 없던 작품)마다 **자기 과거 행**을 한 건 조회해 기간 전에
  *  랭킹에 든 적이 있는지 확인한다 — 그래서 확인 범위가 수집 전 기간이고, 스냅샷 보유
- *  기간에 묶이지 않는다. `checked − returning` 이 화면에 나가는 신규 진입 수다. */
+ *  기간에 묶이지 않는다. `checked − returning` 이 처음 진입 수(`totals.first_entrants`)다. */
 export interface EntrantsBasis {
   checked: number;
   returning: number;
@@ -75,7 +78,7 @@ export interface AnalysisReport {
   end: string;
   ai_summary: AiSummary | null;
   entrants_basis: EntrantsBasis;
-  totals: { end_works: number; entrants: number; leavers: number };
+  totals: { end_works: number; entrants: number; first_entrants: number; leavers: number };
   churn: {
     footrule: number | null;
     /** 순위가 무작위로 섞였다면 나올 평균 이동. `footrule` 의 비교 기준선이다. */
@@ -86,25 +89,22 @@ export interface AnalysisReport {
     common: number;
     start_works: number;
     end_works: number;
-    turnover: number | null;
     bands: { label: string; total: number; stayed: number; rate: number | null }[];
   };
   pace: {
-    histogram: { min: number; max: number | null; label: string; count: number }[];
     median: number | null; p90: number | null; max: number | null;
-    growing: number; flat: number; unmeasurable: number; too_few_obs: number;
+    growing: number; flat: number;
     /** 이 기간에 회차가 가장 많이 늘어난 작품. 분포만으로는 "어떤 작품이"에 답하지 못한다. */
     top: ReportWork[];
   };
   entrants: ReportWork[];
   leavers: ReportLeaver[];
-  entrant_tags: TagLift[];
-  leaver_tags: TagLift[];
   period_ratio: {
     floor_delta_view: number; counted: number;
     top: ReportWork[]; hidden: ReportWork[];
   };
-  retention: { rows: ReportWork[] };
+  /** counted = 최근 7일에 회차가 늘고 두 잔류율이 다 있는 작품 수 */
+  retention: { counted: number; rows: ReportWork[] };
   diagnose: { quartiles: Quartile[]; works: DiagnoseWork[] };
   /** 두 태그: 우연 대비 배수. 세 태그: 가장 강한 두 태그 짝 대비 배수(2026-09-30, analysis_report.tag_combinations). */
   tags: { pairs: TagCombo[]; triples: TagCombo[] };
