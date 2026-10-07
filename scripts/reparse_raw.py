@@ -199,16 +199,8 @@ def iter_raw(s3, date: str, novel_id: str | None):
     if novel_id:
         keys = [f'{RAW_PREFIX}/{date}/{novel_id}.json.gz']
     else:
-        keys, token = [], None
-        while True:
-            kw = {'Bucket': RAW_BUCKET, 'Prefix': f'{RAW_PREFIX}/{date}/'}
-            if token:
-                kw['ContinuationToken'] = token
-            page = s3.list_objects_v2(**kw)
-            keys += [o['Key'] for o in page.get('Contents', [])]
-            token = page.get('NextContinuationToken')
-            if not token:
-                break
+        pages = s3.get_paginator('list_objects_v2').paginate(Bucket=RAW_BUCKET, Prefix=f'{RAW_PREFIX}/{date}/')
+        keys = [o['Key'] for page in pages for o in page.get('Contents', [])]
     for key in keys:
         try:
             body = s3.get_object(Bucket=RAW_BUCKET, Key=key)['Body'].read()

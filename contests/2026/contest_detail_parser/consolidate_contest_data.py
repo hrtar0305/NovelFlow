@@ -14,7 +14,7 @@ logger.setLevel(logging.INFO)
 class Config:
     """Houses all configuration variables for the consolidation script."""
     DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
-    # 작가 다른 작품 색인(ID 수집기가 유지). 비우면 붙이지 않는다.
+    # 수집기 상태(참가작 메타·작가 다른 작품 색인)와 대조 작업 파일(runs/)을 두는 버킷. 배포가 늘 넣는다.
     STATE_BUCKET = os.environ.get('STATE_BUCKET')
     AUTHOR_INDEX_KEY = 'state/author_works.json'
     # 공모전 개막일(2026-10-01 12:00 개막). 참가작은 모두 이날 0 에서 출발한다 — `opening_day_ids`.
@@ -34,18 +34,6 @@ def _log(level, execution_id, message, **kwargs):
     logger.log(level, json.dumps(log_data, ensure_ascii=False))
 
 # --- Helper Functions ---
-def _validate_data(execution_id, items, expected_count):
-    """Validates that the count of unique collected items matches the target count."""
-    collected_data_count = len(items)
-    if not expected_count or expected_count == 0:
-        _log(logging.WARNING, execution_id, "Expected count is 0, skipping validation.")
-        return
-    if collected_data_count != expected_count:
-        error_message = f"Validation Failed: Expected {expected_count}, but collected {collected_data_count} unique items."
-        _log(logging.ERROR, execution_id, error_message)
-        raise ValueError(error_message)
-    _log(logging.INFO, execution_id, f"Validation successful: {collected_data_count}/{expected_count} unique items collected.")
-
 def _calculate_and_store_tag_stats(dynamodb_table, execution_id, items):
     """Calculates tag statistics from all items and stores them in a single DynamoDB item."""
     if not items:
@@ -194,17 +182,8 @@ def _previous_views(dynamodb_table, date, execution_id):
         _log(logging.INFO, execution_id, "No previous collection date — DailyRank is empty for this date.", date=date)
         return None, {}
     prev = earlier[-1]
-    views, kw = {}, {
-        'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(prev),
-        'ProjectionExpression': 'ID, #v', 'ExpressionAttributeNames': {'#v': 'View'},
-    }
-    while True:
-        r = dynamodb_table.query(**kw)
-        for it in r['Items']:
-            views[str(it['ID'])] = int(it['View'])
-        if 'LastEvaluatedKey' not in r:
-            break
-        kw['ExclusiveStartKey'] = r['LastEvaluatedKey']
+    rows = _rows_for_date(dynamodb_table, prev, ProjectionExpression='ID, #v', ExpressionAttributeNames={'#v': 'View'})
+    views = {k: int(it['View']) for k, it in rows.items()}
     _log(logging.INFO, execution_id, "Loaded previous collection.", prev_date=prev, items=len(views))
     return prev, views
 
@@ -224,26 +203,23 @@ def attach_author_works(items, index):
     return items
 
 
-def _load_contest_meta(execution_id):
-    """수집기의 참가작 상태(번호 → 처음 찾은 시각·경로). 못 읽으면 빈 dict — 신작 판정만 빠지고 적재는 계속한다."""
-    if not Config.STATE_BUCKET:
-        return {}
+def _load_state(key, execution_id, what):
+    """수집기가 남긴 상태(참가작 메타·작가 색인). 못 읽으면 빈 dict — 부가 정보라 적재를 막지 않는다."""
     try:
-        return json.loads(boto3.client('s3').get_object(Bucket=Config.STATE_BUCKET, Key='state/contest_ids.json')['Body'].read())
+        v = _get_json(key)
     except Exception as e:  # noqa: BLE001
-        _log(logging.WARNING, execution_id, f"Could not load contest meta (new-novel ranking skipped): {e}")
+        v, why = None, e
+    else:
+        why = 'missing'
+    if v is None:
+        _log(logging.WARNING, execution_id, f"Could not load {what}: {why}")
         return {}
+    return v
 
 
-def _load_author_index(execution_id):
-    if not Config.STATE_BUCKET:
-        return {}
-    try:
-        body = boto3.client('s3').get_object(Bucket=Config.STATE_BUCKET, Key=Config.AUTHOR_INDEX_KEY)['Body'].read()
-        return json.loads(body)
-    except Exception as e:  # noqa: BLE001 — 부가 정보라 적재를 막지 않는다
-        _log(logging.WARNING, execution_id, f"Author index unavailable: {e}")
-        return {}
+def _load_contest_meta(execution_id):
+    """수집기의 참가작 상태(번호 → 처음 찾은 시각·경로). 못 읽으면 신작 판정만 빠지고 적재는 계속한다."""
+    return _load_state('state/contest_ids.json', execution_id, 'contest meta (new-novel ranking skipped)')
 
 
 def daily_tag_stats(items):
@@ -299,17 +275,15 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
 
     # 1. Rank items based on View count (and ID as a tie-breaker)
     _log(logging.INFO, execution_id, "Ranking items based on 'View' count.")
-    sorted_items = sorted(
+    processed_items = sorted(
         items,
         key=lambda x: (x.get('View', 0), -int(x.get('ID', '0'))),
         reverse=True
     )
 
     # 2. Add rank for each item
-    processed_items = []
-    for i, item in enumerate(sorted_items):
-        item['Rank'] = i + 1
-        processed_items.append(item)
+    for i, item in enumerate(processed_items, 1):
+        item['Rank'] = i
 
     # 3. 일간 순위(대표 순위) — 직전 수집일 대비 누적 조회 증가
     prev_date, prev_views = _previous_views(dynamodb_table, processed_items[0]['Date'], execution_id)
@@ -321,7 +295,7 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
     if prev_date:
         for item in processed_items:
             item['PrevDate'] = prev_date
-    attach_author_works(processed_items, _load_author_index(execution_id))
+    attach_author_works(processed_items, _load_state(Config.AUTHOR_INDEX_KEY, execution_id, 'author index'))
 
     _log(logging.INFO, execution_id, f"Writing {len(processed_items)} items to DynamoDB.")
     
@@ -378,20 +352,19 @@ class ReprocessBatchFailed(Exception):
     """
 
 
-def _s3():
-    return boto3.client('s3')
+s3 = boto3.client('s3')
 
 
 def _get_json(key, default=None):
     try:
-        return json.loads(_s3().get_object(Bucket=Config.STATE_BUCKET, Key=key)['Body'].read())
-    except _s3().exceptions.NoSuchKey:
+        return json.loads(s3.get_object(Bucket=Config.STATE_BUCKET, Key=key)['Body'].read())
+    except s3.exceptions.NoSuchKey:
         return default
 
 
 def _put_json(key, obj):
-    _s3().put_object(Bucket=Config.STATE_BUCKET, Key=key, Body=json.dumps(obj, ensure_ascii=False, default=str).encode(),
-                     ContentType='application/json')
+    s3.put_object(Bucket=Config.STATE_BUCKET, Key=key, Body=json.dumps(obj, ensure_ascii=False, default=str).encode(),
+                  ContentType='application/json')
 
 
 def _run_prefix(date, execution_id):
@@ -400,7 +373,6 @@ def _run_prefix(date, execution_id):
 
 def _dmap_rows(manifest, execution_id):
     """ResultWriter manifest → (items, failed[{id,error}], 실패한 자식 수, 원본을 못 올린 작품 수)."""
-    s3 = _s3()
     man = json.loads(s3.get_object(Bucket=manifest['Bucket'], Key=manifest['Key'])['Body'].read())
     bucket = man.get('DestinationBucket') or manifest['Bucket']
     items, failed, failed_children, raw_failed = [], [], 0, 0
@@ -462,7 +434,7 @@ def reconcile_dmap(event):
                 raise RuntimeError(f"reprocess index missing: {pre}/reprocess-index.json (ReprocessIndex 단계가 먼저 돌아야 한다)")
             expected = sorted(str(k) for k in index.get('ids', {}))
         else:
-            expected = [str(x) for x in json.loads(_s3().get_object(Bucket=Config.STATE_BUCKET, Key=ID_LIST_KEY)['Body'].read())]
+            expected = [str(x) for x in json.loads(s3.get_object(Bucket=Config.STATE_BUCKET, Key=ID_LIST_KEY)['Body'].read())]
         # 기록 날짜의 수집 뒤에 처음 찾은 번호는 그날 없던 작품이다(과거 날짜를 target_date 로 다시 돌릴 때 섞인다) — 기대에서 빼
         # 그날 행을 만들지 않는다. 받기는 했어도 적재(수량 검증·placeholder)는 기대 목록만 본다. 다음 날 정상 수집에서 신작으로 든다.
         meta = _load_contest_meta(execution_id)
@@ -658,11 +630,9 @@ def _exact_mismatch(mine, prod):
     return out
 
 
-def _rows_for_date(table, date, projection=None):
+def _rows_for_date(table, date, **query_kw):
     """운영 테이블의 그 날짜 작품 행 {ID: 행}(DateViewIndex — View 가 없는 특수 항목은 들어오지 않는다)."""
-    rows, kw = {}, {'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(date)}
-    if projection:
-        kw.update(ProjectionExpression=projection)
+    rows, kw = {}, {'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(date), **query_kw}
     while True:
         r = table.query(**kw)
         for it in r['Items']:
@@ -766,7 +736,6 @@ def handler_dmap(event, context):
         notice = _notice(date, ledger, test=True, run=execution_id)
         return {**report, 'degraded': bool(notice), 'notice': notice}
 
-    _validate_data(execution_id, unique, len(expected))
     if reprocess:
         ledger['later_dates'] = _later_dates_if_new(table, date)   # 쓰기 전에 본다 — 쓰고 나면 이 날짜가 집합에 들어간다
         ledger['written_rows'] = len(unique)

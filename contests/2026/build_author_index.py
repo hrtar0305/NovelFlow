@@ -6,30 +6,17 @@
 수집기가 도는 시간(00:00 실행 중)에는 돌리지 말 것 — 같은 파일을 쓴다.
 """
 import json
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import boto3
 
-sys.path.insert(0, 'contest_id_collector')
-
-
-def summarize(pages):
-    """수집기 `summarize_author` 와 같은 규칙 — 오류가 난 쪽이 있으면 None(색인에서 빼 수집기가 다시 받게)."""
-    if any('error' in p for p in pages):
-        return None
-    novels, more = set(), False
-    for p in pages:
-        raw = p.get('raw')
-        w = raw.get('writer_other_novel') if isinstance(raw, dict) else None
-        w = w if isinstance(w, dict) else {}
-        for x in w.get('list') or []:
-            try:
-                novels.add(int(x['novel_no']))
-            except (TypeError, KeyError, ValueError):
-                pass
-        more = bool(w.get('is_next_page'))
-    return {'novels': sorted(novels), 'more': more}
+# 수집기와 같은 규칙을 쓴다 — 오류가 난 쪽이 있으면 None(색인에서 빼 수집기가 다시 받게).
+# 수집기는 import 때 S3_BUCKET_NAME 을 읽는다. summarize_author 는 버킷을 쓰지 않으므로 아무 값이면 된다.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'contest_id_collector'))
+os.environ.setdefault('S3_BUCKET_NAME', 'unused')
+from app import summarize_author  # noqa: E402
 
 
 def main():
@@ -41,7 +28,7 @@ def main():
     load = lambda k: json.loads(s3.get_object(Bucket=bucket, Key=k)['Body'].read())
     with ThreadPoolExecutor(16) as ex:
         docs = list(ex.map(load, keys))
-    index = {d['author_id']: v for d in docs if (v := summarize(d.get('pages') or [])) is not None}
+    index = {d['author_id']: v for d in docs if (v := summarize_author(d.get('pages') or [])) is not None}
     print(f'authors {len(index)}/{len(docs)} · with other works {sum(1 for v in index.values() if v["novels"])}')
     if '--dry-run' not in sys.argv:
         s3.put_object(Bucket=bucket, Key='state/author_works.json', Body=json.dumps(index).encode(), ContentType='application/json')

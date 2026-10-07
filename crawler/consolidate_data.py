@@ -1,6 +1,5 @@
 import json
 import boto3
-import csv
 import io
 import logging
 import os
@@ -198,24 +197,16 @@ def _load_previous_day_views(s3_client, execution_id, date):
         previous_date = (
             datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)
         ).strftime("%Y-%m-%d")
-        # 전환 기간에는 두 형식이 섞인다. jsonl 을 먼저 보고 없으면 csv 로 떨어진다.
-        rows = None
-        for key, kind in ((f"{previous_date}.jsonl", 'jsonl'), (f"{previous_date}.csv", 'csv')):
-            try:
-                body = s3_client.get_object(
-                    Bucket=Config.S3_BUCKET_NAME, Key=key
-                )['Body'].read().decode('utf-8')
-            except Exception:
-                continue
-            if kind == 'jsonl':
-                rows = [json.loads(line) for line in body.splitlines() if line.strip()]
-            else:
-                rows = list(csv.DictReader(io.StringIO(body)))
-            break
-        if rows is None:
+        # 2026-09-05 부터 jsonl 만 쓴다(그 전날은 csv). consolidate 는 그날 실행분만 돌므로 csv 는 볼 일이 없다.
+        try:
+            body = s3_client.get_object(
+                Bucket=Config.S3_BUCKET_NAME, Key=f"{previous_date}.jsonl"
+            )['Body'].read().decode('utf-8')
+        except Exception:
             _log(logging.WARNING, execution_id,
                  f"전날({previous_date}) 파일을 찾지 못해 조회수 검증을 건너뛴다.")
             return {}
+        rows = [json.loads(line) for line in body.splitlines() if line.strip()]
         return {
             str(r['ID']): int(r['View'])
             for r in rows if r.get('ID') and str(r.get('View', '')).strip().isdigit()

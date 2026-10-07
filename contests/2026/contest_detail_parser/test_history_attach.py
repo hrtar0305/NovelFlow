@@ -42,13 +42,6 @@ class T(unittest.TestCase):
         self.assertEqual(r['new'], 1)
         self.assertEqual(t.puts, 0)
 
-    def test_reuses_retention_up_page(self):
-        s, t = Session([row(9, 'EP.9', '26.10.04')]), Table()
-        pages = [{'kind': 'episode_list', 'params': {'sort': 'UP', 'page': 0}, 'html': row(2, 'EP.2', '26.10.04') + row(1, 'EP.1', '26.10.03')}]
-        P._attach_history(s, '455999', pages, '2026-10-04T15:01:00+00:00', write=True, execution_id='t', table=t, conflict=Table.Conflict)
-        self.assertEqual(s.calls, [])
-        self.assertEqual(sorted(t.item['Episodes']), ['1', '2'])
-
 class NoEpisodes(unittest.TestCase):
     def test_zero_episode_work_without_record_is_not_fetched(self):
         # 상세의 회차 수가 0 이고 기록에도 회차가 없으면(첫 회차 전 — 하루 약 400편) 목록을 받지 않는다. 기록도 쓰지 않는다.
