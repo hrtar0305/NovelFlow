@@ -304,9 +304,6 @@ def handler(event, context):
         deadline = time.monotonic() + seconds if seconds else None
         todo, got, failed, batches = list(pending.items()), 0, 0, 0
 
-        def flush():
-            _put(AUTHOR_INDEX_KEY, index)
-
         while todo and remaining() > BUDGET_MS // 2 and (deadline is None or time.monotonic() < deadline):
             part, todo = todo[:WORKERS], todo[WORKERS:]
             for (aid, nno), pages in zip(part, pool.map(lambda t: author_works(sess[t[0]], t[1][0], t[1][1]), enumerate(part))):
@@ -319,8 +316,8 @@ def handler(event, context):
                 got += 1
             batches += 1
             if batches % 12 == 0:
-                flush()
-        flush()
+                _put(AUTHOR_INDEX_KEY, index)
+        _put(AUTHOR_INDEX_KEY, index)
         return got, failed, len(todo)
 
     # ---- 1. 새 번호. 자정이면 노벨피아 표시 수와 견주고, 모자라면 끝 번호만 다시 훑는다 ----

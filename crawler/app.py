@@ -5,8 +5,7 @@ import os
 import re
 import requests
 import time
-from datetime import datetime
-from pytz import timezone
+from datetime import datetime, timezone
 from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, expect
 from bs4 import BeautifulSoup
@@ -25,7 +24,6 @@ class Config:
     SQS_QUEUE_URL = os.environ.get('SQS_QUEUE_URL')
     # 원본 HTML 적재 버킷(ELT). 비워 두면 적재를 건너뛰므로 기존 동작이 그대로다.
     RAW_BUCKET = os.environ.get('RAW_HTML_BUCKET')
-    RAW_PREFIX = os.environ.get('RAW_HTML_PREFIX', 'raw')
     # 연재 기록(작품별 회차 목록 누적). 순위권 작품만, 다시 들어오면 마지막 확인일부터 이어 받는다.
     EPISODE_HISTORY_TABLE = os.environ.get('EPISODE_HISTORY_TABLE', 'NovelFlowEpisodeHistory')
     CREDENTIAL_PARAM_NAMES = ["/NP-Trend/NOVELPIA_ID", "/NP-Trend/NOVELPIA_PASS"]
@@ -54,7 +52,7 @@ class Config:
     # 회차 목록 한 장의 일시 오류는 여기서 짧게 다시 받는다.
     EPISODE_LIST_ATTEMPTS = 3
     EPISODE_LIST_RETRY_DELAY_SECONDS = 1.5
-    SEOUL_TIMEZONE = timezone('Asia/Seoul')
+    SEOUL_TIMEZONE = timezone(eh.KST_OFFSET)  # 한국은 서머타임이 없어 고정 +09:00 이면 된다
 
     # CSS Selectors
     class Selectors:
@@ -259,27 +257,12 @@ def _serialize_auth_cookies(cookies):
     return serialized
 
 def _apply_auth_cookies(session, cookies, execution_id):
-    """Best-effort cookie injection. Malformed cookie entries must not break parsing."""
-    applied_count = 0
-    for cookie in cookies or []:
-        if not isinstance(cookie, dict):
-            continue
-        name = cookie.get('name')
-        value = cookie.get('value')
-        if not name or value is None:
-            continue
-        try:
-            session.cookies.set(
-                name,
-                value,
-                domain=cookie.get('domain') or '.novelpia.com',
-                path=cookie.get('path') or '/',
-            )
-            applied_count += 1
-        except Exception as e:
-            _log(logging.WARNING, execution_id, f"Skipped malformed auth cookie: {type(e).__name__}")
-    if applied_count:
-        _log(logging.INFO, execution_id, "Applied auth cookies to detail parser session.", cookie_count=applied_count)
+    """`_serialize_auth_cookies` 출력만 받는다(직접, 또는 `_store_auth_cookies` 가 쓴 Parameter Store 경유) —
+    name·value 가 없는 항목은 이미 빠졌고 domain·path 도 채워져 있다."""
+    for cookie in cookies:
+        session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'], path=cookie['path'])
+    if cookies:
+        _log(logging.INFO, execution_id, "Applied auth cookies to detail parser session.", cookie_count=len(cookies))
 
 def _store_auth_cookies(cookies, execution_id):
     """쿠키를 Parameter Store(SecureString)에 덮어쓰고 그 버전 번호를 돌려준다.
@@ -544,14 +527,9 @@ def _get_episode_view_counts(session, novel_id, episode_ids, execution_id):
         return {}
 
 def _normalize_thumbnail_url(url):
-    if not url:
-        return ""
-    cleaned_url = url.strip()
-    if not cleaned_url:
-        return ""
-    if cleaned_url.startswith("//"):
-        return f"https:{cleaned_url}"
-    return urljoin(Config.NOVELPIA_BASE_URL, cleaned_url)
+    # urljoin 은 '//host/x' 도 https 로 풀어 준다. 빈 문자열만 따로 본다(urljoin(base, '') 는 base 를 돌려준다).
+    url = (url or "").strip()
+    return urljoin(Config.NOVELPIA_BASE_URL, url) if url else ""
 
 def _extract_thumbnail_url(soup):
     cover_image = soup.select_one(Config.Selectors.COVER_IMAGE)
@@ -716,8 +694,6 @@ def parse_novel_details(event, context):
     novel_info = event['novel']
     today = novel_info['date']
     novel_id = novel_info['id']
-    item_to_send = None
-    status = "UNKNOWN"
     # 받은 페이지를 그대로 모은다. 파싱이 실패해도 적재는 한다 —
     # 예전에는 파싱 실패 시 placeholder 만 남고 HTML 은 영구히 사라졌다.
     raw_pages: list = []
@@ -744,7 +720,7 @@ def parse_novel_details(event, context):
             novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
             response = session.get(novel_url, timeout=10)
             response.raise_for_status()
-            detail_at = datetime.now(timezone('Asia/Seoul'))
+            detail_at = datetime.now(Config.SEOUL_TIMEZONE)
             raw_pages.append({
                 "kind": "detail", "url": novel_url, "method": "GET",
                 "status": response.status_code, "html": response.text,
@@ -911,7 +887,7 @@ def parse_novel_details(event, context):
 
     except requests.exceptions.RequestException as e:
         _log(logging.ERROR, execution_id, f"A retriable network error occurred: {e}. Retrying.", novel_id=novel_id, exc_info=True)
-        raise e
+        raise
     except Exception as e:
         _log(logging.ERROR, execution_id, f"A non-retriable error occurred: {e}. Creating placeholder.", novel_id=novel_id, exc_info=True)
         item_to_send = _create_placeholder_item(novel_info, reason=f"ParsingFailed: {e}")
@@ -926,7 +902,8 @@ def parse_novel_details(event, context):
     #
     # 파싱이 실패해 placeholder 를 보내는 경우에도 원본은 붙인다. 그래야 나중에
     # "그날 그 페이지가 어떻게 생겼길래 실패했나"를 볼 수 있다.
-    if raw_pages and item_to_send is not None:
+    # 위 try 의 모든 갈래가 item_to_send 를 채우거나(placeholder 포함) 예외를 다시 던진다.
+    if raw_pages:
         try:
             encoded, summary = raw_store.build_message_payload(
                 novel_id, today, raw_pages,
@@ -934,25 +911,20 @@ def parse_novel_details(event, context):
             )
             item_to_send[raw_store.RAW_FIELD] = encoded
             _log(logging.INFO, execution_id, "Attached raw HTML to message.",
-                 novel_id=novel_id, **{k: v for k, v in summary.items() if k != 'suspect'})
+                 novel_id=novel_id, **summary)
         except Exception as raw_e:  # noqa: BLE001
             # 원본은 부가 정보다. 실패해도 항목 전송은 막지 않는다.
             _log(logging.WARNING, execution_id, f"Failed to attach raw HTML: {raw_e}",
                  novel_id=novel_id)
 
-    if item_to_send:
-        try:
-            sqs_client = boto3.client('sqs')
-            sqs_client.send_message(
-                QueueUrl=Config.SQS_QUEUE_URL,
-                MessageBody=json.dumps(item_to_send, ensure_ascii=False)
-            )
-            _log(logging.INFO, execution_id, f"Successfully sent message to SQS.", novel_id=novel_id, status=status)
-            return {"status": status, "novel_id": novel_id}
-        except Exception as sqs_e:
-            _log(logging.ERROR, execution_id, f"Failed to send message to SQS: {sqs_e}. Retrying.", novel_id=novel_id, exc_info=True)
-            raise sqs_e
-    else:
-        final_error_message = "Function finished without an item to send and without raising an exception."
-        _log(logging.CRITICAL, execution_id, final_error_message, novel_id=novel_id)
-        raise RuntimeError(final_error_message)
+    try:
+        sqs_client = boto3.client('sqs')
+        sqs_client.send_message(
+            QueueUrl=Config.SQS_QUEUE_URL,
+            MessageBody=json.dumps(item_to_send, ensure_ascii=False)
+        )
+        _log(logging.INFO, execution_id, f"Successfully sent message to SQS.", novel_id=novel_id, status=status)
+        return {"status": status, "novel_id": novel_id}
+    except Exception as sqs_e:
+        _log(logging.ERROR, execution_id, f"Failed to send message to SQS: {sqs_e}. Retrying.", novel_id=novel_id, exc_info=True)
+        raise sqs_e

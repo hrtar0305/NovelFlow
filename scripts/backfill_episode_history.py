@@ -114,7 +114,6 @@ def collect(nid, source, limiter):
 
 def targets(only):
     import boto3
-    from boto3.dynamodb.conditions import Attr  # noqa: F401
     ddb = boto3.resource('dynamodb', region_name='ap-northeast-2')
 
     def ids(table):
@@ -155,7 +154,6 @@ def main():
     print(json.dumps({'targets': len(todo), 'already_done': len(done), 'out': a.out, 'dry_run': a.dry_run}, ensure_ascii=False), flush=True)
 
     limiter = RateLimiter(a.interval)
-    lock = threading.Lock()
     raw_buf, raw_idx = [], len([f for f in os.listdir(a.out) if f.startswith('raw-')])
     stats = {'novels': 0, 'pages': 0, 'episodes': 0, 'status': {}}
     started = time.monotonic()
@@ -179,23 +177,22 @@ def main():
             except Exception as e:  # noqa: BLE001 — 한 작품 실패가 전체를 멈추지 않게. 다음 실행이 이어 받는다.
                 print(json.dumps({'failed': futs[fut], 'error': repr(e)[:200]}, ensure_ascii=False), flush=True)
                 continue
-            with lock:
-                stats['novels'] += 1
-                stats['pages'] += rec['pages']
-                stats['episodes'] += len(rec['episodes'])
-                stats['status'][rec['status']] = stats['status'].get(rec['status'], 0) + 1
-                if a.dry_run:
-                    print(json.dumps({**rec, 'episodes': rec['episodes'][:3] + (['…'] if len(rec['episodes']) > 3 else [])}, ensure_ascii=False))
-                    continue
-                hist.write(json.dumps(rec, ensure_ascii=False) + '\n')
-                raw_buf.append(raw)
-                flush_raw()
-                if stats['novels'] % 100 == 0:
-                    hist.flush()
-                    el = time.monotonic() - started
-                    print(json.dumps({'progress': stats['novels'], 'of': len(todo), 'pages': stats['pages'], 'elapsed_min': round(el / 60, 1),
-                                      'eta_min': round(el / stats['novels'] * (len(todo) - stats['novels']) / 60, 1), 'status': stats['status']},
-                                     ensure_ascii=False), flush=True)
+            stats['novels'] += 1
+            stats['pages'] += rec['pages']
+            stats['episodes'] += len(rec['episodes'])
+            stats['status'][rec['status']] = stats['status'].get(rec['status'], 0) + 1
+            if a.dry_run:
+                print(json.dumps({**rec, 'episodes': rec['episodes'][:3] + (['…'] if len(rec['episodes']) > 3 else [])}, ensure_ascii=False))
+                continue
+            hist.write(json.dumps(rec, ensure_ascii=False) + '\n')
+            raw_buf.append(raw)
+            flush_raw()
+            if stats['novels'] % 100 == 0:
+                hist.flush()
+                el = time.monotonic() - started
+                print(json.dumps({'progress': stats['novels'], 'of': len(todo), 'pages': stats['pages'], 'elapsed_min': round(el / 60, 1),
+                                  'eta_min': round(el / stats['novels'] * (len(todo) - stats['novels']) / 60, 1), 'status': stats['status']},
+                                 ensure_ascii=False), flush=True)
         if not a.dry_run:
             flush_raw(force=True)
     print(json.dumps({'done': stats, 'elapsed_min': round((time.monotonic() - started) / 60, 1)}, ensure_ascii=False), flush=True)

@@ -74,7 +74,7 @@ code() {
   echo "== 수집기 zip (requests·bs4 동봉)"
   mkdir -p "$BUILD/col"
   pip install -q --target "$BUILD/col" --platform manylinux2014_x86_64 --python-version 3.13 --only-binary=:all: \
-    requests==2.32.4 beautifulsoup4==4.13.4
+    -r contest_id_collector/requirements.txt
   cp contest_id_collector/app.py "$BUILD/col/"
   (cd "$BUILD/col" && zip -qr "$BUILD/collector.zip" .)
   zip -qj "$BUILD/fanout.zip" contest_detail_parser/app.py
@@ -148,7 +148,7 @@ failure_rule() {
 
 orchestration() {
   # 상태 머신 역할의 큐 purge 정책은 통째로 덮어쓴다 — 2026 큐(SQS 판)를 빼고 데일리·2025 큐만 남긴다.
-  # 2026 DMap 판은 큐를 쓰지 않으므로 이 정책이 필요 없지만, 예전 배포가 넣은 2026 큐 항목을 걷어내려고 여기서 다시 쓴다.
+  # 2026 DMap 판은 큐를 쓰지 않지만, 데일리·2025 상태 머신이 쓰는 이 공유 정책의 정의가 리포에서 여기뿐이라 남긴다.
   echo "== 상태 머신 역할: 큐 purge 권한(데일리·2025 큐만)"
   aws iam put-role-policy --role-name $SFN_ROLE_NAME --policy-name PurgePipelineQueues --policy-document "{
     \"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sqs:PurgeQueue\",\"Resource\":[

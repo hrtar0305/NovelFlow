@@ -11,11 +11,7 @@ from bs4 import BeautifulSoup
 import raw_store
 import episode_history as eh
 import extract
-from app import raw_accept_until   # 같은 이미지에 든 날짜 함수(app.py) — 받기 마감 규칙을 한 곳에 둔다
-
-# --- Basic Setup ---
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+from app import raw_accept_until, _log, _parse_ts   # 같은 이미지에 든 app.py — 받기 마감 규칙·로그 꼴을 한 곳에 둔다
 
 class Config:
     # 원본 HTML 적재(ELT). 비워 두면 적재를 건너뛰므로 기존 동작 그대로다.
@@ -55,25 +51,15 @@ class Config:
         # 성인 등급 배지. p.in-badge 로 반드시 한정한다(회차 목록에도 같은 class 가 있다 — DECISIONS 2026-08-24).
         ADULT_BADGE = "p.in-badge span.b_19"
 
-def _log(level, execution_id, message, **kwargs):
-    """Creates a structured log message."""
-    log_data = {"execution_id": execution_id, "message": message, **kwargs}
-    logger.log(level, json.dumps(log_data, ensure_ascii=False))
-
 def _parse_int_from_raw_text(text, suffix_to_remove=""):
     """Helper to parse an integer from cleaned text, removing suffixes, prefixes, and commas."""
     cleaned_text = text.strip().replace(suffix_to_remove, "").replace(",", "")
     return int(cleaned_text)
 
 def _normalize_thumbnail_url(url):
-    if not url:
-        return ""
-    cleaned_url = url.strip()
-    if not cleaned_url:
-        return ""
-    if cleaned_url.startswith("//"):
-        return f"https:{cleaned_url}"
-    return urljoin(Config.NOVELPIA_BASE_URL, cleaned_url)
+    # urljoin 은 '//host/x' 도 https 로 풀어 준다. 빈 문자열만 따로 본다(urljoin(base, '') 는 base 를 돌려준다).
+    url = (url or "").strip()
+    return urljoin(Config.NOVELPIA_BASE_URL, url) if url else ""
 
 def _extract_thumbnail_url(soup):
     cover_image = soup.select_one(Config.Selectors.COVER_IMAGE)
@@ -294,14 +280,12 @@ def _history_table():
 
 def _attach_history(session, novel_id, pages, crawled_at, write, execution_id, table=None, conflict=None, out_of_time=None, eps=None):
     """연재 기록 갱신 — 매일 전 작품의 최신순 목록을 마지막 확인일까지 본다(회차 수가 같아도: 삭제 후 재업로드는 고유 번호가 달라
-    여기서 잡힌다). 잔류율이 이미 받은 최신순 쪽은 다시 받지 않고, 새로 받은 쪽은 `pages` 에 더해 원본 묶음에 들어간다.
+    여기서 잡힌다). 받은 쪽은 `pages` 에 더해 원본 묶음에 들어간다.
     처음 본 시각 = 상세를 받은 시각(`crawled_at`, 재시도에도 같다). `write=False`(그림자 실행)면 쓰지 않고 셈만 돌려준다.
     반환: {new, gone, pages, complete}."""
     table = table or _history_table()
     seen_at = eh.stamp(crawled_at)
     at = datetime.fromisoformat(seen_at)
-    prefetched = {int((p.get('params') or {}).get('page', 0)): (p['html'], at) for p in pages
-                  if p.get('kind') == 'episode_list' and (p.get('params') or {}).get('sort') == 'UP'}
     old = table.get_item(Key={'NovelId': novel_id}).get('Item')
     if eps == 0 and not (old or {}).get('Episodes'):
         # 첫 회차 전(상세 회차 수 0, 기록에도 없음 — 하루 약 400편)은 목록을 받지 않는다. 첫 회차가 오르면 그날 처음부터 받는다.
@@ -313,7 +297,7 @@ def _attach_history(session, novel_id, pages, crawled_at, write, execution_id, t
     def fetch_down(n):   # 다 받지 못한 기록을 오래된 쪽부터 채울 때
         return extract._episode_list_html(session, novel_id, 'DOWN', n, pages), at
 
-    r = eh.collect(fetch, old, prefetched=prefetched, fetch_down=fetch_down, out_of_time=out_of_time)
+    r = eh.collect(fetch, old, fetch_down=fetch_down, out_of_time=out_of_time)
     known = (old or {}).get('Episodes') or {}
     seen_ids = {e[0] for e in r['seen']}
     summary = {'new': sum(1 for e in r['seen'] if e[0] not in known and e[2]),
@@ -481,14 +465,11 @@ REPROCESS_MAX_MISSING_FRACTION = float(os.environ.get('DMAP_MAX_MISSING_FRACTION
 
 
 def _ts(value):
-    """ISO 시각 → aware datetime. 모르면 None."""
-    if not value:
-        return None
+    """ISO 시각 → aware datetime. 모르면(형식이 깨졌어도) None."""
     try:
-        dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        return _parse_ts(value)
     except ValueError:
         return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def _too_late(crawled_at, cutoff):

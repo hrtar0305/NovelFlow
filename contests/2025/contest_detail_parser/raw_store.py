@@ -29,10 +29,7 @@
 import base64
 import gzip
 import json
-import logging
 import re
-
-logger = logging.getLogger()
 
 # 적재 형식 버전. 재파싱 스크립트가 옛 객체를 만났을 때 분기할 근거가 된다.
 RAW_FORMAT = 1
@@ -79,26 +76,6 @@ def redact(html: str) -> tuple[str, int]:
     return html, total
 
 
-def scan_for_secrets(html: str) -> list[str]:
-    """치환 후에도 비밀값처럼 보이는 것이 남았는지 훑는다.
-
-    치환 패턴은 관측된 형태를 겨냥한 것이라 **인증 세션의 실제 응답으로 한 번
-    확인해야 한다.** 이 함수가 그 확인용이다 — 무언가 걸리면 패턴을 늘린다.
-    """
-    if not html:
-        return []
-    out = []
-    # **할당 형태만** 본다. 키워드 근처를 넓게 훑으면 URL 쿼리까지 걸린다 —
-    # Apple 로그인 링크의 `response_type=code id_token&state=<nonce>` 가 매번 오탐이었다.
-    # 경고가 소설마다 뜨면 아무도 안 본다.
-    pat = rf'{_SECRET_KEYS}["\']?\s*[:=]\s*["\']([A-Za-z0-9+/_=-]{{12,}})["\']'
-    for m in re.finditer(pat, html, re.I):
-        if REDACTED in m.group(0):
-            continue
-        out.append(m.group(0)[:80])
-    return out[:20]
-
-
 def build_json_payload(novel_id: str, date: str, pages: list[dict],
                        meta: dict | None = None) -> tuple[bytes, dict]:
     """묶음(`bundle`)에 바로 넣을 **비압축 JSON 바이트**를 만든다.
@@ -106,7 +83,7 @@ def build_json_payload(novel_id: str, date: str, pages: list[dict],
     gzip 은 SQS 전송용이다. 배치 안에서 곧바로 묶는 경로(공모전 파서)에서는 gzip 을
     거칠 이유가 없다 — 만들었다가 바로 다시 푸는 낭비가 된다.
     """
-    redacted_pages, redactions, leftovers = _redact_pages(pages)
+    redacted_pages, redactions = _redact_pages(pages)
     obj = {
         'raw_format': RAW_FORMAT,
         'novel_id': str(novel_id),
@@ -115,20 +92,17 @@ def build_json_payload(novel_id: str, date: str, pages: list[dict],
         **(meta or {}),
     }
     body = json.dumps(obj, ensure_ascii=False).encode('utf-8')
-    return body, {'pages': len(redacted_pages), 'bytes': len(body),
-                  'redactions': redactions, 'suspect': leftovers[:5]}
+    return body, {'pages': len(redacted_pages), 'bytes': len(body), 'redactions': redactions}
 
 
-def _redact_pages(pages: list[dict]) -> tuple[list[dict], int, list[str]]:
-    """페이지마다 비밀값을 치환하고 (치환된 페이지, 치환 수, 의심 잔류)를 돌려준다."""
-    out, total, leftovers = [], 0, []
+def _redact_pages(pages: list[dict]) -> tuple[list[dict], int]:
+    """페이지마다 비밀값을 치환하고 (치환된 페이지, 치환 수)를 돌려준다."""
+    out, total = [], 0
     for p in pages:
         html, n = redact(p.get('html') or '')
         total += n
-        if n == 0:
-            leftovers.extend(scan_for_secrets(html))
         out.append({**{k: v for k, v in p.items() if k != 'html'}, 'html': html})
-    return out, total, leftovers
+    return out, total
 
 
 def build_payload(novel_id: str, date: str, pages: list[dict],
@@ -167,11 +141,6 @@ def build_message_payload(novel_id: str, date: str, pages: list[dict],
     return encoded, summary
 
 
-def decode_message_payload(encoded: str) -> dict:
-    """`build_message_payload` 가 만든 문자열을 원래 dict 로 되돌린다."""
-    return json.loads(gzip.decompress(base64.b64decode(encoded)))
-
-
 def bundle(json_payloads: list[bytes], level: int = 10, window_log: int = 23) -> bytes:
     """하루치 원본을 한 덩어리로 묶어 zstd 로 압축한다.
 
@@ -203,28 +172,3 @@ def decode_to_json_bytes(encoded: str) -> bytes:
     묶음(`bundle`)에 넣을 형태다 — gzip 인 채로 넘기면 이중 압축이 되어 이득이 없다.
     """
     return gzip.decompress(base64.b64decode(encoded))
-
-
-def store(s3_client, bucket: str, novel_id: str, date: str, pages: list[dict],
-          prefix: str = 'raw', meta: dict | None = None) -> dict:
-    """S3 에 올린다. 실패해도 예외를 올리지 않는다 —
-    원본 적재는 부가 기능이고, 여기서 막으면 그날 수집 자체가 무너진다."""
-    body, summary = build_payload(novel_id, date, pages, meta)
-    key = f'{prefix}/{date}/{novel_id}.json.gz'
-    try:
-        s3_client.put_object(
-            Bucket=bucket, Key=key, Body=body,
-            ContentType='application/json', ContentEncoding='gzip',
-        )
-        summary['key'] = key
-        if summary['suspect']:
-            logger.warning(
-                "원본 적재: 치환 후에도 비밀값 의심 문자열이 남았다 — 패턴을 늘려야 한다 "
-                f"novel_id={novel_id} samples={summary['suspect']}"
-            )
-        return summary
-    except Exception as e:                                  # noqa: BLE001
-        logger.error(f"원본 적재 실패 novel_id={novel_id} key={key}: {e}")
-        summary['key'] = None
-        summary['error'] = str(e)
-        return summary

@@ -54,77 +54,70 @@ def lambda_handler(event, context):
         logger.info(f"Unsupported file ({file_key}) triggered the event. Skipping.")
         return {'statusCode': 200, 'body': 'Unsupported file type.'}
 
-    try:
-        response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
-        content = response['Body'].read().decode('utf-8')
+    response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
+    content = response['Body'].read().decode('utf-8')
 
-        # NDJSON 과 CSV 를 모두 받는다. 전환 기간에는 두 형식이 섞이고, 과거 파일을
-        # 다시 적재해야 할 때도 옛 CSV 를 그대로 읽을 수 있어야 한다.
-        if file_key.endswith('.jsonl'):
-            items = [json.loads(line) for line in content.splitlines() if line.strip()]
-        else:
-            items = list(csv.DictReader(io.StringIO(content)))
+    # NDJSON 과 CSV 를 모두 받는다. 전환 기간에는 두 형식이 섞이고, 과거 파일을
+    # 다시 적재해야 할 때도 옛 CSV 를 그대로 읽을 수 있어야 한다.
+    if file_key.endswith('.jsonl'):
+        items = [json.loads(line) for line in content.splitlines() if line.strip()]
+    else:
+        items = list(csv.DictReader(io.StringIO(content)))
 
-        if not items:
-            logger.warning(f"{file_key} is empty.")
-            return {'statusCode': 400, 'body': 'Input file is empty.'}
+    if not items:
+        logger.warning(f"{file_key} is empty.")
+        return {'statusCode': 400, 'body': 'Input file is empty.'}
 
-        processed_items = []
-        with table.batch_writer() as batch:
-            for item_dict in items:
-                processed_item = process_row(item_dict)
-                final_item = {k: v for k, v in processed_item.items() if v != "" and v != -1}
-                batch.put_item(Item=final_item)
-                processed_items.append(processed_item)
-        
-        logger.info(f"Successfully processed and stored {len(items)} items from {file_key}.")
+    # process_row 는 행을 제자리에서 고친다 — 아래 단계들은 고쳐진 items 를 그대로 쓴다.
+    with table.batch_writer() as batch:
+        for item_dict in items:
+            final_item = {k: v for k, v in process_row(item_dict).items() if v != "" and v != -1}
+            batch.put_item(Item=final_item)
 
-        # 아래 부가 단계들은 하나가 실패해도 나머지를 마저 시도하고, 끝에서 모아 예외를 올린다.
-        # 삼키면 Lambda 가 성공으로 끝나 S3 비동기 재시도가 일어나지 않고, 날짜 목록·태그 랭킹에서
-        # 그날이 조용히 빠진다. 모든 쓰기가 (ID, Date) 키 덮어쓰기라 재시도해도 중복은 생기지 않는다
-        # (DECISIONS 「전달 보장」).
-        failures = []
+    logger.info(f"Successfully processed and stored {len(items)} items from {file_key}.")
 
-        # Analyze and store tag trends using the successfully processed items
-        _run_step(failures, 'tag trends', calculate_and_store_tag_trends, processed_items)
+    # 아래 부가 단계들은 하나가 실패해도 나머지를 마저 시도하고, 끝에서 모아 예외를 올린다.
+    # 삼키면 Lambda 가 성공으로 끝나 S3 비동기 재시도가 일어나지 않고, 날짜 목록·태그 랭킹에서
+    # 그날이 조용히 빠진다. 모든 쓰기가 (ID, Date) 키 덮어쓰기라 재시도해도 중복은 생기지 않는다
+    # (DECISIONS 「전달 보장」).
+    failures = []
 
-        # 파일명에서 날짜를 뽑는다 ('2025-08-19.jsonl' -> '2025-08-19').
-        #
-        # **날짜 형태가 아니면 여기서 멈춘다.** 이 버킷의 S3 트리거에는 접미사 필터가
-        # 없어서 아무 `.csv`/`.jsonl` 을 올려도 이 함수가 깨어난다. 예전에는 그 파일명이
-        # 그대로 `AVAILABLE_DATES` 에 들어가(`notes.csv` → 'notes') 화면의 날짜 목록을
-        # 오염시켰다. 항목 적재까지는 이미 끝난 상태이므로 예외를 던지지 않고 반환한다.
-        date_from_file = file_key.split('/')[-1].rsplit('.', 1)[0]
-        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_from_file):
-            logger.warning(
-                f"파일명이 날짜 형식(YYYY-MM-DD)이 아니다: {file_key} — "
-                "날짜별 집계와 AVAILABLE_DATES 갱신을 건너뛴다."
-            )
-            _raise_if_failed(failures, file_key)
-            return {
-                'statusCode': 200,
-                'body': json.dumps(f'Stored {len(items)} items from {file_key}; date-scoped steps skipped.')
-            }
+    # Analyze and store tag trends using the successfully processed items
+    _run_step(failures, 'tag trends', calculate_and_store_tag_trends, items)
 
-        # 같은 날짜를 다시 적재했다면 이전 실행에만 있던 작품 행을 지운다
-        _run_step(failures, 'stale rows', delete_stale_rows, date_from_file, processed_items)
-
-        # Update AVAILABLE_DATES item in DynamoDB
-        _run_step(failures, 'AVAILABLE_DATES', update_available_dates, date_from_file)
-
-        # 데이터 분석 리포트용 압축 스냅샷
-        _run_step(failures, 'RSNAP', store_ranking_snapshot, date_from_file, processed_items)
-
+    # 파일명에서 날짜를 뽑는다 ('2025-08-19.jsonl' -> '2025-08-19').
+    #
+    # **날짜 형태가 아니면 여기서 멈춘다.** 이 버킷의 S3 트리거에는 접미사 필터가
+    # 없어서 아무 `.csv`/`.jsonl` 을 올려도 이 함수가 깨어난다. 예전에는 그 파일명이
+    # 그대로 `AVAILABLE_DATES` 에 들어가(`notes.csv` → 'notes') 화면의 날짜 목록을
+    # 오염시켰다. 항목 적재까지는 이미 끝난 상태이므로 예외를 던지지 않고 반환한다.
+    date_from_file = file_key.split('/')[-1].rsplit('.', 1)[0]
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_from_file):
+        logger.warning(
+            f"파일명이 날짜 형식(YYYY-MM-DD)이 아니다: {file_key} — "
+            "날짜별 집계와 AVAILABLE_DATES 갱신을 건너뛴다."
+        )
         _raise_if_failed(failures, file_key)
-
         return {
             'statusCode': 200,
-            'body': json.dumps(f'Successfully processed {file_key} and stored {len(items)} items.')
+            'body': json.dumps(f'Stored {len(items)} items from {file_key}; date-scoped steps skipped.')
         }
 
-    except Exception as e:
-        logger.error(f"Error processing file {file_key} from bucket {bucket_name}: {e}")
-        raise e
+    # 같은 날짜를 다시 적재했다면 이전 실행에만 있던 작품 행을 지운다
+    _run_step(failures, 'stale rows', delete_stale_rows, date_from_file, items)
+
+    # Update AVAILABLE_DATES item in DynamoDB
+    _run_step(failures, 'AVAILABLE_DATES', update_available_dates, date_from_file)
+
+    # 데이터 분석 리포트용 압축 스냅샷
+    _run_step(failures, 'RSNAP', store_ranking_snapshot, date_from_file, items)
+
+    _raise_if_failed(failures, file_key)
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps(f'Successfully processed {file_key} and stored {len(items)} items.')
+    }
 
 
 def _run_step(failures, name, fn, *args):
@@ -184,15 +177,9 @@ def process_row(item):
             if not isinstance(tags_list, list):
                 raise ValueError(f"Tags field is not a list: {item['Tags']}")
             
-            seen_tags = set()
-            ordered_unique_tags = []
-            for tag in tags_list:
-                stripped_tag = tag.strip()
-                if stripped_tag and stripped_tag not in seen_tags:
-                    ordered_unique_tags.append(stripped_tag)
-                    seen_tags.add(stripped_tag)
-            item['Tags'] = ordered_unique_tags
-            
+            # 앞뒤 공백을 걷고 빈 태그를 빼고, 처음 나온 순서대로 중복을 없앤다.
+            item['Tags'] = list(dict.fromkeys(t.strip() for t in tags_list if t.strip()))
+
         except (ValueError, SyntaxError) as e:
             logger.error(f"Could not process Tags field: {item.get('Tags')}. Error: {e}")
             raise e
@@ -228,12 +215,8 @@ def calculate_and_store_tag_trends(items):
         'RankedTotal': stats['RankedTotal'],
     }
 
-    try:
-        table.put_item(Item=stats_item)
-        logger.info(f"Successfully calculated and stored tag trends for {date}.")
-    except Exception as e:
-        logger.error(f"Failed to store tag trends for {date}. Error: {e}")
-        raise
+    table.put_item(Item=stats_item)
+    logger.info(f"Successfully calculated and stored tag trends for {date}.")
 
 def store_ranking_snapshot(date, items):
     """데이터 분석 리포트가 읽을 날짜별 압축 스냅샷(`RSNAP#<date>`)을 쓴다.
@@ -261,35 +244,29 @@ def store_ranking_snapshot(date, items):
     센다. 여기서는 placeholder 를 제목으로 확인해 0 을 강제할 뿐이다. 행 자체는 남긴다 — 빼면
     그날 순위 이탈·재진입으로 잡혀 순위 변동 집계가 오염된다. 순위와 성인 여부는 그대로 있다.
     """
-    try:
-        ids, rank, eps, view, like, adult = [], [], [], [], [], []
-        for it in items:
-            if not it.get('ID'):
-                continue
-            ids.append(str(it['ID']))
-            rank.append(int(it.get('Ranking') or 0))
-            if _is_placeholder(it):
-                eps.append(0)
-                view.append(0)
-                like.append(0)
-            else:
-                eps.append(int(it.get('Eps') or 0))
-                view.append(int(it.get('View') or 0))
-                like.append(int(it.get('Like') or 0))
-            adult.append(bool(it.get('IsAdult')))
+    ids, rank, eps, view, like, adult = [], [], [], [], [], []
+    for it in items:
+        if not it.get('ID'):
+            continue
+        ids.append(str(it['ID']))
+        rank.append(int(it.get('Ranking') or 0))
+        if _is_placeholder(it):
+            eps.append(0)
+            view.append(0)
+            like.append(0)
+        else:
+            eps.append(int(it.get('Eps') or 0))
+            view.append(int(it.get('View') or 0))
+            like.append(int(it.get('Like') or 0))
+        adult.append(bool(it.get('IsAdult')))
 
-        table.put_item(Item={
-            'ID': f'RSNAP#{date}',
-            'Date': date,
-            'ids': ids, 'rank': rank, 'eps': eps,
-            'view': view, 'like': like, 'adult': adult,
-        })
-        logger.info(f"Stored ranking snapshot RSNAP#{date} with {len(ids)} rows.")
-
-    except Exception as e:
-        # 예외를 올려 S3 비동기 재시도를 받는다. 재시도는 같은 키를 덮어써 중복이 생기지 않는다.
-        logger.error(f"Failed to store ranking snapshot for {date}. Error: {e}")
-        raise
+    table.put_item(Item={
+        'ID': f'RSNAP#{date}',
+        'Date': date,
+        'ids': ids, 'rank': rank, 'eps': eps,
+        'view': view, 'like': like, 'adult': adult,
+    })
+    logger.info(f"Stored ranking snapshot RSNAP#{date} with {len(ids)} rows.")
 
 
 def delete_stale_rows(date, items):
@@ -357,35 +334,8 @@ def delete_stale_rows(date, items):
 
 
 def update_available_dates(date_from_file):
-    """
-    Updates the AVAILABLE_DATES item in DynamoDB with the new date.
-    """
-    try:
-        # Get the current list of dates to avoid duplicates
-        response = table.get_item(
-            Key={'ID': 'AVAILABLE_DATES', 'Date': 'ALL_DATES'},
-            ProjectionExpression="dates"
-        )
-        
-        # Safely get the list of dates, default to an empty list if not found
-        current_dates_set = set(response.get('Item', {}).get('dates', []))
-
-        # Add the new date. A set automatically handles duplicates.
-        current_dates_set.add(date_from_file)
-
-        # Convert back to a list and sort it for consistent ordering
-        sorted_dates = sorted(list(current_dates_set), reverse=True)
-
-        # Update the entire item with the new list of dates
-        table.put_item(
-            Item={
-                'ID': 'AVAILABLE_DATES',
-                'Date': 'ALL_DATES',
-                'dates': sorted_dates
-            }
-        )
-        logger.info(f"Successfully updated AVAILABLE_DATES with {date_from_file}.")
-
-    except Exception as e:
-        logger.error(f"Failed to update AVAILABLE_DATES with {date_from_file}. Error: {e}")
-        raise
+    """AVAILABLE_DATES 항목에 날짜를 더한다(최신순, 중복 없이). 실패는 _run_step 이 로그를 남기고 모은다."""
+    key = {'ID': 'AVAILABLE_DATES', 'Date': 'ALL_DATES'}
+    dates = set(table.get_item(Key=key, ProjectionExpression="dates").get('Item', {}).get('dates', []))
+    table.put_item(Item={**key, 'dates': sorted(dates | {date_from_file}, reverse=True)})
+    logger.info(f"Successfully updated AVAILABLE_DATES with {date_from_file}.")
