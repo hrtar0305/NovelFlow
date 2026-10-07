@@ -10,6 +10,7 @@
 신인으로 바뀌었다 — 그 작품들은 지금 '잘못된 접근'·'삭제된 소설'), 한 번이라도 본 공모전 전 작품은 기성의 근거로 남긴다.
 작가 원본도 예전 쪽 뒤에 새 쪽을 덧붙여, `build_author_index.py` 로 색인을 다시 만들어도 같은 합집합이 나온다.
 받다가 실패한 작가는 예전 값 그대로 둔다 — 노벨피아가 연달아 받으면 막아서(두 번째 전체 실행은 절반 실패) 다시 돌리면 된다.
+다시 돌리면 이미 로그인으로 받은 작가(원본의 `auth`)는 건너뛴다. 동시 요청 수는 `WORKERS` 환경변수(수집기와 같은 기본 4).
 색인은 끝에서 **그때의 색인에 합친다** — 그 사이 수집기가 더한 작가를 지우지 않게. 수집기가 도는 시각(11:30·23:30·00:00)은 피한다.
 """
 import json
@@ -43,14 +44,18 @@ def refetch(auth, todo):
 
     def one(t):
         i, (aid, nno) = t
-        return aid, nno, C.author_works(auth[i % C.WORKERS], aid, nno)
+        old = C._get(C.AUTHOR_KEY.format(aid), {})
+        return aid, nno, old, (None if old.get('auth') else C.author_works(auth[i % C.WORKERS], aid, nno))
 
     with ThreadPoolExecutor(C.WORKERS) as pool:
-        for n, (aid, nno, pages) in enumerate(pool.map(one, enumerate(todo.items())), 1):
+        for n, (aid, nno, old, pages) in enumerate(pool.map(one, enumerate(todo.items())), 1):
+            if pages is None:
+                continue
             if C.summarize_author(pages) is None:
                 failed.append(aid)
+                if len(failed) <= 3:
+                    print('  failed', aid, [pg.get('error') for pg in pages if 'error' in pg], flush=True)
                 continue
-            old = C._get(C.AUTHOR_KEY.format(aid), {})
             kept = old.get('pages') or []
             if C.summarize_author(kept) is None:      # 예전 받기가 오류였으면(색인에도 없다) 새 쪽만
                 kept = []
@@ -111,7 +116,7 @@ def main():
     print(f'authors {len(todo)} (index {len(old)})')
     got, failed = refetch(auth, todo)
     flips = [a for a, (s, _) in got.items() if a in old and is_veteran(s['novels']) != is_veteran(old[a]['novels'])]
-    print(f'fetched {len(got)} · failed {len(failed)} · veteran changed {len(flips)} '
+    print(f'fetched {len(got)} · failed {len(failed)} · already done {len(todo) - len(got) - len(failed)} · veteran changed {len(flips)} '
           f'(→기성 {sum(1 for a in flips if is_veteran(got[a][0]["novels"]))})')
     if not DRY:
         with ThreadPoolExecutor(16) as pool:
