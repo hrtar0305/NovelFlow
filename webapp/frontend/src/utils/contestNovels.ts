@@ -1,3 +1,6 @@
+import { previousCalendarDay } from './currentRank';
+import { changeValue, finiteOrNull, nextSortOf, sortBy, type Sort } from './rankingQuery';
+
 /** 공모전 작품 한 행(`/api/contests/:year/:date`). 순위는 누적 조회수 순으로 백엔드가 매긴다. */
 export interface ContestNovel {
   ID: string;
@@ -30,7 +33,7 @@ export interface ContestNovel {
 
 export type ContestSortKey = 'daily_rank' | 'daily_rank_change' | 'rank_change' | 'view_change' | 'View' | 'like_to_view_ratio' | 'Eps'
   | 'EarlyRetentionRate' | 'RecentRetentionRate';
-export interface ContestSort { key: ContestSortKey; direction: 'ascending' | 'descending'; }
+export type ContestSort = Sort<ContestSortKey>;
 export const CONTEST_DEFAULT_SORT: ContestSort = { key: 'View', direction: 'descending' };
 /** 2026~ 기본: 일간 순위 1위부터. 첫날처럼 일간 순위가 없으면 값 없는 행끼리 누적 순위순으로 선다. */
 export const CONTEST_DAILY_SORT: ContestSort = { key: 'daily_rank', direction: 'ascending' };
@@ -40,31 +43,16 @@ export const isDeletedContestNovel = (x: ContestNovel) => x.View === -1;
 
 const valueOf = (x: ContestNovel, key: ContestSortKey): number | null => {
   if (isDeletedContestNovel(x)) return null;
-  if (key === 'rank_change') return x.rank_change === 'New' ? Infinity : typeof x.rank_change === 'number' ? x.rank_change : null;
-  if (key === 'daily_rank_change') return x.daily_rank_change === 'New' ? Infinity : typeof x.daily_rank_change === 'number' ? x.daily_rank_change : null;
-  const v = x[key];
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  if (key === 'rank_change' || key === 'daily_rank_change') return changeValue(x[key]);
+  return finiteOrNull(x[key]);
 };
 
 /** 일간과 같은 규칙: 값 없는 행은 방향과 무관하게 맨 아래, 같으면 순위순. */
-export function sortContestNovels(items: ContestNovel[], s: ContestSort): ContestNovel[] {
-  const dir = s.direction === 'ascending' ? 1 : -1;
-  return [...items].sort((a, b) => {
-    const va = valueOf(a, s.key);
-    const vb = valueOf(b, s.key);
-    if (va === null && vb === null) return a.Rank - b.Rank;
-    if (va === null) return 1;
-    if (vb === null) return -1;
-    if (va !== vb) return va < vb ? -dir : dir;
-    return a.Rank - b.Rank;
-  });
-}
+export const sortContestNovels = (items: ContestNovel[], s: ContestSort): ContestNovel[] =>
+  sortBy(items, x => valueOf(x, s.key), s.direction, x => x.Rank);
 
-export function nextContestSort(current: ContestSort, key: ContestSortKey): ContestSort {
-  if (current.key === key) return { key, direction: current.direction === 'ascending' ? 'descending' : 'ascending' };
-  // 순위는 1위부터, 나머지는 큰 값부터.
-  return { key, direction: key === 'daily_rank' ? 'ascending' : 'descending' };
-}
+// 순위는 1위부터, 나머지는 큰 값부터.
+export const nextContestSort = (current: ContestSort, key: ContestSortKey): ContestSort => nextSortOf(current, key, 'daily_rank');
 
 /** 수상 표시 순서(쇼케이스 배치). 순서에 없는 작품(본선·수상 없음)은 그 뒤에 조회수 순으로 선다. */
 export const AWARD_ORDER: Record<string, number> = { 대상: 0, 최우수상: 1, 탑툰상: 2, 우수상: 3, 특별상: 4 };
@@ -110,10 +98,7 @@ export function withDebutBaseline<T extends { Date: string; View?: number | null
   if (i < 0) return rows;
   const first = sorted[i];
   if (!(first.Date === CONTEST_OPEN_DATE[year] || first.IsNew === true)) return rows;
-  const d = new Date(`${first.Date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
-  const prev = d.toISOString().slice(0, 10);
-  const base = { ...first, Date: prev, View: 0, Like: 0, Fav: 0, Eps: 0, Alr: 0, Ranking: null, Baseline: true } as T;
+  const base = { ...first, Date: previousCalendarDay(first.Date), View: 0, Like: 0, Fav: 0, Eps: 0, Alr: 0, Ranking: null, Baseline: true } as T;
   return [...sorted, base];   // 같은 날짜의 실제 행(수집했지만 기록 없음)은 그대로 둔다 — buildMetricPoints 가 기준 행만 뺀다
 }
 

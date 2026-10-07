@@ -8,6 +8,7 @@ import TagLinks from '../ui/TagLinks';
 import { formatDateKo, formatInt, formatMan, formatRatio } from '../../utils/format';
 import { formatSerialDays } from '../../utils/novelFacts';
 import type { CurrentRank } from '../../utils/currentRank';
+import { retentionNums } from './retention';
 
 export interface NovelHeaderDetails {
   ID: string; Title?: string | null; AuthorName?: string | null; AuthorID?: string | null; Eps?: number | null;
@@ -22,15 +23,6 @@ export interface NovelHeaderDetails {
 /** 연재 상태 강조. 알약 배지 대신 글자 색·굵기로만 — 사이트 전체에서 배지 패턴을 걷어냈다(DECISIONS 2026-09-30).
  *  연재중단·연재지연은 경고색, 완결은 진하게, 연재중과 모르는 상태는 굵게만. */
 const STATUS_TONE: Record<string, string> = { 연재중단: 'warn', 연재지연: 'warn', 완결: 'done' };
-
-const ok = (v?: number | null): v is number => typeof v === 'number' && v >= 0;
-
-/** 잔류율 옆에 흐리게 붙이는 근거: '1화 6,609 → 30화 2,223'. 값이 없으면 비운다. */
-const basis = (aNum?: number | null, aView?: number | null, bNum?: number | null, bView?: number | null) => (
-  ok(aNum) && ok(aView) && ok(bNum) && ok(bView)
-    ? <span className="detail-head__basis">{formatInt(aNum)}화 {formatInt(aView)} → {formatInt(bNum)}화 {formatInt(bView)}</span>
-    : null
-);
 
 /** 작품 소개. 거의 다 한 번에 보이게 PC 10줄 · 모바일 14줄에서만 접는다(2026-09-30 실측: 95%가 PC 9줄 · 모바일 13줄 안). */
 function Synopsis({ text }: { text: string }) {
@@ -79,8 +71,7 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
   ];
   const ratios: InlineNum[] | null = nums ? null : [
     { label: '추천비', value: formatRatio(ratio, 2) },
-    { label: '초반 잔류', value: <>{formatRatio(details.EarlyRetentionRate, 0)}{details.EarlyRetentionRate != null ? basis(details.FirstEpNum, details.FirstEpView, details.Ep30Num, details.Ep30View) : null}</> },
-    { label: '최신 잔류', value: <>{formatRatio(details.RecentRetentionRate, 0)}{details.RecentRetentionRate != null ? basis(details.RecentBaseNum, details.RecentBaseView, details.TargetLatestEpNum, details.TargetLatestEpView) : null}</> },
+    ...retentionNums(details),
   ];
 
   return (
@@ -103,7 +94,7 @@ export default function NovelHeader({ details, current, backTo, byExtra, nums, t
           ) : null}
           {/* 태그는 독자가 작품을 볼 때 가장 먼저 확인하는 정보라 제목 바로 아래 무리에 둔다. */}
           {details.Tags && details.Tags.length > 0 ? (
-            <TagLinks tags={details.Tags} limit={details.Tags.length} wrap hrefFor={tagHref ?? (t => `/novels/rankings?tag=${encodeURIComponent(t)}`)} />
+            <TagLinks tags={details.Tags} hrefFor={tagHref ?? (t => `/novels/rankings?tag=${encodeURIComponent(t)}`)} />
           ) : null}
           <div className="detail-head__now">
             {current.kind === 'ranked' ? (

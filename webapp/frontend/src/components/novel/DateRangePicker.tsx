@@ -1,4 +1,4 @@
-import React, { useRef, forwardRef, useMemo, useState } from 'react';
+import React, { forwardRef, useMemo, useState } from 'react';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { format, startOfDay } from 'date-fns';
@@ -12,12 +12,8 @@ interface DateRangePickerProps {
   minDate?: Date | null;
   maxDate?: Date | null;
   availableDates: Date[];
-  novelAvailableDatesSet: Set<string>;
   onStartDateChange: (date: Date | null) => void;
   onEndDateChange: (date: Date | null) => void;
-  isNovelDetailPage?: boolean;
-  noMargin?: boolean;
-  showNovelDataIndicator?: boolean; // New prop
 }
 
 // 상자형 입력칸 대신 점선 밑줄 글자(일간 랭킹의 날짜 이동과 같은 문법). 키보드로도 연다.
@@ -34,14 +30,9 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   minDate,
   maxDate,
   availableDates,
-  novelAvailableDatesSet,
   onStartDateChange,
   onEndDateChange,
-  isNovelDetailPage,
-  noMargin,
-  showNovelDataIndicator = true // Default to true for backward compatibility
 }) => {
-  const endDatePickerRef = useRef<DatePicker | null>(null);
   const [isEndCalendarOpen, setIsEndCalendarOpen] = useState(false);
 
   const availableDateSet = useMemo(() => new Set(availableDates.map(d => format(d, 'yyyy-MM-dd'))), [availableDates]);
@@ -69,32 +60,6 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     }
   };
 
-  const renderDayContents = (day: number, date?: Date) => {
-    if (!date) return day;
-    const dateString = format(date, 'yyyy-MM-dd');
-    const hasData = novelAvailableDatesSet.has(dateString);
-
-    return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        paddingBottom: showNovelDataIndicator ? '4px' : '0'
-      }}>
-        {day}
-        {showNovelDataIndicator && (
-          <div style={{
-            height: '4px',
-            width: '4px',
-            borderRadius: '50%',
-            backgroundColor: hasData ? 'var(--np-accent)' : 'transparent',
-            margin: '-2px auto 0 auto'
-          }}></div>
-        )}
-      </div>
-    );
-  };
-
   const getRangeDayClassName = (date: Date) => {
     const dayTime = startOfDay(date).getTime();
     const startTime = startDate ? startOfDay(startDate).getTime() : null;
@@ -113,7 +78,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   };
 
   return (
-    <div className={`range-inline${noMargin ? '' : ' range-inline--spaced'}`}>
+    <div className="range-inline">
           <DatePicker
             selected={startDate}
             onChange={handleStartDateChange}
@@ -123,12 +88,10 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             maxDate={maxDate || undefined}
             filterDate={filterDate}
             dayClassName={getRangeDayClassName}
-            renderDayContents={renderDayContents}
             customInput={<CustomDateDisplay label="시작일" />}
             dateFormat="yyyy.MM.dd"
             dateFormatCalendar="yyyy년 M월"
             placeholderText="시작일"
-            highlightDates={[]}
             locale={ko}
             wrapperClassName="flex-grow-0"
             calendarClassName="mobile-calendar-small"
@@ -137,7 +100,6 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
           />
           <span className="range-inline__sep" aria-hidden="true">–</span>
           <DatePicker
-            ref={endDatePickerRef}
             key={`end-${startDate ? startDate.getTime() : 'none'}-${endDate ? endDate.getTime() : 'none'}`}
             selected={endDate}
             onChange={handleEndDateChange}
@@ -147,7 +109,6 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             maxDate={maxDate || undefined}
             filterDate={filterDate}
             dayClassName={getRangeDayClassName}
-            renderDayContents={renderDayContents}
             openToDate={startDate || undefined}
             customInput={<CustomDateDisplay label="종료일" />}
             dateFormat="yyyy.MM.dd"
@@ -156,14 +117,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             open={isEndCalendarOpen}
             onInputClick={() => setIsEndCalendarOpen(true)}
             onClickOutside={() => setIsEndCalendarOpen(false)}
-            highlightDates={[]}
             locale={ko}
             calendarClassName="mobile-calendar-small"
             wrapperClassName="flex-grow-0"
             popperPlacement="bottom-end"
             portalId="datepicker-portal"
           />
-      {isNovelDetailPage && <span className="range-inline__help">수집되지 않은 날짜는 고를 수 없습니다.</span>}
     </div>
   );
 };

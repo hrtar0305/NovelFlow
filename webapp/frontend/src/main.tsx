@@ -6,7 +6,6 @@ import { ThemeProvider } from './theme/ThemeProvider.tsx'
 import { CoverMaskProvider } from './theme/CoverMaskProvider.tsx'
 
 import 'bootstrap/dist/css/bootstrap.min.css'
-import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

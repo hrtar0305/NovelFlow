@@ -41,7 +41,7 @@ export const EMPTY_FILTER: RankingFilter = {
 };
 
 export type SortKey = 'Ranking' | 'rank_change' | 'Score' | 'Eps' | 'like_to_view_ratio' | 'EarlyRetentionRate' | 'RecentRetentionRate';
-export interface SortConfig { key: SortKey; direction: 'ascending' | 'descending'; }
+export type SortConfig = Sort<SortKey>;
 export const DEFAULT_SORT: SortConfig = { key: 'Ranking', direction: 'ascending' };
 
 export const normalizeNovels = (items: RankingNovel[]): RankingNovel[] => items.map(x => ({
@@ -88,32 +88,39 @@ export function applyRankingFilter<T extends FilterableNovel>(items: T[], f: Ran
   return { items: out, error: null };
 }
 
-export function sortRankings(items: RankingNovel[], s: SortConfig): RankingNovel[] {
-  const dir = s.direction === 'ascending' ? 1 : -1;
+/** 표 정렬 상태. 일간·공모전·태그 표가 같이 쓴다. */
+export interface Sort<K> { key: K; direction: 'ascending' | 'descending'; }
+
+/** 변동의 정렬값: NEW는 가장 큰 상승, 비교 불가(기록 없음)는 null. */
+export const changeValue = (v: unknown): number | null => (v === 'New' ? Infinity : typeof v === 'number' ? v : null);
+
+/** 표 공통 정렬: 값 없는 행(null)은 방향과 무관하게 맨 아래, 같으면 순위순. */
+export function sortBy<T>(items: T[], valueOf: (x: T) => number | null, direction: Sort<unknown>['direction'], rankOf: (x: T) => number): T[] {
+  const dir = direction === 'ascending' ? 1 : -1;
   return [...items].sort((a, b) => {
-    if (s.key === 'rank_change') {
-      const v = (x: RankingNovel['rank_change']) => (x === 'New' ? Infinity : typeof x === 'number' ? x : -Infinity);
-      const va = v(a.rank_change);
-      const vb = v(b.rank_change);
-      if (va === vb) return a.Ranking - b.Ranking;
-      if (va === -Infinity) return 1;
-      if (vb === -Infinity) return -1;
+    const va = valueOf(a);
+    const vb = valueOf(b);
+    if (va !== vb) {
+      if (va === null) return 1;
+      if (vb === null) return -1;
       return va < vb ? -dir : dir;
     }
-    const av = a[s.key];
-    const bv = b[s.key];
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    if (av < bv) return -dir;
-    if (av > bv) return dir;
-    return a.Ranking - b.Ranking;
+    return rankOf(a) - rankOf(b);
   });
 }
 
-export function nextSort(current: SortConfig, key: SortKey): SortConfig {
+/** 같은 열은 방향을 뒤집고, 새 열은 '보고 싶은 쪽'부터 — 순위(ascKey)는 1위부터, 나머지는 큰 값부터. */
+export function nextSortOf<K>(current: Sort<K>, key: K, ascKey: K): Sort<K> {
   if (current.key === key) return { key, direction: current.direction === 'ascending' ? 'descending' : 'ascending' };
-  return { key, direction: key === 'Ranking' ? 'ascending' : 'descending' };
+  return { key, direction: key === ascKey ? 'ascending' : 'descending' };
 }
+
+export const finiteOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+export const sortRankings = (items: RankingNovel[], s: SortConfig): RankingNovel[] =>
+  sortBy(items, x => (s.key === 'rank_change' ? changeValue(x.rank_change) : finiteOrNull(x[s.key])), s.direction, x => x.Ranking);
+
+export const nextSort = (current: SortConfig, key: SortKey): SortConfig => nextSortOf(current, key, 'Ranking');
 
 export function tagCounts(items: Array<{ Tags?: string[] }>): Array<{ tag: string; count: number }> {
   const m = new Map<string, number>();
@@ -153,8 +160,8 @@ export function statusCounts(items: RankingNovel[]): Array<{ status: string; cou
 /** 그날 목록에 연재 상태 기록이 있는가. 없는 날(2026-09-05 이전)은 상태 조건을 적용할 수 없다. */
 export const hasStatusData = (items: RankingNovel[]): boolean => items.some(x => x.serial_status != null);
 
-/** 연재 상태 기록이 시작된 날(안내 문구용). 적용 가능 여부 판단은 날짜가 아니라 hasStatusData로 한다. */
-export const SERIAL_STATUS_SINCE = '2026-09-05';
+/** 연재 상태 기록이 없는 날에 상태 조건을 골랐을 때 보이는 안내. 적용 가능 여부 판단은 날짜가 아니라 hasStatusData로 한다. */
+export const SERIAL_STATUS_NOTICE = '연재 상태는 2026년 9월 5일 랭킹부터 기록돼 있어, 그 이전 날짜에는 적용할 수 없습니다.';
 
 export function toggleStatus(f: RankingFilter, status: string): RankingFilter {
   const cur = f.statuses ?? [];

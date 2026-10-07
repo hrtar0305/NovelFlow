@@ -11,11 +11,10 @@ import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import TagRowExpand from '../components/tag/TagRowExpand';
 import DateRangePicker from '../components/novel/DateRangePicker';
 import { MIN_WORKS, SHARE_MIN_CHANGE, SPIKE_MIN_SHARE, buildTagTrends, crossesSampleChange, type TagEdge, type TagSeriesResponse, type TagTrend } from '../utils/tagTrends';
-import { formatShare } from '../utils/tagZones';
 
 /** 점유율 차이 → '+1.2%p'(0 은 부호 없이) */
 const pctp = (v: number) => { const r = Math.round(v * 1000) / 10; return r === 0 ? '0%p' : `${r > 0 ? '+' : '−'}${Math.abs(r).toFixed(1)}%p`; };
-import { formatDateKo, formatInt } from '../utils/format';
+import { formatDateKo, formatInt, formatRatio } from '../utils/format';
 
 /**
  * 태그 트렌드(2026-09-30 개편) — 정한 기간 동안 무엇이 바뀌었나. 태그 랭킹이 '오늘의 지형'을 맡고
@@ -50,7 +49,7 @@ type SortKey = 'share' | 'rank' | 'count';
 const rank = (n: number) => `${formatInt(n)}위`;
 const strong = (v: ReactNode) => <b className="rank-strong">{v}</b>;
 const tagCell = (tag: string) => <span className="rank-title">{tag}</span>;
-const shares = (a: number, b: number) => <>{formatShare(a)} → {formatShare(b)}</>;
+const shares = (a: number, b: number) => <>{formatRatio(a)} → {formatRatio(b)}</>;
 
 export default function TagTrendsPage() {
   const [available, setAvailable] = useState<string[]>([]);
@@ -144,15 +143,15 @@ export default function TagTrendsPage() {
   ];
   const spikeCols: RankColumn<TagTrend>[] = [
     { key: 'tag', header: '태그', aside: eligAside, width: 'minmax(0,1fr)', render: t => tagCell(t.tag) },
-    { key: 'first', header: '첫날', aside: scoreAside, width: '84px', align: 'right', render: t => formatShare(t.first.score) },
-    { key: 'peak', header: '기간 최고', width: '132px', align: 'right', render: t => <>{formatShare(t.peak.score)} <small className="rank-sub">{formatDateKo(t.peak.date)}</small></> },
-    { key: 'last', header: '마지막 날', width: '88px', align: 'right', render: t => formatShare(t.last.score) },
+    { key: 'first', header: '첫날', aside: scoreAside, width: '84px', align: 'right', render: t => formatRatio(t.first.score) },
+    { key: 'peak', header: '기간 최고', width: '132px', align: 'right', render: t => <>{formatRatio(t.peak.score)} <small className="rank-sub">{formatDateKo(t.peak.date)}</small></> },
+    { key: 'last', header: '마지막 날', width: '88px', align: 'right', render: t => formatRatio(t.last.score) },
     { key: 'spike', header: '치솟은 폭', width: '96px', align: 'right', render: t => strong(pctp(t.spike)) },
   ];
   const edgeCols = (which: 'entered' | 'left'): RankColumn<TagEdge>[] => [
     { key: 'tag', header: '태그', width: 'minmax(0,1fr)', render: e => tagCell(e.tag) },
     { key: 'rank', header: which === 'entered' ? '마지막 날 순위' : '첫날 순위', width: '120px', align: 'right', render: e => strong(rank(e.rank)) },
-    { key: 'score', header: '인기 점수', aside: scoreAside, width: '96px', align: 'right', render: e => formatShare(e.score) },
+    { key: 'score', header: '인기 점수', aside: scoreAside, width: '96px', align: 'right', render: e => formatRatio(e.score) },
     { key: 'count', header: '작품 수', width: '88px', align: 'right', render: e => formatInt(e.count) },
   ];
 
@@ -174,12 +173,12 @@ export default function TagTrendsPage() {
       case 'spikes':
         return <RankTable<TagTrend> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists.spikes} columns={spikeCols}
           onToggleRow={t => toggle(t.tag)} renderExpanded={t => expand(t.tag)}
-          renderMobileRow={t => trendRow(t, <>{formatShare(t.first.score)} → 최고 {formatShare(t.peak.score)}({formatDateKo(t.peak.date)}) → {formatShare(t.last.score)} · <b>{pctp(t.spike)}</b></>)} />;
+          renderMobileRow={t => trendRow(t, <>{formatRatio(t.first.score)} → 최고 {formatRatio(t.peak.score)}({formatDateKo(t.peak.date)}) → {formatRatio(t.last.score)} · <b>{pctp(t.spike)}</b></>)} />;
       default:
         return <RankTable<TagEdge> {...common} ariaLabel={TAB_LABEL[tab]} rows={lists[tab]} columns={edgeCols(tab)}
           onToggleRow={e => toggle(e.tag)} renderExpanded={e => expand(e.tag, e.lastSeen)}
           renderMobileRow={e => (
-            <div className="rank-mrow rank-mrow--plain"><div className="rank-mrow__main">{tagCell(e.tag)}<p><b>{rank(e.rank)}</b> · 인기 {formatShare(e.score)} · 작품 {e.count}</p></div></div>
+            <div className="rank-mrow rank-mrow--plain"><div className="rank-mrow__main">{tagCell(e.tag)}<p><b>{rank(e.rank)}</b> · 인기 {formatRatio(e.score)} · 작품 {e.count}</p></div></div>
           )} />;
     }
   };
@@ -195,10 +194,9 @@ export default function TagTrendsPage() {
               <button key={n} type="button" className={rangeDays === n ? 'is-on' : undefined} aria-pressed={rangeDays === n} onClick={() => pickRange(n)}>{n}일</button>
             ))}
             <DateRangePicker startDate={startDate} endDate={endDate}
-              availableDates={available.map(d => parseISO(d))} novelAvailableDatesSet={new Set(available)}
+              availableDates={available.map(d => parseISO(d))}
               onStartDateChange={d => { setRangeDays(null); setStartDate(d); }}
-              onEndDateChange={d => { setRangeDays(null); setEndDate(d); }}
-              noMargin showNovelDataIndicator={false} />
+              onEndDateChange={d => { setRangeDays(null); setEndDate(d); }} />
           </div>
         }
         aside={<ViewSwitch label="태그 보기" items={[

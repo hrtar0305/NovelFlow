@@ -1,3 +1,5 @@
+import type { Sort } from './rankingQuery';
+
 /** 공모전 태그 랭킹 한 행. 점수는 구 3-track(선형·역순위·로그) — 공모전만 유지한다(DECISIONS 2026-04). */
 export interface ContestTag {
   Rank: number;
@@ -15,7 +17,7 @@ export interface ContestTagRow extends ContestTag {
 }
 
 export type ContestTagSortKey = 'score_linear' | 'avg_linear' | 'score_inverse' | 'avg_inverse' | 'score_log' | 'avg_log' | 'count';
-export interface ContestTagSort { key: ContestTagSortKey; direction: 'ascending' | 'descending'; }
+export type ContestTagSort = Sort<ContestTagSortKey>;
 
 /** 평균(합계 ÷ 등장 횟수)을 붙이고, 지금 정렬 기준으로 순위를 매긴 뒤 검색으로 거른다.
  *  순위는 검색 전에 매긴다 — 거른 뒤에도 전체 안에서의 자리가 보여야 한다. */

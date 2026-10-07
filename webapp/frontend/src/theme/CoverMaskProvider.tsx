@@ -6,7 +6,6 @@ const STORAGE_KEY = 'coverMask';
 const getInitialMaskAll = (): boolean => {
   // 기본값은 '가리기 켜짐'이다. 첫 방문자와 스크린샷 촬영 시 표지가 노출되지 않도록
   // 안전한 쪽을 기본으로 두고, 사용자가 명시적으로 해제한 경우에만 표시한다.
-  if (typeof window === 'undefined') return true;
   try {
     return window.localStorage.getItem(STORAGE_KEY) !== 'off';
   } catch {

@@ -1,22 +1,3 @@
-
-
-/* 차트는 상자가 아니다(2026-09-28). 섹션 안에 제목 한 줄 + 차트만 둔다. */
-
-.tag-rankings-page {
-  display: grid;
-  gap: 1rem;
-}
-
-/* 단일 열. 선택 패널은 오른쪽 열이 아니라 차트 아래 전체폭 스트립으로 흐른다
-   (빈 열 예약 제거 + 선택 시 차트 가로 리플로우 방지). */
-
-/* 선택 패널은 예전에 그리드 칸 안에 있어 height:100% + margin-top:0이 필요했다.
-   지금은 페이지 셸의 직계 자식이라 둘 다 잔재이고, margin-top:0이 페이지의
-   `> * + *` 간격 규칙을 이겨서 위 요소에 딱 붙어 있었다. */
-
-/* 이 패널 수치가 어느 구간 것인지 밝히는 줄. 없으면 아래 차트는 14일인데
-   위 수치는 무슨 기준인지 알 수 없다 — 실제로 그 지적을 받았다. */
-
 .showcase-section {
   display: grid;
   gap: 0.65rem;
@@ -58,17 +39,10 @@
   color: var(--np-text-heading);
   font-size: 1.0625rem;
   font-weight: 800;
-  letter-spacing: 0;
+  /* 한국어 제목에 라틴 대문자용 자간(0.06em)을 주면 낱자가 흩어져 보인다. */
+  letter-spacing: -0.01em;
 }
 
-.ranking-showcase-group__meta {
-  color: var(--np-text-faint);
-  font-size: var(--np-fs-meta);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
 
 /* 모자이크 — 1위가 왼쪽 한 칸을 세로로 다 쓰고, 2~5위가 오른쪽 2×2에 들어간다.
    순위가 곧 카드 크기라 1위의 비중이 시각적으로 드러난다.
@@ -101,14 +75,10 @@
 .ranking-showcase-top-grid .media-rank-card--rank-5,
 .ranking-showcase-rising-grid .media-rank-card--mover-5 { grid-column: 3; grid-row: 2; }
 
-/* 1위 카드는 표지가 크므로 제목도 한 단계 키운다. */
-.ranking-showcase-top-grid .media-rank-card--rank-1 .media-rank-card__title,
-.ranking-showcase-rising-grid .media-rank-card--mover-1 .media-rank-card__title {
-  font-size: 1rem !important;
-}
-
 .novel-rankings-page {
   --np-showcase-height: clamp(430px, 34vw, 510px);
+  gap: 0;
+  padding-top: 0.85rem;
 }
 
 @media (max-width: 991.98px) {
@@ -123,10 +93,6 @@
      1위를 가로 전체로 올리고 나머지 넷을 2×2로 둔다. */
   .ranking-showcase-top-grid,
   .ranking-showcase-rising-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    /* 1위는 가로 전체를 쓰므로 표지가 가로로 길다. 첫 행을 더 줘야 띠처럼 얇아지지 않는다. */
-    grid-template-rows: 1.45fr 1fr 1fr;
-    gap: 0.5rem;
     height: 620px;
   }
 
@@ -146,25 +112,9 @@
   .ranking-showcase-rising-grid .media-rank-card--mover-5 { grid-column: 2; grid-row: 3; }
 }
 
-.novel-rankings-page {
-  gap: 0;
-  padding-top: 0.85rem;
-}
-
 .novel-rankings-page > .showcase-section {
   margin-bottom: 1.05rem;
 }
-
-.novel-rankings-page .form-control,
-.novel-rankings-page .dropdown-menu {
-  border-color: var(--np-border) !important;
-}
-
-[data-theme="light"] .novel-rankings-page .page-sidebar,
-/* ── 소설 랭킹 쇼케이스 카드 (클린 모던) ─────────────────────────────
-   모자이크 시절의 카드별 크기·색 예외를 전부 걷어냈다. 카드가 모두 같은 크기라
-   제목 글자 크기를 순위별로 다르게 줄 이유가 없고, 표지 위에 글자가 없으므로
-   흰색 강제·텍스트 그림자도 필요 없다. */
 
 .novel-rankings-page .media-rank-card--poster {
   background: var(--np-surface);
@@ -191,10 +141,8 @@
 
 .novel-rankings-page .media-rank-card--split {
   min-height: 0;
-  aspect-ratio: auto;
 }
 
-/* 순위 칩 — 표지 위 유일한 요소 */
 /* 쇼케이스 칩(2026-09-28 개편, 08-30 '강조 수준 맞춤'을 대체): 순위 칩은 검정 반투명 + 흰 글자,
    상승 칩은 빨강 + 흰 글자(▲135). 한국 차트 관례대로 상승이 빨강이라 두 그룹이 다른 것을
    말한다는 구분이 색으로 남는다. 표지 위라 테마 토큰이 아니라 고정값을 쓴다. */
@@ -203,18 +151,6 @@
   border-color: rgba(255, 255, 255, 0.14);
   color: var(--np-on-image);
   font-size: 0.8125rem !important;
-}
-
-.novel-rankings-page .ranking-showcase-rising-grid .media-rank-card__rank {
-  min-width: 0;
-  height: 1.65rem;
-  padding: 0 0.55rem;
-  background: var(--np-chip-up);
-  border-color: transparent;
-  color: var(--np-on-image);
-  font-size: 0.8125rem !important;
-  letter-spacing: 0;
-  backdrop-filter: none;
 }
 
 .novel-rankings-page .media-rank-card--split .media-rank-card__title,
@@ -248,18 +184,7 @@
   flex: 0 0 auto;
 }
 
-@media (min-width: 768px) {
-  .novel-rankings-page {
-    --ranking-workspace-height: min(82vh, 940px);
-    --ranking-workspace-min-height: 660px;
-  }
-
-}
-
 @media (max-width: 991.98px) {
-  .novel-rankings-page {
-  }
-
   .ranking-showcase-split {
     grid-template-columns: 1fr;
     gap: 1.2rem;
@@ -275,26 +200,13 @@
 
 @media (max-width: 767.98px) {
   .novel-rankings-page {
-  }
-
-  .novel-rankings-page {
     padding-top: 0.65rem;
-  }
-
-  .novel-rankings-page > .showcase-section {
-    margin-bottom: 1.05rem;
   }
 
   .ranking-showcase-group__header {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.18rem;
-  }
-
-  .ranking-showcase-top-grid,
-  .ranking-showcase-rising-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.6rem;
   }
 
   /* 모바일은 2열. 행 수는 지정하지 않는다 — 항목 수에 맞춰 자동으로 잡히게
@@ -310,89 +222,7 @@
   }
 }
 
-@media (max-width: 767.98px) {
-
-  .contest-award-showcase__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: 292px 210px 192px 176px 176px 176px;
-    /* 기본 규칙의 aspect-ratio: 30/12를 반드시 해제해야 한다. 안 하면 높이가
-       너비×12/30(390px 화면에서 146px)으로 고정되어, 실제 1,280px짜리 카드들이
-       그리드 박스를 넘쳐 다음 섹션(전체 랭킹 테이블) 위에 겹쳐 그려진다. */
-    aspect-ratio: auto;
-    min-height: 0 !important;
-  }
-
-  .contest-award-poster {
-    min-height: 0;
-  }
-
-  .contest-award-poster--podium-1 {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .contest-award-poster--podium-2 {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .contest-award-poster--podium-3 {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .contest-award-poster--podium-4 {
-    grid-column: 1;
-    grid-row: 3;
-  }
-
-  .contest-award-poster--podium-5 {
-    grid-column: 2;
-    grid-row: 3;
-  }
-
-  .contest-award-poster--podium-6 {
-    grid-column: 1;
-    grid-row: 4;
-  }
-
-  .contest-award-poster--podium-7 {
-    grid-column: 2;
-    grid-row: 4;
-  }
-
-  .contest-award-poster--podium-8 {
-    grid-column: 1;
-    grid-row: 5;
-  }
-
-  .contest-award-poster--podium-9 {
-    grid-column: 2;
-    grid-row: 5;
-  }
-
-  .contest-award-poster--podium-10 {
-    grid-column: 1 / -1;
-    grid-row: 6;
-  }
-}
-
-[data-theme="light"] .media-rank-card--poster {
-  box-shadow: none !important;
-}
-
-[data-theme="light"] .media-rank-card--poster:hover {
-  box-shadow: none !important;
-}
-
-[data-theme="dark"] .text-dark,
-[data-theme="dark"] .text-body,
-[data-theme="dark"] .modal-title,
-[data-theme="dark"] .form-check-label {
-  color: var(--np-text-primary) !important;
-}
-
-.react-datepicker__day--keyboard-selected:not(.react-datepicker__day--selected):not(.react-datepicker__day--range-start):not(.react-datepicker__day--range-end):not(.np-date-range-start):not(.np-date-range-end):not(.np-date-in-range):not(.react-datepicker__day--highlighted) {
+.react-datepicker__day--keyboard-selected:not(.react-datepicker__day--selected):not(.react-datepicker__day--range-start):not(.react-datepicker__day--range-end):not(.np-date-range-start):not(.np-date-range-end):not(.np-date-in-range) {
   background-color: transparent !important;
   color: var(--np-text-primary) !important;
 }
@@ -414,10 +244,6 @@
 
 .react-datepicker__day.np-date-in-range {
   background-color: var(--np-accent-soft) !important;
-  color: var(--np-text-primary) !important;
-}
-
-.date-picker-wrapper .form-control {
   color: var(--np-text-primary) !important;
 }
 
@@ -504,7 +330,6 @@
 
 .contest-award-poster {
   min-height: 0;
-  aspect-ratio: auto;
   border-radius: var(--np-radius-lg);
 }
 
@@ -578,12 +403,6 @@
   color: rgba(248, 251, 255, 0.9) !important;
 }
 
-.contest-award-poster .mini-kpi {
-  background-color: rgba(10, 11, 14, 0.68) !important;
-  color: rgba(248, 251, 255, 0.96) !important;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.38);
-}
-
 .contest-award-poster--podium-5 .media-rank-card__overlay,
 .contest-award-poster--podium-6 .media-rank-card__overlay,
 .contest-award-poster--podium-7 .media-rank-card__overlay,
@@ -624,78 +443,6 @@
   font-size: 1.08rem !important;
 }
 
-@media (max-width: 767.98px) {
-
-  .contest-award-showcase__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: 292px 210px 192px 176px 176px 176px;
-    /* 기본 규칙의 aspect-ratio: 30/12를 반드시 해제해야 한다. 안 하면 높이가
-       너비×12/30(390px 화면에서 146px)으로 고정되어, 실제 1,280px짜리 카드들이
-       그리드 박스를 넘쳐 다음 섹션(전체 랭킹 테이블) 위에 겹쳐 그려진다. */
-    aspect-ratio: auto;
-    min-height: 0 !important;
-  }
-
-  .contest-award-poster {
-    min-height: 0;
-  }
-
-  .contest-award-poster--podium-1 {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .contest-award-poster--podium-2 {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .contest-award-poster--podium-3 {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .contest-award-poster--podium-4 {
-    grid-column: 1;
-    grid-row: 3;
-  }
-
-  .contest-award-poster--podium-5 {
-    grid-column: 2;
-    grid-row: 3;
-  }
-
-  .contest-award-poster--podium-6 {
-    grid-column: 1;
-    grid-row: 4;
-  }
-
-  .contest-award-poster--podium-7 {
-    grid-column: 2;
-    grid-row: 4;
-  }
-
-  .contest-award-poster--podium-8 {
-    grid-column: 1;
-    grid-row: 5;
-  }
-
-  .contest-award-poster--podium-9 {
-    grid-column: 2;
-    grid-row: 5;
-  }
-
-  .contest-award-poster--podium-10 {
-    grid-column: 1 / -1;
-    grid-row: 6;
-  }
-}
-
-.contest-award-poster .mini-kpi {
-  background-color: rgba(10, 11, 14, 0.66) !important;
-  color: rgba(248, 251, 255, 0.94) !important;
-}
-
 /* 공모전 쇼케이스: 태블릿 구간(768~991px)이 비어 있어 데스크톱 30열 모자이크가
    적용됐고, 카드가 85px까지 좁아져 제목이 카드를 넘치고 서로 겹쳤다. 2열 레이아웃을
    991px까지 끌어올린다. 파일 맨 끝에 두는 이유는 위쪽 최상위 규칙(30열 + aspect-ratio)이
@@ -704,12 +451,11 @@
   .contest-award-showcase__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: 292px 210px 192px 176px 176px 176px;
+    /* 기본 규칙의 aspect-ratio: 30/12를 반드시 해제해야 한다. 안 하면 높이가
+       너비×12/30(390px 화면에서 146px)으로 고정되어, 실제 1,280px짜리 카드들이
+       그리드 박스를 넘쳐 다음 섹션(전체 랭킹 테이블) 위에 겹쳐 그려진다. */
     aspect-ratio: auto;
     min-height: 0 !important;
-  }
-
-  .contest-award-poster {
-    min-height: 0;
   }
 
   .contest-award-showcase__grid > * {
@@ -736,79 +482,13 @@
    다른 페이지(12~17px)보다 붕 뜬다. 소설 랭킹과 같은 방식으로 shell gap을 끄고
    자식 margin으로만 통제한다. */
 .tag-rankings-page {
+  display: grid;
   gap: 0;
   padding-top: 0.85rem;
 }
 
 .tag-rankings-page > * + * {
   margin-top: 0.7rem;
-}
-
-/* 브리핑 6장. 구역 구분은 좌측 점 하나로만 하고, 태그 이름은 전부 흰색으로
-   통일한다 — 카드마다 색이 다르면 시선이 분산되고 무엇이 중요한지 흐려진다. */
-/* 4분면 대표 한 장씩. 아래 지도의 4분면, 그 아래 목록 4패널과 같은 수라
-   세 영역이 같은 축을 말한다는 것이 한눈에 보인다. */
-
-/* 지형 지도 */
-
-/* 지도 범례. 축 두 개·원 크기·이름 규칙만 한 줄씩 늘어놓는다.
-   '읽는 법 / 표시 규칙'으로 묶어 문단을 만들었더니 정작 축이 무엇인지가
-   묻혔다 — 지도를 볼 때 필요한 건 그것뿐이다. */
-
-/* 4분면 카드 그리드 */
-/* 네 구역 패널의 높이를 모두 맞춘다. 태그 수가 6개(과포화)에서 32개(숨은 강자)까지
-   벌어지고 '더 보기'가 있는 패널만 길어져서, 내용 높이에 맡기면 과포화만 눈에 띄게
-   짧았다. grid-auto-rows: 1fr로 두 행의 높이까지 같게 맞춘다(align-items: start를
-   쓰면 행 안에서만 맞고 행끼리는 어긋난다). */
-
-/* 무버 3열 */
-
-/* 반응형 */
-
-/* 지형 지도 구역 이름 */
-
-/* ── 소설 랭킹: 디자인 정리 ─────────────────────────────────────────────
-   기능은 그대로 두고 표시만 손본다. */
-
-/* 숫자 열도 제목·작가와 같이 좌측 정렬한다. 헤더와 값이 같은 x에서 시작해야
-   열이 하나로 읽힌다 — 우측 정렬은 끝은 맞아도 시작이 제각각이라 헤더만
-   오른쪽에 떨어져 있는 것처럼 보였다.
-   값끼리 자릿수가 흔들리지 않게 tabular는 유지한다. */
-
-/* 정렬 표시. sortConfig가 계산에만 쓰이고 화면에 그려지지 않아 어느 열로 정렬
-   중인지 알 수 없었다.
-   표시를 인라인(::after + margin)으로 두면 두 가지가 깨진다 —
-   (1) 표시 폭만큼 헤더 글자가 왼쪽으로 밀려 아래 값들과 오른쪽 끝이 어긋나고,
-   (2) 좁은 열(초반/최신 잔류)에서는 셀을 넘쳐 옆 열에 걸쳐 보인다.
-   그래서 표시는 절대 배치로 흐름에서 빼고, 헤더와 셀에 같은 오른쪽 여백을 줘서
-   글자 기준선을 맞춘다. */
-
-/* 헤더가 좌측 정렬이므로 표시를 글자 뒤에 그냥 붙여도 글자 시작 위치가 밀리지
-   않는다(우측 정렬일 때는 표시 폭만큼 글자가 왼쪽으로 밀려 값과 어긋났다). */
-
-/* 헤더와 셀의 좌우 여백을 같게 둬야 글자 시작 위치가 맞는다. */
-
-/* 태그 알약이 커서 행마다 3줄까지 늘어나 10행이 화면을 다 먹었다. */
-
-/* 쇼케이스 카드 위에 알약이 너무 많다 — 순위 배지, 표지 버튼, 작가·점수 알약까지
-   한 장에 넷이다. 상승 카드의 '427위 → 330위'는 이미 맨 텍스트라 두 그룹이 서로
-   다르게도 보였다. 메타는 맨 텍스트로 통일하고, 알약은 순위 배지 하나만 남긴다. */
-.novel-rankings-page .media-rank-card--poster .mini-kpi {
-  padding: 0;
-  border-radius: 0;
-  background: none;
-  color: rgba(248, 251, 255, 0.86);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.novel-rankings-page .media-rank-card--poster .media-rank-card__meta {
-  gap: 0.75rem;
-}
-
-/* 한국어 제목에 라틴 대문자용 자간(0.06em)을 주면 낱자가 흩어져 보인다. */
-.ranking-showcase-group__title {
-  letter-spacing: -0.01em;
 }
 
 /* 쇼케이스에서 '표지 보기' 버튼이 10번 반복되며 제목과 대비를 다툰다. 헤더에
@@ -885,105 +565,3 @@
   font-weight: 800;
   font-size: 1.06em;
 }
-
-/* ── 소설 랭킹 표 (클린 모던) ─────────────────────────────────────────
-   표 안의 링크는 밑줄 없이 색·굵기로만 구분한다. 500행에 밑줄이 깔리면
-   행 전체가 소음이 된다. */
-
-/* 헤더가 두 줄로 접히지 않게. '순위'가 44px 열에서 줄바꿈되고 있었다. */
-
-/* 태그 알약 → 조용한 사각 칩. 부트스트랩 버튼 색을 토큰으로 덮는다. */
-
-/* 행 배경은 그림자가 아니라 아주 옅은 밝기 차로 구분한다. */
-
-/* 사이드바 태그 목록은 남는 세로 공간을 채운다.
-   위쪽 규칙이 `height: clamp(250px, 30vh, 400px) !important`로 고정 높이를 걸어
-   사이드바가 더 길어도 목록은 400px에서 멈추고 아래가 비어 있었다.
-   모바일 필터 패널은 높이 제약이 없어 고정 높이가 맞으므로, 데스크톱에서만 푼다. */
-
-/* ── 데이터 분석: 실제로 갈 수 있는 곳 두 개 ────────────────────────────
-   영문 눈썹 + 큰 값 카드(InsightStrip) 패턴을 걷어낸 자리다. 숫자가 없는 곳에
-   숫자처럼 생긴 카드를 두지 않는다. */
-/* 링크가 하나뿐이라 auto-fit 2열이면 카드가 화면 절반만 차지하고 옆이 빈다.
-   글이 읽히는 폭(약 46em)까지만 넓히고 왼쪽 정렬로 둔다. 항목이 늘면 그때
-   열을 늘리면 된다. */
-
-/* ── 태그 트렌드 ────────────────────────────────────────────────────── */
-
-/* 날짜 선택기만 둔다. 예전에는 '기간 선택'이라는 제목과 설명을 단 패널로
-   감싸져 있었는데, 시작·종료 입력이 이미 무엇인지 말하고 있었다. */
-
-/* 클릭할 수 없는 칩(새로 들어온·사라진 태그)은 커서와 hover를 끈다 */
-
-/* 선택한 태그의 기간 추이. 순위 축은 뒤집어 위로 갈수록 상위가 되게 한다. */
-
-/* 전체 태그 순위표 ────────────────────────────────────────────────
-   '태그 랭킹'인데 1위부터 차례로 볼 곳이 없던 걸 메운다. 존 카드는 존마다
-   정렬 기준이 달라 순위 목록 노릇을 못 한다. */
-
-/* 헤더와 값이 같은 자리에서 시작해야 한다 — 소설 랭킹 표에서 이미 한 번 고쳤다. */
-
-/* 태그 열에 남는 폭을 전부 주면 이름과 숫자 사이가 화면 절반만큼 벌어져,
-   "이 8.0×가 어느 태그였지" 하고 눈이 먼 거리를 되짚게 된다. 폭을 나눠 준다. */
-
-/* 파생 지표 산식. 머리글 hover 와 같은 내용을 글로도 둔다 — 터치 기기에는 hover 가
-   없어서 tooltip 만으로는 이 두 지표가 무슨 뜻인지 끝까지 알 수 없다. */
-
-/* 고정 레이아웃이라 아주 긴 태그 이름은 잘릴 수 있다. 자르되 전체는 title 로 남긴다. */
-
-/* 변동 없음(—)과 비교할 데이터 없음(·)은 다른 것이다. 둘 다 눈에 띄지 않아야 하지만
-   같은 기호를 쓰면 안 된다. */
-
-/* ═══ 데이터 분석 리포트 ══════════════════════════════════════════════════
-   기간 선택 하나가 아래 모든 섹션을 지배하는 한 장짜리 리포트. 예전의 모듈
-   허브(카드 몇 장 + '준비 중')를 대체한다. */
-
-/* 기간 요약 — 아래 섹션 전체가 '이 문단의 근거'로 읽히도록 맨 위에 한 덩어리로 둔다.
-   왼쪽 강조선만으로 인용문처럼 구분한다(카드로 감싸면 아래 섹션 카드들과 위계가 같아진다). */
-
-/* 아직 요약이 없는 상태. 자리를 잡아 두되 '비어 있다'가 결함처럼 보이지 않게
-   본문색을 낮추고 기울임으로만 구분한다. */
-
-/* 사실과 다르게 읽힐 수 있는 지점만 섹션 맨 아래에. 제목 아래 설명 문구는 쓰지 않는다. */
-
-/* 소제목에 붙는 기준 설명. 제목과 같은 줄에 두되 무게를 낮춰, 제목을 읽고 나서
-   "무슨 기준인가"가 바로 이어지게 한다. */
-
-/* KPI 줄 아래에 덧붙이는 보조 문장. 수치 네 칸에 다 넣으면 칸이 좁아지는 값들
-   (분포 꼬리·순서 유지도)을 여기로 내린다. */
-
-/* ── 표 ── */
-
-/* 헤더와 값이 같은 자리에서 시작해야 한다 — 소설 랭킹 표에서 이미 한 번 고쳤다. */
-
-/* ── 가로 막대 ── */
-
-/* ── 추천비 목록 ──
-   카드 격자였을 때는 카드마다 "100명 중 몇 명이 추천을 눌렀습니다"를 한 줄 더 붙여
-   높이를 두 배로 쓰면서 옆의 백분율과 같은 말을 반복했다. 값 + 제목 + 순위만 남긴
-   한 줄 목록으로 바꿔 같은 높이에 두 배 많은 작품을 넣는다. */
-
-/* ── 작품 검색 ── */
-
-/* ── 리포트 차트 ── */
-
-/* Recharts 는 범례 글자색을 선 색과 같게 인라인으로 박는다. 라이트에서 --np-chart-2
-   (#0e93b8)가 흰 배경 위 3.57로 미달했다. 색 구분은 옆의 선 표식이 이미 하고 있으므로
-   글자는 본문 보조색으로 되돌린다. */
-
-/* ── 태그 조합 ── */
-
-/* 리포트 — 4번(가로 비교), 7번(단일 수치), 11번(태그 강화)에서 추가된 것들 */
-
-/* 들어온 작품 / 빠진 작품을 나란히. 한쪽만 표로 크게 두면 다른 쪽 수치가
-   제목 옆 meta 로 밀려 헷갈렸다("들어온 103편 · 빠진 119편"). */
-
-/* 리드 지표. 값 아래에 무엇인지 적는다 — 숫자만 크게 두면 무슨 수인지 모른다. */
-
-/* 순위대 4분위 표시. 고른 작품이 든 칸을 강조한다. */
-
-/* 동반 태그. 태그마다 한 줄로 두고 함께 달린 것들을 옆에 늘어놓는다. */
-
-/* 태그 트렌드 리드 지표. 데이터 분석 리포트와 같은 모양을 쓴다 —
-   두 화면이 같은 지표(평균 순위 이동·순서 일치도)를 말하므로 생김새도 같아야 한다. */
-

@@ -48,14 +48,13 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
     하나도 없는 작품은 기간 증가량이 전부 None 이다. 순위 기준 마지막 날은 `dates[-1]`.
     """
     out: dict[str, dict] = {}
-    for idx, s in enumerate(snaps):
+    for s in snaps:
         date = s['date']
         for i, nid in enumerate(s['ids']):
             w = out.get(nid)
             if w is None:
                 w = out[nid] = {
-                    'ranks': [], 'dates': [], 'first_idx': idx, 'last_idx': idx,
-                    'value_obs': 0,
+                    'ranks': [], 'dates': [], 'value_obs': 0,
                     'first_eps': None, 'last_eps': None,
                     'first_view': None, 'last_view': None,
                     'first_like': None, 'last_like': None,
@@ -63,7 +62,6 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
                 }
             w['ranks'].append(s['rank'][i])
             w['dates'].append(date)
-            w['last_idx'] = idx
             if s['view'][i] == 0 and s['eps'][i] == 0:   # 자리표시: 값은 모른다
                 continue
             if w['first_eps'] is None:
@@ -79,12 +77,11 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
     for w in out.values():
         rs = w['ranks']
         w['best_rank'] = min(rs)
-        w['worst_rank'] = max(rs)
         w['avg_rank'] = sum(rs) / len(rs)
         w['observations'] = len(rs)
         if w['first_eps'] is None:
             w['added_eps'] = w['per_week'] = w['recent_added_eps'] = None
-            w['delta_view'] = w['delta_like'] = w['period_ratio'] = None
+            w['delta_view'] = w['period_ratio'] = None
             continue
         w['added_eps'] = w['last_eps'] - w['first_eps']
         # 마지막 7일에 늘어난 회차 — '지금 연재 중'인지. 기간 초반에만 올리고 멈춘 작품도 added_eps 는 양수라,
@@ -97,7 +94,6 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
         dv = w['last_view'] - w['first_view']
         dl = w['last_like'] - w['first_like']
         w['delta_view'] = dv
-        w['delta_like'] = dl
         # 기간 추천비. 응답의 누적 Like/View 와 **다른 값**이다 — 누적은 작품 전체
         # 역사이고 이것은 이 기간에 새로 읽은 사람들의 추천 비율이다.
         w['period_ratio'] = (dl / dv) if dv >= DELTA_VIEW_FLOOR else None

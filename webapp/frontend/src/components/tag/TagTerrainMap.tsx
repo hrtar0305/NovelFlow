@@ -3,8 +3,9 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis,
   CartesianGrid, Label, ReferenceLine, ReferenceArea, Tooltip,
 } from 'recharts';
+import { formatRatio } from '../../utils/format';
 import { describeRankChange } from '../../utils/rankChange';
-import { DAILY_RULES, ZONE_LABEL, formatShare, formatTop, zoneLines, type ZonedTag, type ZoneKey, type ZoneRules } from '../../utils/tagZones';
+import { DAILY_RULES, ZONE_LABEL, formatTop, zoneLines, type ZonedTag, type ZoneKey, type ZoneRules } from '../../utils/tagZones';
 
 /**
  * 태그 지형 지도 — 가로 작품 수(로그), 세로 100위 안 비율(DECISIONS 2026-10-06, 하루 판정).
@@ -57,7 +58,7 @@ const MapTip = ({ active, payload }: { active?: boolean; payload?: { payload: Pl
       <b>{d.Rank}위 {d.tag}</b>
       {d.zone ? <span style={{ color: `var(--np-zone-${d.zone}-text)` }}>{ZONE_LABEL[d.zone]}{d.edge ? ' · 경계' : ''}</span> : null}
       {chg.kind !== 'none' ? <span>전날 대비 {chg.label}</span> : null}
-      <span>작품 {d.count}편 · 100위 안 {formatTop(d)} · 인기 점수 {formatShare(d.score_share)}</span>
+      <span>작품 {d.count}편 · 100위 안 {formatTop(d)} · 인기 점수 {formatRatio(d.score_share)}</span>
       {d.held ? <span>100위 안 {d.top100}편 — 판단 보류</span> : null}
     </div>
   );

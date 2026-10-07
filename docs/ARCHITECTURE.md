@@ -233,25 +233,26 @@ CloudFront
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/api/ranks/latest-date` | 최신 수집일 |
 | GET | `/api/dates` | 전체 수집일 목록 |
-| GET | `/api/ranks/novels/showcase` | 최신 스냅샷 상단 쇼케이스(TOP/급상승) |
 | GET | `/api/ranks/novels/{date}` | 특정일 전체 소설 랭킹(+순위변동·잔류율) |
 | GET | `/api/novels/{novel_id}/latest` | 소설 최신 상세 |
 | GET | `/api/trends/novels/{novel_id}/{start}/{end}` | 소설 기간별 트렌드(공백 padding) |
 | GET | `/api/trends/novels/{novel_id}/available-dates` | 소설 데이터 존재 날짜 |
-| GET | `/api/ranks/tags/{date}` | 특정일 태그 랭킹(power_score·local_lift) |
+| GET | `/api/uploads/{novel_id}` | 연재 기록(날짜별 올린 회차) |
+| GET | `/api/ranks/tags/{date}` | 특정일 태그 랭킹(인기 점수 점유율 · 100위 안) |
+| GET | `/api/trends/tags/series/{start}/{end}` | 기간 태그 시계열(태그 트렌드) |
+| GET | `/api/analysis/report/{days}` | 분석 리포트(7/30/90일) |
 | GET | `/api/authors/{author_id}` | 작가 작품 목록 |
-| GET | `/api/trends/tags/analysis/{start}/{end}` | 태그 트렌드 2×2 매트릭스 분석 |
+| GET | `/api/trends/tags/analysis/{start}/{end}` | 옛 태그 트렌드 2×2 분석 — 운영 main 프론트용, 개편 프론트 배포 뒤 삭제 |
 
 **공모전** (`{year}`는 현재 2025만 지원)
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/api/contests/{year}/latest-date` | 최신 수집일 |
 | GET | `/api/contests/{year}/available-dates` | 전체 수집일 |
 | GET | `/api/contests/{year}/showcase` | 수상작 쇼케이스(최대 11) |
 | GET | `/api/contests/{year}/{date}` | 특정일 공모전 랭킹(view_change 기준) |
 | GET | `/api/contests/{year}/novels/{novel_id}/latest` | 공모전 소설 최신 상세 |
 | GET | `/api/trends/contests/{year}/novels/{novel_id}/...` | 공모전 소설 트렌드/날짜 |
 | GET | `/api/contests/{year}/ranks/tags/{date}` | 공모전 태그 랭킹(3-track) |
+| GET | `/api/contests/{year}/ranks/daily-tags/{date}` | 2026 공모전 일간 태그 랭킹 |

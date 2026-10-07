@@ -103,7 +103,7 @@ export default function AuthorPage() {
     { key: 'view', header: '조회', width: '80px', sortKey: 'View', render: n => strongIf('View', formatMan(n.View)) },
     { key: 'fav', header: '선호', width: '72px', sortKey: 'Fav', render: n => strongIf('Fav', formatInt(n.Fav)) },
     { key: 'rank', header: '오늘 순위', width: '96px', sortKey: 'rank', render: rankCell },
-    { key: 'tags', header: '태그', width: 'minmax(0,1fr)', render: n => <TagLinks tags={n.Tags ?? []} limit={(n.Tags ?? []).length} wrap hrefFor={tagHref} /> },
+    { key: 'tags', header: '태그', width: 'minmax(0,1fr)', render: n => <TagLinks tags={n.Tags ?? []} hrefFor={tagHref} /> },
   ];
 
   const mobileRow = (n: AuthorNovel) => (
@@ -112,7 +112,7 @@ export default function AuthorPage() {
       <div className="rank-mrow__main">
         <Link to={`/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title || '(제목 없음)'}</Link>
         <p>{formatInt(n.Eps)}화 · 조회 <b>{formatMan(n.View)}</b> · 선호 {formatInt(n.Fav)} · {todayRank(n) != null ? <b>오늘 {todayRank(n)}위</b> : '순위 밖'}</p>
-        <TagLinks tags={n.Tags ?? []} limit={(n.Tags ?? []).length} wrap hrefFor={tagHref} />
+        <TagLinks tags={n.Tags ?? []} hrefFor={tagHref} />
       </div>
     </div>
   );

@@ -1,61 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { getLatestContestNovelDetails, getContestNovelTrend, getContestAvailableDates, getContestNovelAvailableDates } from '../services/api';
 import { format, subDays, parseISO, startOfDay } from 'date-fns';
-import { contestTrendRow, withDebutBaseline } from '../utils/contestNovels';
+import { contestTrendRow, withDebutBaseline, type ContestTrendRow } from '../utils/contestNovels';
+import type { MetricRow } from '../utils/metricSeries';
+import type { NovelHeaderDetails } from '../components/novel/NovelHeader';
 import { contestConfig } from '../utils/contest';
 
-interface ContestTrendData {
-  Date: string;
-  Rank: number | null;
-  DailyRank?: number | null;
-  Title: string;
-  View: number | null;
-  Like: number | null;
-  Fav: number | null;
-}
-
-interface MappedTrendData {
-  Date: string;
-  Ranking: number | null; // 'Rank' -> 'Ranking'
-  Title: string;
-  View: number | null;
-  Like: number | null;
-  Fav: number | null;
-  Score: number | null;
-}
-
-interface ContestNovelDetails {
-  ID: string;
-  Title: string;
-  AuthorName: string;
-  AuthorID: string;
-  Synopsis: string;
-  Tags: string[];
-  View?: number;
-  Like?: number;
-  Fav?: number;
-  Alr?: number;
-  Eps?: number;
-  Ranking?: number;
-  award?: string | null;
-  /** 최신 수집이 자리표시(삭제·비공개·수집 실패)였다. 수치는 직전 정상 행(values_date) 것이거나 비어 있다. */
-  is_unavailable?: boolean;
-  values_date?: string | null;
-  /** 상세 머리 배지 이름(백엔드 `_badge_labels`). 공모전 상세는 참가작 공통 배지를 걸러 낸다. */
-  badges?: string[];
-  // 2026~ 잔류율과 그 원재료(회차 30 미만이면 비어 있다). 2025 는 없다.
-  EarlyRetentionRate?: number | null;
-  RecentRetentionRate?: number | null;
-  FirstEpView?: number | null; FirstEpNum?: number | null; Ep30View?: number | null; Ep30Num?: number | null;
-  RecentBaseView?: number | null; RecentBaseNum?: number | null; TargetLatestEpView?: number | null; TargetLatestEpNum?: number | null;
-}
+/** 공모전 상세 머리. 최신 수집이 자리표시(삭제·비공개·수집 실패)였으면 is_unavailable, 수치는 직전 정상 행(values_date) 것이거나 비어 있다. */
+type ContestNovelDetails = NovelHeaderDetails & {
+  Date?: string; Ranking?: number; award?: string | null; is_unavailable?: boolean; values_date?: string | null;
+};
 
 export const useContestNovelData = (year: string | undefined, novelId: string | undefined) => {
   const daily = contestConfig(year ?? '').headline === 'daily';
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   
-  const [trendData, setTrendData] = useState<MappedTrendData[]>([]);
+  const [trendData, setTrendData] = useState<MetricRow[]>([]);
   /** trendData 중 화면 기간의 첫날. 그 앞은 첫날을 직전 수집일과 견주기 위한 기준값이다. */
   const [dataStart, setDataStart] = useState<string | null>(null);
   // 공모전 수집일. 추이 API가 수집하지 않은 날(예: 2026-09-11)도 빈 행으로 채워 주므로 이것으로 거른다.
@@ -67,7 +28,6 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
   
   const [minDate, setMinDate] = useState<Date | null>(null);
   const [maxDate, setMaxDate] = useState<Date | null>(null);
-  const [availableDates, setAvailableDates] = useState<Date[]>([]);
   const [novelAvailableDatesSet, setNovelAvailableDatesSet] = useState<Set<string>>(new Set());
   // 기간 버튼·날짜를 연달아 바꾸면 응답이 순서 없이 온다 — 마지막 요청의 응답만 화면에 반영한다.
   const reqSeq = useRef(0);
@@ -85,8 +45,8 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
       const collected = contestDatesRef.current;
       // 대표 순위(2025 누적, 2026~ 일간)와 자리표시(View -1 → 기록 없음)는 contestTrendRow 한 곳에서 정한다(행 펼침과 공유).
       // 신작의 첫 기록 앞에 '전날 = 0' 기준 행(결과에는 안 나온다) — 첫날의 증가량을 셀 수 있게(withDebutBaseline).
-      const mappedData = withDebutBaseline<MappedTrendData>(response.data.filter((d: ContestTrendData) => collected.size === 0 || collected.has(d.Date))
-        .map((d: ContestTrendData) => contestTrendRow(d, daily)), year);
+      const mappedData = withDebutBaseline<MetricRow>(response.data.filter((d: ContestTrendRow) => collected.size === 0 || collected.has(d.Date))
+        .map((d: ContestTrendRow) => contestTrendRow(d, daily)), year);
       if (seq !== reqSeq.current) return;
       setTrendData(mappedData);
       setDataStart(format(startOfDay(start), 'yyyy-MM-dd'));
@@ -110,7 +70,6 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
         getContestNovelAvailableDates(yearNum, novelId) // 소설의 데이터 보유 날짜 전체를 가져옵니다.
     ]).then(([contestDatesRes, detailsRes, novelDatesRes]) => {
         const contestDates = (contestDatesRes.data.available_dates || []).sort((a: string, b: string) => a.localeCompare(b));
-        setAvailableDates(contestDates.map((d: string) => parseISO(d)));
         contestDatesRef.current = new Set<string>(contestDates);
 
         const novelDates = new Set<string>(novelDatesRes.data.available_dates || []);
@@ -165,5 +124,5 @@ export const useContestNovelData = (year: string | undefined, novelId: string | 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, novelId]);
 
-  return { startDate, endDate, setStartDate, setEndDate, trendData, dataStart, details, loading, error, minDate, maxDate, availableDates, novelAvailableDatesSet, fetchTrendData };
+  return { startDate, endDate, setStartDate, setEndDate, trendData, dataStart, details, loading, error, minDate, maxDate, novelAvailableDatesSet, fetchTrendData };
 };

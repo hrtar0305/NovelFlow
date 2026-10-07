@@ -1,17 +1,14 @@
 import { Link } from 'react-router-dom';
 import Sparkline from '../ui/Sparkline';
 import { formatDateKo, formatInt } from '../../utils/format';
+import type { TagSeriesResponse } from '../../utils/tagTrends';
 
-export type TagSeries = {
-  dates: string[];
-  tags: Record<string, { rank: (number | null)[]; count: (number | null)[]; score: (number | null)[]; top?: (number | null)[] }>;
-};
 
 interface Props {
   tag: string;
   /** 표가 보여 주는 날짜 */
   date: string;
-  series: TagSeries | 'loading' | 'error';
+  series: TagSeriesResponse | 'loading' | 'error';
   /** 이 태그가 달린 작품을 보는 곳(일간 랭킹 태그 필터) */
   novelsHref: string;
 }

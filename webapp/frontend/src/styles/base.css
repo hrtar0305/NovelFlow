@@ -5,10 +5,6 @@ body,
   background-color: var(--np-canvas);
 }
 
-html {
-  background: var(--np-canvas);
-}
-
 /* main.tsx가 App(이 스타일)을 bootstrap.min.css보다 먼저 불러와서, 같은 우선순위의
    body 규칙은 Bootstrap이 이긴다(이 때문에 이전 Pretendard도 적용되지 않았다).
    html body로 한 단계 높여 순서와 무관하게 서체가 적용되게 한다. */
@@ -23,10 +19,10 @@ html body {
 body {
   margin: 0;
   min-width: 320px;
-  color: var(--np-text-primary);
   /* 배경은 단색이다. 상단 코너의 파란 글로우 두 개와 세로 그라데이션이
      '대시보드' 인상의 큰 부분이었다. 면 분리는 표면 밝기 차로만 한다. */
   background: var(--np-canvas);
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -41,11 +37,8 @@ body {
 /* 화면 채우기는 .app-shell이 맡는다(layout.css 주석 참고).
    여기에 min-height를 또 주면 높이가 중첩돼 페이지가 뷰포트보다 길어진다. */
 #root {
-  display: flow-root;
-}
-
-[data-theme="light"] body {
-  background: var(--np-canvas);
+  display: flex;
+  flex-direction: column;
 }
 
 .theme-switching *,
@@ -56,12 +49,6 @@ body {
 
 a {
   color: inherit;
-}
-
-.text-dark,
-.text-body,
-.fw-bold {
-  color: var(--np-text-primary) !important;
 }
 
 button,
@@ -86,95 +73,6 @@ p {
   margin: 0;
 }
 
-.text-muted {
-  color: var(--np-text-secondary) !important;
-}
-
-.border {
-  border-color: var(--np-border) !important;
-}
-
-.btn,
-.form-control,
-.form-select,
-.dropdown-menu,
-.modal-content {
-  border-radius: var(--np-radius-sm);
-}
-
-.btn,
-.form-control,
-.form-select {
-  min-height: 40px;
-  border-color: var(--np-border) !important;
-  background-color: var(--np-surface) !important;
-  color: var(--np-text-primary) !important;
-  font-size: var(--np-fs-meta);
-  box-shadow: none !important;
-}
-
-.btn {
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.form-label {
-  font-size: var(--np-fs-micro) !important;
-}
-
-.dropdown-item {
-  font-size: var(--np-fs-meta);
-  color: var(--np-text-primary) !important;
-}
-
-.dropdown-item:hover,
-.dropdown-item:focus,
-.dropdown-item.active,
-.dropdown-item:active {
-  color: var(--np-text-heading) !important;
-  background-color: var(--np-accent-ghost) !important;
-}
-
-.btn-primary {
-  background: var(--np-accent-solid) !important;
-  color: var(--np-on-accent-solid) !important;
-  border-color: var(--np-accent-solid) !important;
-}
-
-.btn-primary:hover,
-.btn-primary:focus-visible {
-  filter: brightness(1.05);
-}
-
-.btn-secondary {
-  background-color: var(--np-surface-raised) !important;
-  border-color: var(--np-border) !important;
-  color: var(--np-text-primary) !important;
-}
-
-.btn-outline-secondary,
-.btn-outline-danger,
-.btn-outline-primary {
-  background-color: transparent !important;
-  border-color: var(--np-border-strong) !important;
-  color: var(--np-text-secondary) !important;
-}
-
-.btn-outline-secondary:hover,
-.btn-outline-primary:hover,
-.btn-outline-danger:hover {
-  color: var(--np-text-heading) !important;
-  background-color: var(--np-accent-ghost) !important;
-  border-color: color-mix(in srgb, var(--np-accent) 25%, var(--np-border) 75%) !important;
-}
-
-.form-control::placeholder {
-  color: var(--np-text-secondary) !important;
-}
-
-.form-control:focus,
-.form-select:focus,
-.btn:focus-visible,
 .theme-toggle-btn:focus-visible,
 .app-header-menu-button:focus-visible,
 .app-header-link:focus-visible,
@@ -185,36 +83,6 @@ p {
   box-shadow: 0 0 0 3px var(--np-focus-ring) !important;
 }
 
-.modal-content,
-.dropdown-menu,
-.alert {
-  background-color: var(--np-surface) !important;
-  border-color: var(--np-border) !important;
-  color: var(--np-text-primary) !important;
-  box-shadow: none;
-}
-
-.table {
-  --bs-table-bg: transparent;
-  --bs-table-color: var(--np-text-primary);
-  --bs-table-border-color: var(--np-border);
-  --bs-table-hover-bg: var(--np-accent-ghost);
-  --bs-table-hover-color: var(--np-text-heading);
-  color: var(--np-text-primary) !important;
-  border-color: var(--np-border) !important;
-}
-
-.table > :not(caption) > * > * {
-  color: var(--np-text-primary) !important;
-  border-color: var(--np-border) !important;
-  box-shadow: none !important;
-}
-
-.spinner-border {
-  color: var(--np-accent);
-}
-
-.custom-tooltip,
 .recharts-default-tooltip {
   border: 1px solid var(--np-border) !important;
   background: var(--np-surface-overlay) !important;
@@ -283,8 +151,7 @@ p {
 .react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected,
 .react-datepicker__day--range-start,
-.react-datepicker__day--range-end,
-.react-datepicker__day--highlighted {
+.react-datepicker__day--range-end {
   background-color: var(--np-accent) !important;
   color: var(--np-on-image) !important;
 }

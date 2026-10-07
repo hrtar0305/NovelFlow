@@ -4,6 +4,7 @@ import UploadCells from './UploadCells';
 import { formatDateKo, formatInt, formatMan, formatRatio } from '../../utils/format';
 import { rankTicks, signed, summarizeMetrics, type MetricPoint } from '../../utils/metricSeries';
 import { uploadSummary, type UploadDays, type UploadsState } from '../../utils/uploads';
+import { linePath } from '../../utils/sparkline';
 
 /**
  * 작품 상세 '지표' 영역(2026-09-30 개편). 사용자가 고른 기간 동안 한 작품의 지표를 따라가는 곳이다.
@@ -81,13 +82,7 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
     const top = 22;
     const bottom = RH - (hasOut ? 30 : 12);
     const Y = (r: number) => top + ((r - a) / (b - a || 1)) * (bottom - top);
-    let d = '';
-    let pen = false;
-    points.forEach((p, i) => {
-      if (!p.rec || p.rank == null) { pen = false; return; }
-      d += `${pen ? 'L' : 'M'}${X(i).toFixed(1)},${Y(p.rank).toFixed(1)}`;
-      pen = true;
-    });
+    const d = linePath(points.map(p => (p.rec ? p.rank : null)), X, Y);
     const idx = (p: MetricPoint) => points.indexOf(p);
     const marks = new Map<number, string>();
     const { rankFirst: rf, rankLast: rl } = summary ?? { rankFirst: null, rankLast: null };
@@ -169,16 +164,7 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
     const vals = per.filter((v): v is number => v != null);
     const mx = Math.max(1, ...vals);
     const mn = r.kind === 'line' ? Math.min(...vals) : 0;
-    let line = '';
-    if (r.kind === 'line') {
-      let pen = false;
-      per.forEach((v, i) => {
-        if (v == null) { pen = false; return; }
-        const y = 6 + (1 - (v - mn) / (mx - mn || 1)) * (h - 12);
-        line += `${pen ? 'L' : 'M'}${X(i).toFixed(1)},${y.toFixed(1)}`;
-        pen = true;
-      });
-    }
+    const line = r.kind === 'line' ? linePath(per, X, v => 6 + (1 - (v - mn) / (mx - mn || 1)) * (h - 12)) : '';
     return (
       <svg width={width} height={h} className="mx-svg" aria-hidden="true">
         {hl(h)}

@@ -5,7 +5,7 @@
  *
  * - 면은 하나다(canvas = surface). 섹션은 박스가 아니라 가로선으로 나눈다.
  * - 강조(accent)는 빨강 — 활성 탭 밑줄, 1~3위 숫자, 차트 선. 채운 버튼은 accent-solid(본문색).
- * - 상승 빨강 / 하락 파랑(한국 차트 관례). positive/negative도 같은 값이다.
+ * - 상승 빨강 / 하락 파랑(한국 차트 관례).
  * - 글자색은 canvas·surface-alt 위 4.5:1 이상 — scripts/contrast.mjs로 검사한다.
  */
 :root {
@@ -15,7 +15,6 @@
   --np-header-h: 64px;
 
   --np-canvas: #121418;
-  --np-canvas-elevated: #121418;
   --np-surface: #121418;
   --np-surface-alt: #1b1e23;
   --np-surface-raised: #23262d;
@@ -48,18 +47,13 @@
   --np-text-heading: #eceef2;
 
   --np-accent: #ff5c70;
-  --np-accent-strong: #ff8190;
   --np-accent-soft: rgba(255, 92, 112, 0.14);
   --np-accent-ghost: rgba(255, 92, 112, 0.08);
-  --np-accent-warm: #5c95ff;
-  --np-accent-warm-soft: rgba(92, 149, 255, 0.12);
   --np-accent-solid: #eceef2;
   --np-on-accent-solid: #121418;
   /* 강조색(빨강) 위 글자. 다크의 강조색은 밝아서 흰 글자가 3:1에 못 미친다 — 어두운 글자. */
   --np-on-accent: #121418;
 
-  --np-positive: #ff5c70;
-  --np-negative: #5c95ff;
   --np-warning: #f2a23a;
   --np-focus-ring: rgba(92, 149, 255, 0.45);
   --np-rank-up: #ff5c70;
@@ -74,18 +68,6 @@
   --np-zone-gem-text: #2cc4ac;
   --np-zone-saturated-text: #f0a030;
 
-  --np-banner-start: #121418;
-  --np-banner-end: #121418;
-  --np-bg: var(--np-canvas);
-  --np-border-subtle: var(--np-border);
-
-  --np-chart-1: #ff5c70;
-  --np-chart-2: #5c95ff;
-  --np-chart-3: #9a86ff;
-  --np-chart-4: #2cc4ac;
-  --np-chart-5: #f2a23a;
-  --np-chart-6: #a0a6b1;
-
   --np-radius-sm: 4px;
   --np-radius-md: 8px;
   --np-radius-lg: 10px;
@@ -95,36 +77,22 @@
   --np-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
   --np-shadow-lg: -12px 0 32px rgba(0, 0, 0, 0.45);
 
-  --np-space-1: 0.375rem;
-  --np-space-2: 0.625rem;
-  --np-space-3: 0.875rem;
   --np-space-4: 1.125rem;
   --np-space-5: 1.5rem;
-  --np-space-6: 2rem;
   --np-space-7: 2.75rem;
-  --np-space-8: 3.5rem;
   --np-fs-micro: 0.75rem;
   --np-fs-meta: 0.8125rem;
   --np-fs-body: 0.875rem;
   --np-fs-body-lg: 0.9375rem;
-  --np-fs-title-sm: 1.1875rem;
   --np-fs-title-md: 1.875rem;
-  --np-fs-title-lg: 2rem;
   --np-content-max: 1200px;
   --np-transition: 150ms ease;
-  --bs-body-bg: var(--np-canvas);
-  --bs-body-color: var(--np-text-primary);
-  --bs-border-color: var(--np-border);
-  --bs-secondary-color: var(--np-text-secondary);
-  --bs-heading-color: var(--np-text-heading);
-  --bs-emphasis-color: var(--np-text-heading);
 }
 
 [data-theme="light"] {
   color-scheme: light;
 
   --np-canvas: #ffffff;
-  --np-canvas-elevated: #ffffff;
   --np-surface: #ffffff;
   --np-surface-alt: #f5f6f8;
   --np-surface-raised: #f1f2f5;
@@ -144,17 +112,12 @@
   --np-text-heading: #15171c;
 
   --np-accent: #d42a44;
-  --np-accent-strong: #b81f37;
   --np-accent-soft: rgba(212, 42, 68, 0.1);
   --np-accent-ghost: rgba(212, 42, 68, 0.06);
-  --np-accent-warm: #2c6be0;
-  --np-accent-warm-soft: rgba(44, 107, 224, 0.1);
   --np-accent-solid: #15171c;
   --np-on-accent-solid: #ffffff;
   --np-on-accent: #ffffff;
 
-  --np-positive: #d42a44;
-  --np-negative: #2c6be0;
   --np-warning: #a35f00;
   --np-focus-ring: rgba(44, 107, 224, 0.35);
   --np-rank-up: #d42a44;
@@ -169,26 +132,6 @@
   --np-zone-gem-text: #0d7f6f;
   --np-zone-saturated-text: #a1600a;
 
-  --np-banner-start: #ffffff;
-  --np-banner-end: #ffffff;
-  --np-bg: var(--np-canvas);
-  --np-border-subtle: var(--np-border);
-
-  --np-chart-1: #d42a44;
-  --np-chart-2: #2c6be0;
-  --np-chart-3: #6247d6;
-  --np-chart-4: #0f9a86;
-  --np-chart-5: #d9820a;
-  --np-chart-6: #6a707b;
-
-  --np-shadow-sm: none;
   --np-shadow-md: 0 8px 28px rgba(20, 24, 32, 0.14);
   --np-shadow-lg: -12px 0 32px rgba(20, 24, 32, 0.12);
-
-  --bs-body-bg: var(--np-canvas);
-  --bs-body-color: var(--np-text-primary);
-  --bs-border-color: var(--np-border);
-  --bs-secondary-color: var(--np-text-secondary);
-  --bs-heading-color: var(--np-text-heading);
-  --bs-emphasis-color: var(--np-text-heading);
 }

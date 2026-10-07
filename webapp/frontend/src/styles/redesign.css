@@ -19,7 +19,6 @@
 .date-nav { display: flex; align-items: center; gap: 0.6rem; }
 .date-nav__step { width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--np-surface-alt); color: var(--np-text-heading); font-weight: 700; line-height: 1; }
 .date-nav__step:disabled { color: var(--np-text-faint); opacity: 0.6; }
-.date-picker-wrapper.date-picker-wrapper--inline { padding: 0; border: 0; background: none; min-height: 0; }
 .date-nav__date { font-size: 0.9375rem; font-weight: 700; color: var(--np-text-heading); border-bottom: 1.5px dashed var(--np-text-faint); padding: 0 0 1px; }
 
 .tab-bar { display: flex; align-items: flex-end; gap: 1.375rem; border-bottom: 1px solid var(--np-border); margin-top: 1.25rem; flex-wrap: wrap; }
@@ -42,14 +41,13 @@
 .fn-ref a { color: var(--np-text-faint); text-decoration: none; padding: 0 1px; }
 .fn-ref a:hover, .fn-ref a:focus-visible { color: var(--np-accent); }
 
-.tag-links { font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-.tag-links__tag { margin-right: 0.5rem; padding: 0; border: 0; background: none; color: var(--np-text-secondary); font: inherit; text-decoration: none; }
+.tag-links { font-size: 0.8125rem; display: block; line-height: 1.55; }
+/* 태그 하나는 '#'과 이름 사이에서 끊지 않는다. */
+.tag-links__tag { margin-right: 0.5rem; padding: 0; border: 0; background: none; color: var(--np-text-secondary); font: inherit; text-decoration: none; white-space: nowrap; }
 .tag-links__tag:hover { color: var(--np-text-heading); text-decoration: underline; }
 .tag-links__tag.is-hit { color: var(--np-rank-up); font-weight: 700; }
-.tag-links__more { color: var(--np-text-faint); }
 
 .sparkline { display: block; overflow: visible; }
-.sparkline__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); }
 .sparkline--empty { font-size: var(--np-fs-meta); color: var(--np-text-faint); }
 .filter-drawer.offcanvas { width: 440px; background: var(--np-canvas); color: var(--np-text-primary); border-left: 1px solid var(--np-border); box-shadow: var(--np-shadow-lg); }
 /* Bootstrap 닫기(×)는 어두운 글리프라 다크 드로어에서 안 보였다 — 다크에서만 Bootstrap 자신의 반전 필터를 켠다. */
@@ -198,7 +196,6 @@
 .detail-sec__range { display: flex; align-items: center; flex-wrap: wrap; gap: 0.625rem 0.875rem; font-size: 0.875rem; }
 .detail-sec__range > button { border: 0; background: none; padding: 0; font-weight: 600; color: var(--np-text-faint); white-space: nowrap; }
 .detail-sec__range > button.is-on { color: var(--np-text-heading); }
-.tag-links--wrap { white-space: normal; overflow: visible; line-height: 1.55; }
 /* 표 안 제목은 두 줄까지 — 태그 열에 폭을 내주면서 한 줄이면 대부분 잘린다(행 높이 84px에 두 줄이 맞는다). */
 .rank-table__td .rank-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
 .rank-titlecell { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -287,12 +284,10 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 
 /* ── 기간 선택(시작 – 종료): 상자 입력칸 대신 점선 밑줄 글자 ── */
 .range-inline { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 0.4rem; font-size: 0.9375rem; }
-.range-inline--spaced { margin-bottom: 0.5rem; }
 .range-inline .react-datepicker-wrapper { width: auto; }
 .range-inline__date { cursor: pointer; font-weight: 700; color: var(--np-text-heading); border-bottom: 1.5px dashed var(--np-text-faint); font-variant-numeric: tabular-nums; }
 .range-inline__empty { font-weight: 500; color: var(--np-text-faint); }
 .range-inline__sep { color: var(--np-text-faint); }
-.range-inline__help { flex-basis: 100%; font-size: 0.8125rem; color: var(--np-text-faint); }
 .stable-label { display: inline-grid; }
 .stable-label > * { grid-area: 1 / 1; }
 .stable-label__ghost { visibility: hidden; }
@@ -356,18 +351,13 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .detail-head__contest { color: var(--np-text-secondary); }
 .detail-head__contest b { font-weight: 700; }
 
-/* ── 태그 랭킹(2026-09-30): 구역 필터 줄 · 구역 이름 · 지형 지도 ── */
+/* ── 태그 랭킹(2026-09-30): 구역 이름 · 구역 칩 · 지형 지도 ── */
 .zone-dot { display: inline-block; width: 8px; height: 8px; margin-right: 0.4rem; border-radius: 50%; background: currentColor; vertical-align: 1px; }
 .zone-name { font-size: 0.875rem; font-weight: 600; white-space: nowrap; color: var(--np-text-secondary); }
 .zone-name--none { color: var(--np-text-faint); font-weight: 400; }
 .zone-name--mainstream .zone-dot { background: var(--np-zone-mainstream); }
 .zone-name--gem .zone-dot { background: var(--np-zone-gem); }
 .zone-name--saturated .zone-dot { background: var(--np-zone-saturated); }
-.zone-filter { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; padding: 0.7rem 0; border-bottom: 1px solid var(--np-border); }
-.zone-filter button { padding: 0 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; font-size: 0.875rem; font-weight: 600; color: var(--np-text-secondary); white-space: nowrap; }
-.zone-filter button.is-on { color: var(--np-text-heading); border-bottom-color: var(--np-text-heading); }
-.zone-filter__n { margin-left: 0.2rem; font-weight: 500; color: var(--np-text-faint); }
-.zone-filter button.is-on .zone-filter__n { color: var(--np-text-secondary); }
 .row-expand--tag { padding-left: 7.5rem; }
 @media (max-width: 991.98px) { .row-expand--tag { padding-left: 1.25rem; } }
 /* 폰에서 펼친 태그 행: 순위선 · 수치 · 링크를 세로로 쌓는다(가로로 두면 360px 를 넘는다). */
@@ -386,10 +376,6 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .zone-chip__lead { flex-basis: 100%; }
 @media (max-width: 767.98px) { .zone-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .zone-chip__lead { max-width: 100%; } }
 .zone-edge { margin-left: 0.35rem; padding: 0 0.3rem; border: 1px solid var(--np-border); border-radius: 3px; font-size: 0.6875rem; font-weight: 600; color: var(--np-text-faint); }
-.tag-map__head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
-.tag-map__head h2 { margin: 0; font-size: 1.1875rem; font-weight: 800; letter-spacing: -0.02em; color: var(--np-text-heading); }
-.tag-map__meta { font-size: 0.875rem; color: var(--np-text-secondary); }
-.tag-map__axis { margin: 0.4rem 0 0.8rem; font-size: 0.8125rem; color: var(--np-text-faint); }
 .tag-map__chart { height: clamp(320px, 34vw, 400px); }
 .tag-map__avg { font-size: 11px; font-weight: 600; fill: var(--np-text-secondary); }
 .tag-map__label { font-size: 11px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-canvas); stroke-width: 3px; stroke-linejoin: round; }
@@ -518,7 +504,6 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .mx-marklabel { font-size: 12px; font-weight: 700; fill: var(--np-text-heading); paint-order: stroke; stroke: var(--np-canvas); stroke-width: 3px; stroke-linejoin: round; }
 .mx-bar { fill: var(--np-chart-bar); }
 .mx-bar.is-on { fill: var(--np-text-heading); }
-.mx-bar.is-count { fill: var(--np-text-secondary); }
 .mx-bar.is-multi { fill: none; stroke: var(--np-text-secondary); stroke-dasharray: 3 2; }
 .mx-scoreline { fill: none; stroke: var(--np-text-secondary); stroke-width: 1.8; stroke-linejoin: round; }
 .mx-tip { position: absolute; top: 26px; z-index: 3; min-width: 180px; padding: 0.55rem 0.75rem; border: 1px solid var(--np-border); border-radius: var(--np-radius-sm); background: var(--np-canvas); box-shadow: var(--np-shadow-md); font-size: 0.8125rem; line-height: 1.65; color: var(--np-text-secondary); pointer-events: none; white-space: nowrap; }
@@ -534,8 +519,6 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .mx-table td small { margin-left: 0.3rem; font-size: 0.75rem; color: var(--np-text-faint); }
 .mx-table__out { color: var(--np-text-faint); }
 .mx-more { margin-top: 0.6rem; font-size: 0.875rem; }
-/* 태그 하나는 '#'과 이름 사이에서 끊지 않는다. */
-.tag-links--wrap .tag-links__tag { white-space: nowrap; }
 @media (max-width: 767.98px) {
   /* 좁은 화면의 머리 수치: 줄 맨 앞에 구분선이 오지 않게 칸 배열로. 근거가 붙는 잔류율은 한 줄을 다 쓴다. */
   .detail-head .inline-nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 0.2rem 0.75rem; }

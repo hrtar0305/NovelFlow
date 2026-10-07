@@ -5,7 +5,8 @@ import { getAvailableDates, getTagRankingsByDate, getTagSeries } from '../servic
 import PageTitle from '../components/ui/PageTitle';
 import DateNav from '../components/ui/DateNav';
 import ViewSwitch from '../components/ui/ViewSwitch';
-import TagRowExpand, { type TagSeries } from '../components/tag/TagRowExpand';
+import TagRowExpand from '../components/tag/TagRowExpand';
+import type { TagSeriesResponse } from '../utils/tagTrends';
 import DailyTagBoard from '../components/tag/DailyTagBoard';
 import type { DailyTag } from '../utils/tagZones';
 
@@ -26,7 +27,7 @@ export default function TagRankingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openTag, setOpenTag] = useState<string | null>(null);
-  const [series, setSeries] = useState<{ date: string; data: TagSeries | 'loading' | 'error' } | null>(null);
+  const [series, setSeries] = useState<{ date: string; data: TagSeriesResponse | 'loading' | 'error' } | null>(null);
 
   useEffect(() => {
     getAvailableDates()
@@ -60,7 +61,7 @@ export default function TagRankingsPage() {
     const key = dateParam;
     setSeries({ date: key, data: 'loading' });
     getTagSeries(format(subDays(parseISO(key), HISTORY_DAYS - 1), 'yyyy-MM-dd'), key)
-      .then(r => setSeries(cur => (cur?.date === key ? { date: key, data: r.data as TagSeries } : cur)))
+      .then(r => setSeries(cur => (cur?.date === key ? { date: key, data: r.data as TagSeriesResponse } : cur)))
       .catch(() => {
         if (requested.current === key) requested.current = null;   // 다음에 펼칠 때 다시 시도
         setSeries(cur => (cur?.date === key ? { date: key, data: 'error' } : cur));

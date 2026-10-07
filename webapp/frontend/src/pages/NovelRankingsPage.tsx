@@ -1,7 +1,6 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
-import { Search as SearchIcon } from 'react-bootstrap-icons';
 import { getAvailableDates, getNovelRankingsByDate } from '../services/api';
 import PageTitle from '../components/ui/PageTitle';
 import DateNav from '../components/ui/DateNav';
@@ -12,14 +11,14 @@ import NovelCover from '../components/NovelCover';
 import Showcase, { type ShowcaseItem } from '../components/ranking/Showcase';
 import FilterDrawer from '../components/ranking/FilterDrawer';
 import AppliedFilters from '../components/ranking/AppliedFilters';
+import RankToolbar from '../components/ranking/RankToolbar';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import NovelRowExpand from '../components/ranking/NovelRowExpand';
 import {
-  DEFAULT_SORT, EMPTY_FILTER, activeFilterCount, hasStatusData, statusCounts, applyRankingFilter, nextSort, normalizeNovels, sortRankings, tagCounts, toggleTag,
+  DEFAULT_SORT, EMPTY_FILTER, SERIAL_STATUS_NOTICE, activeFilterCount, hasStatusData, statusCounts, applyRankingFilter, nextSort, normalizeNovels, sortRankings, tagCounts, toggleTag,
   type RankingFilter, type RankingNovel, type SortConfig, type SortKey,
 } from '../utils/rankingQuery';
 import { formatInt, formatRatio } from '../utils/format';
-import { SERIAL_STATUS_NOTICE } from '../utils/serialStatusNotice';
 
 // 잔류율 산식은 책 주석처럼 표 아래에 두고, 열 이름 옆 작은 번호로 잇는다 — 머리글 아래에 두면
 // 그 두 열만 머리글이 높아져 어색했다. 추천비는 이름으로 뜻이 전해져 설명을 두지 않는다.
@@ -73,7 +72,6 @@ export default function NovelRankingsPage() {
     return () => { cancelled = true; };
   }, [dateParam, dates, navigate, params]);
 
-  const update = useCallback((next: RankingFilter) => setFilter(next), []);
   // 입력은 즉시 반영하고 500행 필터·정렬만 늦춘다(제어 입력을 트랜지션으로 갱신하면 글자가 밀린다).
   const deferredFilter = useDeferredValue(filter);
   const isPending = deferredFilter !== filter;
@@ -86,7 +84,7 @@ export default function NovelRankingsPage() {
   // 상태를 골랐는데 그날 기록이 없으면(2026-09-05 이전) 결과 0의 이유를 그대로 적는다.
   const statusBlocked = (filter.statuses ?? []).length > 0 && !statusAvailable && rows.length > 0;
   const hit = useMemo(() => new Set(filter.rule ? [] : filter.tags), [filter]);
-  const onTag = useCallback((t: string) => update(toggleTag(filter, t)), [filter, update]);
+  const onTag = useCallback((t: string) => setFilter(toggleTag(filter, t)), [filter]);
 
   // 쇼케이스는 고른 날짜의 표에서 바로 고른다 — 날짜 선택이 쇼케이스 위에 있어 날짜를 바꾸면 쇼케이스도 바뀌길 기대한다
   // (사용자 검토 2026-10-03). 목록 응답에 순위·변동이 다 있어 따로 부를 API 도 없다(전에는 최신일 쇼케이스 API 를 따로 불렀다).
@@ -124,7 +122,7 @@ export default function NovelRankingsPage() {
     { key: 'ratio', header: '추천비', width: '62px', sortKey: 'like_to_view_ratio', render: n => strongIf(['like_to_view_ratio'], formatRatio(n.like_to_view_ratio, 2)) },
     { key: 'early', header: '초반 잔류', aside: <FootnoteRef id="early" n={1} />, width: '72px', sortKey: 'EarlyRetentionRate', render: n => strongIf(['EarlyRetentionRate'], formatRatio(n.EarlyRetentionRate, 0)) },
     { key: 'recent', header: '최신 잔류', aside: <FootnoteRef id="recent" n={2} />, width: '72px', sortKey: 'RecentRetentionRate', render: n => strongIf(['RecentRetentionRate'], formatRatio(n.RecentRetentionRate, 0)) },
-    { key: 'tags', header: '태그', width: 'minmax(0,1.3fr)', render: n => <TagLinks tags={n.Tags} limit={n.Tags.length} wrap highlighted={hit} onSelect={onTag} /> },
+    { key: 'tags', header: '태그', width: 'minmax(0,1.3fr)', render: n => <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} /> },
   ];
 
   const mobileRow = (n: RankingNovel) => (
@@ -135,23 +133,11 @@ export default function NovelRankingsPage() {
         <Link to={`/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title}</Link>
         <p>{n.AuthorName} · 점수 <b>{formatInt(n.Score)}</b> · {formatInt(n.Eps)}화</p>
         <p>추천비 <b>{formatRatio(n.like_to_view_ratio, 2)}</b> · 초반 <b>{formatRatio(n.EarlyRetentionRate, 0)}</b> · 최신 <b>{formatRatio(n.RecentRetentionRate, 0)}</b></p>
-        <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} limit={n.Tags.length} wrap />
+        <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} />
       </div>
     </div>
   );
 
-  const count = activeFilterCount(filter);
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const [searchInput, setSearchInput] = useState(filter.search);
-  useEffect(() => { setSearchInput(filter.search); }, [filter.search]);
-  const applySearch = (q: string) => {
-    update({ ...filter, search: q });
-    // 표 안쪽까지 내려와 있으면 결과가 줄어 화면이 빈 곳으로 튄다 — 표 머리로 올려 준다.
-    const el = toolbarRef.current;
-    if (el && el.getBoundingClientRect().top < 0) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72 });
-  };
-  const submitSearch = (e: FormEvent) => { e.preventDefault(); applySearch(searchInput.trim()); };
-  const filtered = count > 0 || filter.search.trim() !== '';
   // 10열은 992px 미만에서 제목 칸이 남지 않는다 — 그 폭부터 모바일 행(RankTable compactBelow)으로 그린다.
   return (
     <div className="page-shell novel-rankings-page">
@@ -159,27 +145,11 @@ export default function NovelRankingsPage() {
         nav={<DateNav value={dateParam ?? null} availableDates={dates} onChange={d => navigate(`/novels/rankings/${d}`)} />}
         meta={`노벨피아 7일 조회순 상위 ${rows.length || 500}작품`} />
 
-      {!loading && !error ? <Showcase top={showcase.top} movers={showcase.movers} tableDate={dateParam ?? null} /> : null}
+      {!loading && !error ? <Showcase top={showcase.top} movers={showcase.movers} /> : null}
 
       {/* 급상승·신규 진입 탭은 두지 않는다 — 변동 열 내림차순이 곧 NEW → 상승 폭 순이다. */}
-      <div className="rank-toolbar" ref={toolbarRef}>
-        <h2 className="rank-toolbar__title">
-          전체 순위
-          <span className="rank-toolbar__count">
-            {filtered ? <>조건에 맞는 <b>{formatInt(sorted.length)}</b>편 / {formatInt(rows.length)}편</> : <>{formatInt(rows.length)}편</>}
-          </span>
-        </h2>
-        <button type="button" className={`toolbar-filter${count ? ' is-on' : ''}`} onClick={() => setDrawer(true)} aria-haspopup="dialog">
-          필터{count ? <span className="toolbar-filter__n">{count}</span> : null}
-        </button>
-        {/* 타이핑마다 거르면 결과 수가 바뀔 때마다 페이지 높이가 요동친다 — 엔터·검색 버튼으로 한 번에 적용한다. */}
-        <form className="toolbar-searchform" role="search" onSubmit={submitSearch}>
-          <input className="toolbar-search" type="search" placeholder="제목·작가 검색" aria-label="제목·작가 검색"
-            value={searchInput} onChange={e => { setSearchInput(e.target.value); if (e.target.value === '' && filter.search) applySearch(''); }} />
-          <button type="submit" className="toolbar-searchbtn" aria-label="검색"><SearchIcon size={15} aria-hidden="true" /></button>
-        </form>
-      </div>
-      <AppliedFilters filter={filter} onChange={update} />
+      <RankToolbar filter={filter} onChange={setFilter} count={activeFilterCount(filter)} shown={sorted.length} total={rows.length} onOpenFilter={() => setDrawer(true)} />
+      <AppliedFilters filter={filter} onChange={setFilter} />
 
       <div className={isPending ? 'is-pending' : undefined}>
         {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => window.location.reload()}>다시 시도</button></p>
@@ -199,7 +169,7 @@ export default function NovelRankingsPage() {
 
       {!error && !loading && rows.length > 0 ? <Footnotes notes={NOTES} /> : null}
 
-      <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={update}
+      <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={setFilter}
         tagStats={stats} resultCount={sorted.length} error={result.error}
         statusStats={statusStats} statusAvailable={statusAvailable} />
     </div>

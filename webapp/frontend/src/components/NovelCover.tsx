@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { EyeFill, EyeSlashFill } from 'react-bootstrap-icons';
 import { useCoverMask } from '../theme/coverMaskContext';
-import { isCoverMasked, nextOverride } from '../utils/coverMask';
 
 type NovelCoverProps = {
   url?: string | null;
@@ -31,13 +30,14 @@ const NovelCover = ({ url, title, imageClassName, className }: NovelCoverProps) 
 
   if (!url) return null;
 
-  const masked = isCoverMasked(maskAll, override);
+  // 개별 설정(override, null = 누른 적 없음)이 전체 설정보다 우선한다 — 전체 표시 상태에서도 한 장만 가릴 수 있어야 한다.
+  const masked = override ?? maskAll;
 
   const toggle = (event: React.MouseEvent) => {
     // 카드 전체가 링크인 경우 상세 페이지로 이동하지 않도록 막는다.
     event.preventDefault();
     event.stopPropagation();
-    setOverride(nextOverride(maskAll, override));
+    setOverride(!masked);   // 지금 보이는 상태의 반대로 고정한다
   };
 
   return (

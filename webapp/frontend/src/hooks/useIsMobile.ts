@@ -13,13 +13,9 @@ const MOBILE_QUERY = '(max-width: 767.98px)';
  */
 /** 임의의 미디어 쿼리가 맞는지 반환한다. useIsMobile은 md 기준으로 이것을 쓴다. */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia(query).matches;
-  });
+  const [matches, setMatches] = useState<boolean>(() => window.matchMedia(query).matches);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
     const mql = window.matchMedia(query);
     setMatches(mql.matches);
     const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
@@ -33,5 +29,3 @@ export function useMediaQuery(query: string): boolean {
 export function useIsMobile(): boolean {
   return useMediaQuery(MOBILE_QUERY);
 }
-
-export default useIsMobile;

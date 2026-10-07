@@ -4,12 +4,12 @@ import ChangeMark from '../ui/ChangeMark';
 import Footnotes, { FootnoteRef } from '../ui/Footnotes';
 import RankTable, { type RankColumn } from '../ranking/RankTable';
 import TagTerrainMap from './TagTerrainMap';
-import { useMediaQuery } from '../../hooks/useIsMobile';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import {
-  DAILY_RULES, DEFAULT_TAG_SORT, ZONE_LABEL, ZONE_ORDER, formatShare, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneLines,
+  DAILY_RULES, DEFAULT_TAG_SORT, ZONE_LABEL, ZONE_ORDER, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneLines,
   type DailyTag, type TagSort, type TagSortKey, type ZonedTag, type ZoneKey, type ZoneRules,
 } from '../../utils/tagZones';
-import { formatInt } from '../../utils/format';
+import { formatInt, formatRatio } from '../../utils/format';
 
 /**
  * 태그 순위판 — 구역 칩 → 지형 지도 → 표(상위 50 + 전체 보기) → 각주. 데일리 태그 랭킹과 2026~ 공모전 태그 랭킹이 같이 쓴다.
@@ -51,7 +51,7 @@ export default function DailyTagBoard({
   const [openTag, setOpenTagState] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
-  const mobile = useMediaQuery('(max-width: 767.98px)');
+  const mobile = useIsMobile();
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const setOpenTag = useCallback((tag: string | null) => { setOpenTagState(tag); onOpenTag?.(tag); }, [onOpenTag]);
@@ -104,7 +104,7 @@ export default function DailyTagBoard({
     { key: 'tag', header: '태그', width: 'minmax(0,1fr)', render: t => <span className="rank-title">{t.tag}</span> },
     { key: 'zone', header: '구역', aside: <FootnoteRef id="zone" n={3} />, width: '132px', render: t => <ZoneName zone={t.zone} edge={t.edge} /> },
     // 순위가 인기 점수 순이라 순위순(기본)일 때도 점수를 굵게 둔다.
-    { key: 'score', header: '인기 점수', aside: <FootnoteRef id="score" n={1} />, width: '104px', sortKey: 'score_share', align: 'right', render: t => strongIf(['score_share', 'Rank'], formatShare(t.score_share)) },
+    { key: 'score', header: '인기 점수', aside: <FootnoteRef id="score" n={1} />, width: '104px', sortKey: 'score_share', align: 'right', render: t => strongIf(['score_share', 'Rank'], formatRatio(t.score_share)) },
     { key: 'count', header: '작품 수', width: '80px', sortKey: 'count', align: 'right', render: t => strongIf(['count'], formatInt(t.count)) },
     { key: 'top', header: '100위 안', aside: <FootnoteRef id="top" n={2} />, width: '112px', sortKey: 'top_share', align: 'right', render: t => strongIf(['top_share'], formatTop(t)) },
   ];
@@ -114,7 +114,7 @@ export default function DailyTagBoard({
       <div className="rank-mrow__rank"><span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span><ChangeMark value={t.rank_change} /></div>
       <div className="rank-mrow__main">
         <span className="rank-title">{t.tag}</span>
-        <p>{t.zone ? <><ZoneName zone={t.zone} edge={t.edge} /> · </> : null}인기 <b>{formatShare(t.score_share)}</b> · 작품 <b>{formatInt(t.count)}</b> · 100위 안 <b>{formatTop(t)}</b></p>
+        <p>{t.zone ? <><ZoneName zone={t.zone} edge={t.edge} /> · </> : null}인기 <b>{formatRatio(t.score_share)}</b> · 작품 <b>{formatInt(t.count)}</b> · 100위 안 <b>{formatTop(t)}</b></p>
       </div>
     </div>
   );

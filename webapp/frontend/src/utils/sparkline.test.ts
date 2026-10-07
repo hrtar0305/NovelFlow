@@ -12,12 +12,13 @@ describe('rankPath', () => {
     const r = rankPath([5, null, 3, 2], 90, 30);
     expect(r.d.match(/M/g)).toHaveLength(2);
   });
-  it('마지막 점과 최고 순위 점', () => {
-    const r = rankPath([30, 4, 8], 80, 40);
-    expect(r.best?.rank).toBe(4);
-    expect(r.last).not.toBeNull();
+  it('마지막 점은 순위가 있는 마지막 날', () => {
+    const r = rankPath([30, 4, null], 80, 40);
+    expect(r.last).toEqual({ x: r.X(1), y: r.Y(4) });
   });
   it('값이 하나도 없으면 빈 경로', () => {
-    expect(rankPath([null, null], 50, 20)).toEqual({ d: '', last: null, best: null });
+    const r = rankPath([null, null], 50, 20);
+    expect(r.d).toBe('');
+    expect(r.last).toBeNull();
   });
 });

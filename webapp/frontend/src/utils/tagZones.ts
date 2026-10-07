@@ -1,4 +1,5 @@
 import { DASH } from './format';
+import { changeValue, finiteOrNull, nextSortOf, sortBy, type Sort } from './rankingQuery';
 
 /**
  * 태그 랭킹의 구역 판정과 정렬 — **그날 하루의 데이터로만** 판단한다(DECISIONS 2026-10-06, 흐름은 태그 트렌드 몫).
@@ -73,44 +74,23 @@ export function zoneCounts(rows: { zone: ZoneKey | null }[]): Record<ZoneKey, nu
   return out;
 }
 
-export type TagSortKey = 'Rank' | 'rank_change' | 'count' | 'local_lift' | 'power_score' | 'score_share' | 'top_share';
-export interface TagSort { key: TagSortKey; direction: 'ascending' | 'descending'; }
+export type TagSortKey = 'Rank' | 'rank_change' | 'count' | 'score_share' | 'top_share';
+export type TagSort = Sort<TagSortKey>;
 export const DEFAULT_TAG_SORT: TagSort = { key: 'Rank', direction: 'ascending' };
 
 /** 처음 누르면 '보고 싶은 쪽'이 위로 온다 — 순위는 1위부터, 나머지는 큰 값부터. */
-export function nextTagSort(s: TagSort, key: TagSortKey): TagSort {
-  if (s.key === key) return { key, direction: s.direction === 'ascending' ? 'descending' : 'ascending' };
-  return { key, direction: key === 'Rank' ? 'ascending' : 'descending' };
-}
+export const nextTagSort = (s: TagSort, key: TagSortKey): TagSort => nextSortOf(s, key, 'Rank');
 
 /** 정렬용 값. 변동의 NEW는 일간 작품 표와 같이 가장 큰 상승으로 친다(내림차순 = NEW → 상승 폭 순). */
 const sortValue = (t: DailyTag, key: TagSortKey): number | null => {
-  if (key === 'rank_change') {
-    if (t.rank_change === 'New') return Infinity;
-    return typeof t.rank_change === 'number' ? t.rank_change : null;
-  }
+  if (key === 'rank_change') return changeValue(t.rank_change);
   if (key === 'top_share') return t.top100 != null && t.count > 0 ? t.top100 / t.count : null;
-  const v = t[key];
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  return finiteOrNull(t[key]);
 };
 
 /** 값이 없는 행은 방향과 무관하게 늘 끝 — 집중도 없는 태그가 내림차순 맨 위를 차지하지 않게. 동점은 순위 순. */
-export function sortTags<T extends DailyTag>(rows: T[], sort: TagSort): T[] {
-  const sign = sort.direction === 'ascending' ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    const va = sortValue(a, sort.key);
-    const vb = sortValue(b, sort.key);
-    if (va === null && vb === null) return a.Rank - b.Rank;
-    if (va === null) return 1;
-    if (vb === null) return -1;
-    if (va !== vb) return va > vb ? sign : -sign;
-    return a.Rank - b.Rank;
-  });
-}
+export const sortTags = <T extends DailyTag>(rows: T[], sort: TagSort): T[] => sortBy(rows, t => sortValue(t, sort.key), sort.direction, t => t.Rank);
 
-export const formatLift = (v?: number | null): string => (v != null && Number.isFinite(v) ? `${v.toFixed(1)}×` : DASH);
-/** 인기 점수(점유율 0~1) → '66.8%' */
-export const formatShare = (v?: number | null): string => (v != null && Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : DASH);
 /** 100위 안 비율 → 비율 소수 자리. 평균(100/N)이 10% 아래면(공모전 3% 대) 한 자리 — 정수로 자르면 평균 근처 태그가 모두 같은 숫자였다. */
 export const sharePct = (share: number, N: number | null | undefined): string =>
   (N && 100 / N < 0.1 ? `${(share * 100).toFixed(1)}%` : `${Math.round(share * 100)}%`);

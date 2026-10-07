@@ -13,7 +13,7 @@ export default function DateNav({ value, availableDates, onChange }: DateNavProp
   return (
     <div className="date-nav">
       <button type="button" className="date-nav__step" disabled={!prev} onClick={() => prev && onChange(prev)} aria-label="이전 수집일">‹</button>
-      <CalendarPicker variant="inline" selectedDate={value ? parseISO(value) : null} availableDates={availableDates}
+      <CalendarPicker selectedDate={value ? parseISO(value) : null} availableDates={availableDates}
         onDateChange={(d) => { if (d) onChange(format(d, 'yyyy-MM-dd')); }} />
       <button type="button" className="date-nav__step" disabled={!next} onClick={() => next && onChange(next)} aria-label="다음 수집일">›</button>
     </div>

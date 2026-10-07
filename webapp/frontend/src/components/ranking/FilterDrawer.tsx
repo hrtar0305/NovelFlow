@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Offcanvas } from 'react-bootstrap';
-import { resetFilter, toggleStatus, toggleTag, type RankingFilter, type TagMode } from '../../utils/rankingQuery';
-import { SERIAL_STATUS_NOTICE } from '../../utils/serialStatusNotice';
+import { SERIAL_STATUS_NOTICE, resetFilter, toggleStatus, toggleTag, type RankingFilter, type TagMode } from '../../utils/rankingQuery';
 
 type Mode = TagMode | 'rule';
 const MODES: Array<{ key: Mode; label: string }> = [

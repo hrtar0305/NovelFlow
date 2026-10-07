@@ -1,7 +1,6 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
-import { Search as SearchIcon } from 'react-bootstrap-icons';
 import { getContestAvailableDates, getContestDataByDate, getContestShowcase } from '../services/api';
 import ContestHeader from '../components/contest/ContestHeader';
 import NovelCover from '../components/NovelCover';
@@ -11,6 +10,7 @@ import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import FilterDrawer from '../components/ranking/FilterDrawer';
 import Showcase, { type ShowcaseItem } from '../components/ranking/Showcase';
 import AppliedFilters from '../components/ranking/AppliedFilters';
+import RankToolbar from '../components/ranking/RankToolbar';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import NovelRowExpand from '../components/ranking/NovelRowExpand';
 import AwardText from '../components/contest/AwardText';
@@ -84,8 +84,6 @@ export default function ContestPage() {
   useEffect(() => { setSort(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT); setCareer('all'); setWinnersOnly(false); }, [daily]);
   const [drawer, setDrawer] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [searchInput, setSearchInput] = useState('');
-  const toolbarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const y = parseInt(year, 10);
@@ -122,7 +120,6 @@ export default function ContestPage() {
     return () => { cancelled = true; };
   }, [year, dateParam, dates, navigate, params]);
 
-  const update = useCallback((next: RankingFilter) => setFilter(next), []);
   const deferredFilter = useDeferredValue(filter);
   const deferredWinners = useDeferredValue(winnersOnly);
   const deferredCareer = useDeferredValue(career);
@@ -139,7 +136,7 @@ export default function ContestPage() {
   const sorted = useMemo(() => sortContestNovels(result.items, sort), [result.items, sort]);
   const stats = useMemo(() => tagCounts(rows), [rows]);
   const hit = useMemo(() => new Set(filter.rule ? [] : filter.tags), [filter]);
-  const onTag = useCallback((t: string) => update(toggleTag(filter, t)), [filter, update]);
+  const onTag = useCallback((t: string) => setFilter(toggleTag(filter, t)), [filter]);
   const isPending = deferredFilter !== filter || deferredWinners !== winnersOnly || deferredCareer !== career;
 
   // 쇼케이스 — 날짜 선택 바로 아래라 고른 날짜를 따른다(사용자 검토 2026-10-03, 일간 랭킹과 같은 규칙).
@@ -161,14 +158,6 @@ export default function ContestPage() {
   }, [rows, awardShowcase, year]);
 
   const count = activeFilterCount(filter) + (winnersOnly ? 1 : 0) + (career !== 'all' ? 1 : 0);
-  const filtered = count > 0 || filter.search.trim() !== '';
-  useEffect(() => { setSearchInput(filter.search); }, [filter.search]);
-  const applySearch = (q: string) => {
-    update({ ...filter, search: q });
-    const el = toolbarRef.current;
-    if (el && el.getBoundingClientRect().top < 0) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72 });
-  };
-  const submitSearch = (e: FormEvent) => { e.preventDefault(); applySearch(searchInput.trim()); };
 
   const strongIf = (keys: ContestSortKey[], v: ReactNode) => (keys.includes(sort.key) ? <b className="rank-strong">{v}</b> : v);
   const dash = '–';
@@ -220,7 +209,7 @@ export default function ContestPage() {
         render: (n: ContestNovel) => strongIf(['RecentRetentionRate'], formatRatio(n.RecentRetentionRate ?? null, 0)) },
     ] as RankColumn<ContestNovel>[] : []),
     // 2026 은 열이 셋(구분·잔류 둘) 늘어 태그 폭을 줄여 제목이 덜 잘리게 한다.
-    { key: 'tags', header: '태그', width: daily ? 'minmax(0,0.85fr)' : 'minmax(0,1.2fr)', render: n => <TagLinks tags={n.Tags} limit={n.Tags.length} wrap highlighted={hit} onSelect={onTag} /> },
+    { key: 'tags', header: '태그', width: daily ? 'minmax(0,0.85fr)' : 'minmax(0,1.2fr)', render: n => <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} /> },
   ];
 
   const mobileRow = (n: ContestNovel) => (
@@ -233,7 +222,7 @@ export default function ContestPage() {
           : <Link to={`/contests/${year}/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title || '(제목 없음)'}</Link>}
         <p>{n.award ? <><AwardText award={n.award} /> · </> : null}{n.AuthorName || '(작자 미상)'}{daily && n.is_veteran != null ? (n.is_veteran ? ' · 기성' : ' · 신인') : ''} · {formatInt(n.Eps)}화</p>
         <p>일간 조회 <b>{isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : formatInt(n.view_change)}</b> · 누적 <b>{isDeletedContestNovel(n) ? dash : formatInt(n.View)}</b> · 추천비 <b>{formatRatio(n.like_to_view_ratio, 2)}</b>{daily ? <> · 초반 <b>{formatRatio(n.EarlyRetentionRate ?? null, 0)}</b> · 최신 <b>{formatRatio(n.RecentRetentionRate ?? null, 0)}</b></> : null}</p>
-        <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} limit={n.Tags.length} wrap />
+        <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} />
       </div>
     </div>
   );
@@ -244,7 +233,7 @@ export default function ContestPage() {
         onDateChange={d => navigate(`/contests/${year}/${d}`)} onYearChange={y => navigate(`/contests/${y}`)}
         meta={rows.length ? `${cfg.schedule} · 참여 작품 ${formatInt(rows.length)}편` : cfg.schedule} />
 
-      {!awardShowcase && !loading && !error ? <Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} tableDate={dateParam ?? null} /> : null}
+      {!awardShowcase && !loading && !error ? <Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} /> : null}
 
       {showcaseItems.length > 0 ? (
         <section className="contest-award-showcase showcase-section" aria-label="수상작">
@@ -270,23 +259,8 @@ export default function ContestPage() {
         </section>
       ) : null}
 
-      <div className="rank-toolbar" ref={toolbarRef}>
-        <h2 className="rank-toolbar__title">
-          전체 순위
-          <span className="rank-toolbar__count">
-            {filtered ? <>조건에 맞는 <b>{formatInt(sorted.length)}</b>편 / {formatInt(rows.length)}편</> : <>{formatInt(rows.length)}편</>}
-          </span>
-        </h2>
-        <button type="button" className={`toolbar-filter${count ? ' is-on' : ''}`} onClick={() => setDrawer(true)} aria-haspopup="dialog">
-          필터{count ? <span className="toolbar-filter__n">{count}</span> : null}
-        </button>
-        <form className="toolbar-searchform" role="search" onSubmit={submitSearch}>
-          <input className="toolbar-search" type="search" placeholder="제목·작가 검색" aria-label="제목·작가 검색"
-            value={searchInput} onChange={e => { setSearchInput(e.target.value); if (e.target.value === '' && filter.search) applySearch(''); }} />
-          <button type="submit" className="toolbar-searchbtn" aria-label="검색"><SearchIcon size={15} aria-hidden="true" /></button>
-        </form>
-      </div>
-      <AppliedFilters filter={filter} onChange={update} extra={winnersOnly ? { label: <><b>수상작만</b></>, onClear: () => setWinnersOnly(false) }
+      <RankToolbar filter={filter} onChange={setFilter} count={count} shown={sorted.length} total={rows.length} onOpenFilter={() => setDrawer(true)} />
+      <AppliedFilters filter={filter} onChange={setFilter} extra={winnersOnly ? { label: <><b>수상작만</b></>, onClear: () => setWinnersOnly(false) }
         : career !== 'all' ? { label: <><b>{career === 'veteran' ? '기성 작가' : '신인 작가'}</b></>, onClear: () => setCareer('all') } : null} />
 
       <div className={isPending ? 'is-pending' : undefined}>
@@ -309,7 +283,7 @@ export default function ContestPage() {
 
       {!error && !loading && rows.length > 0 ? <Footnotes notes={daily ? DAILY_NOTES : NOTES} /> : null}
 
-      <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={update}
+      <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={setFilter}
         tagStats={stats} resultCount={sorted.length} error={result.error} onResetExtra={() => { setWinnersOnly(false); setCareer('all'); }}
         extra={(
           <>

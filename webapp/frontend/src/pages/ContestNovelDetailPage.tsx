@@ -5,11 +5,11 @@ import { useContestNovelData } from '../hooks/useContestNovelData';
 import { getContestNovelTrend } from '../services/api';
 import NovelHeader from '../components/novel/NovelHeader';
 import AwardText from '../components/contest/AwardText';
-import DateRangePicker from '../components/novel/DateRangePicker';
 import { describeContestRank } from '../utils/currentRank';
-import { formatDateKo, formatInt, formatMan, formatRatio } from '../utils/format';
+import { formatDateKo, formatMan, formatRatio } from '../utils/format';
 import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
-import MetricsPanel from '../components/novel/MetricsPanel';
+import MetricsSection from '../components/novel/MetricsSection';
+import { retentionNums } from '../components/novel/retention';
 import { buildMetricPoints } from '../utils/metricSeries';
 import { useUploads } from '../hooks/useUploads';
 
@@ -23,14 +23,6 @@ import { useUploads } from '../hooks/useUploads';
  *  '자유연재'는 지금은 모두에게 있지만 PLUS 로 옮기는 작품이 생기면 갈라지는 값이라 남긴다(2026-10-04 사용자). */
 const CONTEST_COMMON_BADGES = new Set(['우주최강']);
 
-const ok = (v?: number | null): v is number => typeof v === 'number' && v >= 0;
-/** 잔류율 옆 근거 '1화 6,609 → 30화 2,223' — 일간 상세 머리(NovelHeader)와 같은 표기. */
-const basis = (aNum?: number | null, aView?: number | null, bNum?: number | null, bView?: number | null) => (
-  ok(aNum) && ok(aView) && ok(bNum) && ok(bView)
-    ? <span className="detail-head__basis">{formatInt(aNum)}화 {formatInt(aView)} → {formatInt(bNum)}화 {formatInt(bView)}</span>
-    : null
-);
-
 // 같은 라우트에서 작품·연도만 바뀌면 컴포넌트가 재사용돼 기간·표지 상태와 늦게 온 이전 작품 응답이 남는다 — 작품마다 새로 띄운다
 // (일간 상세 NovelDetailPage 와 같은 방식).
 const ContestNovelDetailPage = () => {
@@ -41,10 +33,8 @@ const ContestNovelDetailPage = () => {
 const ContestNovelDetailBody = () => {
   const { year = LATEST_CONTEST_YEAR, novelId } = useParams<{ year: string; novelId: string }>();
   const daily = contestConfig(year).headline === 'daily';
-  const {
-    startDate, endDate, setStartDate, setEndDate, trendData, dataStart, details, loading, error,
-    minDate, maxDate, novelAvailableDatesSet, fetchTrendData,
-  } = useContestNovelData(year, novelId);
+  const data = useContestNovelData(year, novelId);
+  const { trendData, dataStart, details, error } = data;
 
 
   // 머리의 전일 대비는 차트 기간과 따로, 마지막 기록일까지 열흘치를 불러와 직전 수집일과 비교한다.
@@ -64,26 +54,6 @@ const ContestNovelDetailBody = () => {
     series: head && head.id === novelId ? head.series : [],
   }), [details, detailDate, head, novelId]);
 
-  const novelLastDate = useMemo(() => {
-    const last = [...novelAvailableDatesSet].sort().at(-1);
-    return last ? parseISO(last) : null;
-  }, [novelAvailableDatesSet]);
-  const [rangeDays, setRangeDays] = useState<number | null>(7);
-  useEffect(() => { setRangeDays(7); }, [novelId]);
-  const pickRange = (n: number) => {
-    if (!novelLastDate) return;
-    const start = subDays(novelLastDate, n - 1);
-    setRangeDays(n);
-    setStartDate(start);
-    setEndDate(novelLastDate);
-    fetchTrendData(start, novelLastDate);
-  };
-  const handleStartDateChange = (date: Date | null) => { setRangeDays(null); setStartDate(date); setEndDate(null); };
-  const handleEndDateChange = (date: Date | null) => {
-    setRangeDays(null);
-    setEndDate(date);
-    if (startDate && date) fetchTrendData(startDate, date);
-  };
   // 공모전은 전날 = 실제 직전 수집일(DECISIONS 2026-07-01).
   const points = useMemo(() => buildMetricPoints(trendData, 'collection', dataStart ?? undefined), [trendData, dataStart]);
   // 연재 기록은 2026 공모전부터(2025 는 넣지 않는다 — 연재 줄을 숨긴다).
@@ -119,33 +89,11 @@ const ContestNovelDetailBody = () => {
           { label: '선호', value: formatMan(details.Fav) },
           { label: '추천비', value: formatRatio(ratio, 2) },
           // 2026~ 목록 표에 있는 잔류율은 상세에도 둔다(유효 회차 30 미만이면 '–' — 대체 계산으로 채우지 않는다).
-          ...(daily ? [
-            { label: '초반 잔류', value: <>{formatRatio(details.EarlyRetentionRate ?? null, 0)}{details.EarlyRetentionRate != null ? basis(details.FirstEpNum, details.FirstEpView, details.Ep30Num, details.Ep30View) : null}</> },
-            { label: '최신 잔류', value: <>{formatRatio(details.RecentRetentionRate ?? null, 0)}{details.RecentRetentionRate != null ? basis(details.RecentBaseNum, details.RecentBaseView, details.TargetLatestEpNum, details.TargetLatestEpView) : null}</> },
-          ] : []),
+          ...(daily ? retentionNums(details) : []),
         ]}
       />
 
-      <section className="detail-sec detail-chart-panel">
-        <div className="detail-sec__head">
-          <h2 className="detail-sec__h">지표</h2>
-          <div className="detail-sec__range">
-            {[7, 30, 90].map(n => (
-              <button key={n} type="button" className={rangeDays === n ? 'is-on' : ''} aria-pressed={rangeDays === n} onClick={() => pickRange(n)}>{n}일</button>
-            ))}
-            <DateRangePicker
-              startDate={startDate} endDate={endDate} minDate={minDate} maxDate={maxDate}
-              availableDates={Array.from(novelAvailableDatesSet).map(d => parseISO(d))} novelAvailableDatesSet={novelAvailableDatesSet}
-              onStartDateChange={handleStartDateChange} onEndDateChange={handleEndDateChange}
-              isNovelDetailPage={false} noMargin={true} showNovelDataIndicator={false}
-            />
-          </div>
-        </div>
-        <div className="detail-chart-area" aria-busy={loading} style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-          {points.length > 0 ? <MetricsPanel points={points} kind="contest" uploads={uploads} />
-            : (!loading && <p className="empty-line">선택한 기간에 기록이 없습니다.</p>)}
-        </div>
-      </section>
+      <MetricsSection {...data} fetchRange={data.fetchTrendData} kind="contest" points={points} uploads={uploads} />
 
     </div>
   );

@@ -42,77 +42,20 @@ const getCachedRequest = <T>(
   return promise;
 };
 
-// 응답 모양은 호출부가 안다(r.data). 캐시는 AxiosResponse 단위로만 다룬다.
-type ApiCache = Record<string, TimedCacheEntry<AxiosResponse>>;
+// 응답 모양은 호출부가 안다(r.data). 캐시는 URL 하나를 키로 AxiosResponse 단위로만 다룬다.
+const cache: Record<string, TimedCacheEntry<AxiosResponse>> = {};
+const get = (url: string, ttlMs = FIVE_MINUTES_MS) => getCachedRequest(cache, url, ttlMs, () => apiClient.get(url));
 
-const _novelRankingCache: ApiCache = {};
-const _tagRankingCache: ApiCache = {};
-const _tagTrendAnalysisCache: ApiCache = {};
-const _novelTrendCache: ApiCache = {};
-const _novelAvailableDatesCache: ApiCache = {};
-const _latestNovelDetailsCache: ApiCache = {};
-const _availableDatesCache: ApiCache = {};
-const _tagSeriesCache: ApiCache = {};
-const _analysisReportCache: ApiCache = {};
-const _novelShowcaseCache: ApiCache = {};
-const _authorNovelsCache: ApiCache = {};
-const _uploadsCache: ApiCache = {};
+export const getNovelRankingsByDate = (date: string) => get(`/api/ranks/novels/${date}`, ONE_DAY_MS);
+export const getTagRankingsByDate = (date: string) => get(`/api/ranks/tags/${date}`, ONE_DAY_MS);
 
-export const getNovelRankingsByDate = (date: string) => {
-  return getCachedRequest(
-    _novelRankingCache,
-    date,
-    ONE_DAY_MS,
-    () => apiClient.get(`/api/ranks/novels/${date}`),
-  );
-};
-
-export const getNovelRankingShowcase = () => {
-  return getCachedRequest(
-    _novelShowcaseCache,
-    'default',
-    FIVE_MINUTES_MS,
-    () => apiClient.get(`/api/ranks/novels/showcase`),
-  );
-};
-
-export const getTagRankingsByDate = (date: string) => {
-  return getCachedRequest(
-    _tagRankingCache,
-    date,
-    ONE_DAY_MS,
-    () => apiClient.get(`/api/ranks/tags/${date}`),
-  );
-};
-
-
+/** 데이터 분석 리포트. 기간 전체가 사전 계산돼 있어 한 번만 받으면 된다
+ *  (백엔드가 `RSNAP#<date>` 스냅샷을 배치로 읽어 계산한다). */
+export const getAnalysisReport = (days: number) => get(`/api/analysis/report/${days}`);
 
 /** 기간 안의 모든 수집일에 대한 태그별 시계열. 날짜를 하나씩 부르면 날짜당 약
  *  0.4초라 30일이면 12초가 넘는다. 백엔드가 batch_get_item으로 한 번에 읽는다. */
-/** 데이터 분석 리포트. 기간 전체가 사전 계산돼 있어 한 번만 받으면 된다
- *  (백엔드가 `RSNAP#<date>` 스냅샷을 배치로 읽어 계산한다). */
-export const getAnalysisReport = (days: number) => {
-  return getCachedRequest(_analysisReportCache, String(days), FIVE_MINUTES_MS,
-    () => apiClient.get(`/api/analysis/report/${days}`));
-};
-
-export const getTagSeries = (startDate: string, endDate: string) => {
-  return getCachedRequest(
-    _tagSeriesCache,
-    `${startDate}~${endDate}`,
-    FIVE_MINUTES_MS,
-    () => apiClient.get(`/api/trends/tags/series/${startDate}/${endDate}`),
-  );
-};
-
-export const analyzeTagTrends = (startDate: string, endDate: string) => {
-  return getCachedRequest(
-    _tagTrendAnalysisCache,
-    `${startDate}:${endDate}`,
-    ONE_DAY_MS,
-    () => apiClient.get(`/api/trends/tags/analysis/${startDate}/${endDate}`),
-  );
-};
+export const getTagSeries = (startDate: string, endDate: string) => get(`/api/trends/tags/series/${startDate}/${endDate}`);
 
 /**
  * 연재 기록 — 날짜별 올린 화 수. `asof` 를 주면 그날 수집 마감(데일리 D 22:00, 공모전 D+1 01:00 KST)까지 본 회차만
@@ -120,133 +63,29 @@ export const analyzeTagTrends = (startDate: string, endDate: string) => {
  */
 export const getUploads = (novelId: string, start: string, end: string, asof?: { date: string; source: 'daily' | 'contest' }) => {
   const q = new URLSearchParams({ start, end, ...(asof ? { asof: asof.date, source: asof.source } : {}) });
-  return getCachedRequest(_uploadsCache, `${novelId}?${q}`, FIVE_MINUTES_MS, () => apiClient.get(`/api/uploads/${novelId}?${q}`));
+  return get(`/api/uploads/${novelId}?${q}`);
 };
 
-export const getNovelTrend = (novelId: string, startDate: string, endDate: string) => {
-  return getCachedRequest(
-    _novelTrendCache,
-    `${novelId}:${startDate}:${endDate}`,
-    ONE_DAY_MS,
-    () => apiClient.get(`/api/trends/novels/${novelId}/${startDate}/${endDate}`),
-  );
-};
-
-export const getNovelAvailableDates = (novelId: string) => {
-  return getCachedRequest(
-    _novelAvailableDatesCache,
-    novelId,
-    FIVE_MINUTES_MS,
-    () => apiClient.get(`/api/trends/novels/${novelId}/available-dates`),
-  );
-};
-
-export const getLatestNovelDetails = (novelId: string) => {
-  return getCachedRequest(
-    _latestNovelDetailsCache,
-    novelId,
-    FIVE_MINUTES_MS,
-    () => apiClient.get(`/api/novels/${novelId}/latest`),
-  );
-};
-
-export const getAvailableDates = () => {
-  return getCachedRequest(
-    _availableDatesCache,
-    'default',
-    FIVE_MINUTES_MS,
-    () => apiClient.get(`/api/dates`),
-  );
-};
-
-export const getAuthorNovels = (authorId: string) => {
-  return getCachedRequest(
-    _authorNovelsCache,
-    authorId,
-    FIVE_MINUTES_MS,
-    () => apiClient.get(`/api/authors/${authorId}`),
-  );
-};
+export const getNovelTrend = (novelId: string, startDate: string, endDate: string) =>
+  get(`/api/trends/novels/${novelId}/${startDate}/${endDate}`, ONE_DAY_MS);
+export const getNovelAvailableDates = (novelId: string) => get(`/api/trends/novels/${novelId}/available-dates`);
+export const getLatestNovelDetails = (novelId: string) => get(`/api/novels/${novelId}/latest`);
+export const getAvailableDates = () => get(`/api/dates`);
+export const getAuthorNovels = (authorId: string) => get(`/api/authors/${authorId}`);
 
 // --- CONTEST API FUNCTIONS ---
 
-const _contestDataCache: ApiCache = {};
-export const getContestDataByDate = (year: number, date: string) => {
-  return getCachedRequest(
-    _contestDataCache,
-    `${year}:${date}`,
-    ONE_DAY_MS,
-    () => axios.get(`${API_BASE_URL}/api/contests/${year}/${date}`),
-  );
-};
-
-const _contestShowcaseCache: ApiCache = {};
-export const getContestShowcase = (year: number) => {
-  return getCachedRequest(
-    _contestShowcaseCache,
-    String(year),
-    FIVE_MINUTES_MS,
-    () => axios.get(`${API_BASE_URL}/api/contests/${year}/showcase`),
-  );
-};
-
-const _contestAvailableDatesCache: ApiCache = {};
-export const getContestAvailableDates = (year: number) => {
-  return getCachedRequest(
-    _contestAvailableDatesCache,
-    String(year),
-    FIVE_MINUTES_MS,
-    () => axios.get(`${API_BASE_URL}/api/contests/${year}/available-dates`),
-  );
-};
-
-const _latestContestNovelDetailsCache: ApiCache = {};
-export const getLatestContestNovelDetails = (year: number, novelId: string) => {
-  return getCachedRequest(
-    _latestContestNovelDetailsCache,
-    `${year}:${novelId}`,
-    FIVE_MINUTES_MS,
-    () => axios.get(`${API_BASE_URL}/api/contests/${year}/novels/${novelId}/latest`),
-  );
-};
-
-const _contestNovelAvailableDatesCache: ApiCache = {};
-export const getContestNovelAvailableDates = (year: number, novelId: string) => {
-  return getCachedRequest(
-    _contestNovelAvailableDatesCache,
-    `${year}:${novelId}`,
-    FIVE_MINUTES_MS,
-    () => axios.get(`${API_BASE_URL}/api/trends/contests/${year}/novels/${novelId}/available-dates`),
-  );
-};
-
-const _contestNovelTrendCache: ApiCache = {};
-export const getContestNovelTrend = (year: number, novelId: string, startDate: string, endDate: string) => {
-  return getCachedRequest(
-    _contestNovelTrendCache,
-    `${year}:${novelId}:${startDate}:${endDate}`,
-    ONE_DAY_MS,
-    () => axios.get(`${API_BASE_URL}/api/trends/contests/${year}/novels/${novelId}/${startDate}/${endDate}`),
-  );
-};
+export const getContestDataByDate = (year: number, date: string) => get(`/api/contests/${year}/${date}`, ONE_DAY_MS);
+export const getContestShowcase = (year: number) => get(`/api/contests/${year}/showcase`);
+export const getContestAvailableDates = (year: number) => get(`/api/contests/${year}/available-dates`);
+export const getLatestContestNovelDetails = (year: number, novelId: string) => get(`/api/contests/${year}/novels/${novelId}/latest`);
+export const getContestNovelAvailableDates = (year: number, novelId: string) =>
+  get(`/api/trends/contests/${year}/novels/${novelId}/available-dates`);
+export const getContestNovelTrend = (year: number, novelId: string, startDate: string, endDate: string) =>
+  get(`/api/trends/contests/${year}/novels/${novelId}/${startDate}/${endDate}`, ONE_DAY_MS);
 
 /** 2026~ 공모전 태그 랭킹(일간 순위 기준, 데일리 태그와 같은 꼴). 일간 순위가 없는 날은 404. */
-const _contestDailyTagCache: ApiCache = {};
-export const getContestDailyTagRankingsByDate = (year: number, date: string) => {
-  return getCachedRequest(
-    _contestDailyTagCache,
-    `${year}:${date}`,
-    ONE_DAY_MS,
-    () => axios.get(`${API_BASE_URL}/api/contests/${year}/ranks/daily-tags/${date}`),
-  );
-};
-
-const _contestTagRankingCache: ApiCache = {};
-export const getContestTagRankingsByDate = (year: number, date: string) => {
-  return getCachedRequest(
-    _contestTagRankingCache,
-    `${year}:${date}`,
-    ONE_DAY_MS,
-    () => axios.get(`${API_BASE_URL}/api/contests/${year}/ranks/tags/${date}`),
-  );
-};
+export const getContestDailyTagRankingsByDate = (year: number, date: string) =>
+  get(`/api/contests/${year}/ranks/daily-tags/${date}`, ONE_DAY_MS);
+export const getContestTagRankingsByDate = (year: number, date: string) =>
+  get(`/api/contests/${year}/ranks/tags/${date}`, ONE_DAY_MS);

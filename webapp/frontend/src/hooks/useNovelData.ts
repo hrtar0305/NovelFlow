@@ -1,49 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { getNovelTrend, getNovelAvailableDates, getAvailableDates, getLatestNovelDetails } from '../services/api';
-import { format, parseISO, subDays, startOfDay, addDays } from 'date-fns';
-
-
-interface NovelData {
-  ID?: string;
-  Date: string;
-  Ranking: number | null;
-  Title: string;
-  View: number | null;
-  Like: number | null;
-  Fav: number | null;
-  Score: number | null;
-  Eps?: number | null;
-  Alr?: number | null;
-}
-
-interface NovelDetails {
-  ID: string;
-  Title: string;
-  AuthorName: string;
-  AuthorID: string;
-  Synopsis: string;
-  Tags: string[];
-  View: number;
-  Like: number;
-  Fav: number;
-  Alr: number;
-  Eps: number;
-  RetentionRate?: number;
-  Date?: string;
-  Ranking?: number;
-  ThumbnailURL?: string | null;
-  EarlyRetentionRate?: number | null;
-  RecentRetentionRate?: number | null;
-}
+import { format, parseISO, subDays, startOfDay } from 'date-fns';
+import type { NovelHeaderDetails } from '../components/novel/NovelHeader';
+import type { MetricRow } from '../utils/metricSeries';
 
 export const useNovelData = (novelId: string | undefined) => {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   
-  const [novelData, setNovelData] = useState<NovelData[]>([]);
+  const [novelData, setNovelData] = useState<MetricRow[]>([]);
   /** novelData 중 화면 기간의 첫날. 그 앞 하루는 첫날을 전날과 견주기 위한 기준값이다. */
   const [dataStart, setDataStart] = useState<string | null>(null);
-  const [details, setDetails] = useState<NovelDetails | null>(null);
+  const [details, setDetails] = useState<(NovelHeaderDetails & { Date?: string; Ranking?: number }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [minDate, setMinDate] = useState<Date | null>(null);
@@ -65,33 +33,15 @@ export const useNovelData = (novelId: string | undefined) => {
 
     try {
       // 하루 앞(달력 기준 전날)부터 받는다 — 기간 첫날의 증가량·연재 여부·변동을 전날과 견줘 채우기 위해서다.
-      const baseline = subDays(startOfDay(start), 1);
-      const response = await getNovelTrend(novelId, format(baseline, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'));
+      const lo = format(subDays(startOfDay(start), 1), 'yyyy-MM-dd');
+      const hi = format(end, 'yyyy-MM-dd');
+      const response = await getNovelTrend(novelId, lo, hi);
       if (stale()) return;
-      const fetchedData = response.data.sort((a: NovelData, b: NovelData) => a.Date.localeCompare(b.Date));
-
-      // Create a map for quick lookup of fetched data by date
-      const fetchedDataMap = new Map<string, NovelData>();
-      fetchedData.forEach((d: NovelData) => fetchedDataMap.set(d.Date, d));
-
-      const availableDateSet = new Set(finalAvailableDates.map(d => format(d, 'yyyy-MM-dd')));
-      const fullDateRangeData: NovelData[] = [];
-      let currentDate = baseline;
-      const endDateFormatted = startOfDay(end);
-
-      while (currentDate <= endDateFormatted) {
-        const formattedDate = format(currentDate, 'yyyy-MM-dd');
-        
-        // Only process dates that are available globally
-        // 수집한 날만 넣는다. 그날 기록이 없으면(순위권 밖) 값 없이 둔다 — 가짜 순위(501·301)로 채우지 않는다.
-        if (availableDateSet.has(formattedDate)) {
-          fullDateRangeData.push(fetchedDataMap.get(formattedDate) ?? {
-            Date: formattedDate, Ranking: null, Title: details?.Title || '',
-            View: null, Like: null, Fav: null, Score: null,
-          });
-        }
-        currentDate = addDays(currentDate, 1);
-      }
+      const byDate = new Map<string, MetricRow>(response.data.map((d: MetricRow) => [d.Date, d]));
+      // 수집한 날만 넣는다. 그날 기록이 없으면(순위권 밖) 값 없이 둔다 — 가짜 순위(501·301)로 채우지 않는다.
+      const fullDateRangeData = [...new Set(finalAvailableDates.map(d => format(d, 'yyyy-MM-dd')))]
+        .filter(d => d >= lo && d <= hi)
+        .map(d => byDate.get(d) ?? { Date: d, Ranking: null, Title: details?.Title || '', View: null, Like: null, Fav: null, Score: null });
 
       setNovelData(fullDateRangeData);
       setDataStart(format(startOfDay(start), 'yyyy-MM-dd'));
@@ -173,7 +123,6 @@ export const useNovelData = (novelId: string | undefined) => {
     error,
     minDate,
     maxDate,
-    availableDates,
     novelAvailableDatesSet,
     fetchNovelData,
   };

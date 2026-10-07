@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import NovelCover from '../NovelCover';
-import { formatDateDot } from '../../utils/format';
 
 const COUNT = 5; // 모자이크는 1위(세로 2칸) + 2~5위(2×2) 정확히 5칸
 
@@ -22,8 +21,6 @@ export interface ShowcaseItem {
 interface ShowcaseProps {
   top: ShowcaseItem[];
   movers: ShowcaseItem[];
-  showcaseDate?: string;
-  tableDate: string | null;
 }
 
 function Poster({ item, chip, meta, cls }: { item: ShowcaseItem; chip: ReactNode; meta: ReactNode; cls: string }) {
@@ -42,10 +39,8 @@ function Poster({ item, chip, meta, cls }: { item: ShowcaseItem; chip: ReactNode
   );
 }
 
-export default function Showcase({ top, movers, showcaseDate, tableDate }: ShowcaseProps) {
+export default function Showcase({ top, movers }: ShowcaseProps) {
   if (top.length === 0 && movers.length === 0) return null;
-  // 쇼케이스가 표와 다른 날짜일 때(일간 랭킹은 늘 최신 수집일)만 기준일을 붙인다.
-  const stamp = showcaseDate && tableDate && showcaseDate !== tableDate ? `${formatDateDot(showcaseDate).slice(5)} 기준` : null;
   return (
     <div className="showcase-section">
       {/* 급상승이 없는 날(공모전 일간 순위가 처음 생긴 날)은 상위 묶음이 폭을 다 쓴다. */}
@@ -54,7 +49,6 @@ export default function Showcase({ top, movers, showcaseDate, tableDate }: Showc
           <section className="ranking-showcase-group ranking-showcase-group--top">
             <div className="ranking-showcase-group__header">
               <h2 className="ranking-showcase-group__title">상위 5작품</h2>
-              {stamp ? <span className="ranking-showcase-group__meta">{stamp}</span> : null}
             </div>
             <div className="ranking-showcase-top-grid">
               {top.slice(0, COUNT).map((n, i) => (
@@ -68,7 +62,6 @@ export default function Showcase({ top, movers, showcaseDate, tableDate }: Showc
           <section className="ranking-showcase-group ranking-showcase-group--rising">
             <div className="ranking-showcase-group__header">
               <h2 className="ranking-showcase-group__title">급상승 5작품</h2>
-              {stamp ? <span className="ranking-showcase-group__meta">{stamp}</span> : null}
             </div>
             <div className="ranking-showcase-rising-grid">
               {movers.slice(0, COUNT).map((n, i) => {

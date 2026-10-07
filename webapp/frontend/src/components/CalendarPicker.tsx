@@ -4,7 +4,6 @@ import type { DatePickerProps } from 'react-datepicker';
 import { offset, shift } from '@floating-ui/react';
 import { format, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { CalendarEvent } from 'react-bootstrap-icons';
 import 'react-datepicker/dist/react-datepicker.css';
 
 registerLocale('ko', ko);
@@ -13,16 +12,13 @@ interface CalendarPickerProps {
   selectedDate: Date | null;
   onDateChange: (date: Date | null) => void;
   availableDates: Set<string>;
-  highlightDates?: Date[];
-  /** 'inline'은 제목 옆 날짜(점선 밑줄 글자)로 보인다. */
-  variant?: 'field' | 'inline';
 }
 
 // Custom input component to replace the default <input> with a <div>
 // This resolves the blinking cursor issue.
-const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void; className?: string }>(({ value, onClick, className }, ref) => (
+const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void }>(({ value, onClick }, ref) => (
   <div
-    className={className ?? 'form-control'}
+    className="date-nav__date"
     onClick={onClick}
     ref={ref}
     role="button"
@@ -34,7 +30,8 @@ const CustomDateDisplay = forwardRef<HTMLDivElement, { value?: string; onClick?:
   </div>
 ));
 
-const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateChange, availableDates, highlightDates, variant = 'field' }) => {
+/** 제목 옆 날짜(점선 밑줄 글자)로 보인다. */
+const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateChange, availableDates }) => {
   const [isOpen, setIsOpen] = useState(false);
   const fixedBottomPopperProps = useMemo(() => ({
     // react-datepicker adds flip() by default. Override middleware so the
@@ -63,11 +60,8 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
     setIsOpen(prev => !prev);
   };
 
-  const inline = variant === 'inline';
-
   return (
-    <div className={inline ? 'date-picker-wrapper date-picker-wrapper--inline' : 'date-picker-wrapper'} onClick={(e) => { if (e.target === e.currentTarget) handleToggle(); }}>
-      {inline ? null : <CalendarEvent className="date-picker-icon" />}
+    <div className="date-picker-wrapper" onClick={(e) => { if (e.target === e.currentTarget) handleToggle(); }}>
       <DatePicker
         key={availableDates.size}
         selected={selectedDate}
@@ -78,11 +72,10 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ selectedDate, onDateCha
         open={isOpen}
         onInputClick={() => setIsOpen(true)}
         onClickOutside={() => setIsOpen(false)}
-        dateFormat={inline ? 'yyyy.MM.dd' : 'yyyy-MM-dd'}
+        dateFormat="yyyy.MM.dd"
         dateFormatCalendar="yyyy년 M월"
-        customInput={<CustomDateDisplay className={inline ? 'date-nav__date' : undefined} />}
+        customInput={<CustomDateDisplay />}
         locale={ko}
-        highlightDates={highlightDates}
         calendarClassName="mobile-calendar-small"
         popperPlacement="bottom-start"
         popperProps={fixedBottomPopperProps}

@@ -14,7 +14,7 @@ const lum = (hex) => {
 };
 const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 const TEXT = ['--np-text-primary', '--np-text-secondary', '--np-text-faint', '--np-rank-up', '--np-rank-down', '--np-new-text',
-  '--np-zone-mainstream-text', '--np-zone-gem-text', '--np-zone-saturated-text', '--np-zone-cold-text'];
+  '--np-zone-mainstream-text', '--np-zone-gem-text', '--np-zone-saturated-text'];
 const dark = block(':root'); const light = { ...dark, ...block('[data-theme="light"]') };
 let bad = 0;
 for (const [name, t] of [['dark', dark], ['light', light]]) {

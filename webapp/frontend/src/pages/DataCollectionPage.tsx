@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getAvailableDates } from '../services/api';
 import PageTitle from '../components/ui/PageTitle';
-import { formatInt } from '../utils/format';
+import { formatDateDot, formatInt } from '../utils/format';
 
 /**
  * 수집 및 랭킹 기준 — 읽는 문서다(2026-09-29 개편).
@@ -44,7 +44,6 @@ const buildRecord = (available: string[]): CollectionRecord | null => {
   return { days, collected: days.length - missing.length, total: days.length, missing, latest };
 };
 
-const dotDate = (iso: string) => iso.replaceAll('-', '.');
 const koDate = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return `${y}년 ${m}월 ${d}일`; };
 
 /**
@@ -76,11 +75,11 @@ const RecordStrip = ({ record }: { record: CollectionRecord }) => {
         ))}
       </svg>
       <figcaption className="doc-record__caption">
-        <span>{dotDate(COLLECTION_START)}</span>
-        <span>{dotDate(record.latest)}</span>
+        <span>{formatDateDot(COLLECTION_START)}</span>
+        <span>{formatDateDot(record.latest)}</span>
       </figcaption>
       <p className="doc-record__missing">
-        빠진 날 {record.missing.length > 0 ? record.missing.map(dotDate).join(' · ') : '없음'}
+        빠진 날 {record.missing.length > 0 ? record.missing.map(formatDateDot).join(' · ') : '없음'}
       </p>
     </figure>
   );

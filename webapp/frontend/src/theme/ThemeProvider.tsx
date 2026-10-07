@@ -13,10 +13,6 @@ const THEME_BG_COLORS: Record<ThemeMode, string> = {
 };
 
 function getInitialTheme(): ThemeMode {
-  if (typeof window === 'undefined') {
-    return 'dark';
-  }
-
   // 프라이빗 모드·사이트 데이터 차단 등에서 storage 접근이 예외를 던질 수 있다(CoverMaskProvider와 같은 이유).
   let persistedTheme: string | null = null;
   try { persistedTheme = window.localStorage.getItem('theme'); } catch { /* storage 차단 시 무시 */ }

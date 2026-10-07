@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getContestNovelTrend, getNovelTrend, getUploads } from '../../services/api';
+import { getContestNovelTrend, getNovelTrend } from '../../services/api';
+import { useUploads } from '../../hooks/useUploads';
 import UploadCells from '../novel/UploadCells';
 import { formatDateKo } from '../../utils/format';
 import { previousCalendarDay } from '../../utils/currentRank';
 import { windowOf } from '../../utils/trendSummary';
 import { buildMetricPoints, summarizeMetrics, type MetricRow } from '../../utils/metricSeries';
 import { contestTrendRow, type ContestTrendRow } from '../../utils/contestNovels';
-import { uploadDays, uploadSummary, type UploadsState } from '../../utils/uploads';
+import { uploadSummary } from '../../utils/uploads';
+import { rankPath } from '../../utils/sparkline';
 
 const WINDOW = 30;
 // 펼침 높이를 줄이려고 선은 넓고 낮게, 제목·기간은 선 왼쪽 작은 이름표로 접었다(2026-10-04).
@@ -66,15 +68,7 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
     d.setUTCDate(d.getUTCDate() - (WINDOW - 1 - i));
     return d.toISOString().slice(0, 10);
   }), [date]);
-  const upSource = cYear ? 'contest' as const : 'daily' as const;
-  const [upDays, setUpDays] = useState<{ date: string; days: UploadsState } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    getUploads(novelId, upDates[0], date, { date, source: upSource })
-      .then(r => { if (!cancelled) setUpDays({ date, days: uploadDays(r.data) }); })
-      .catch(() => { if (!cancelled) setUpDays({ date, days: 'error' }); });
-    return () => { cancelled = true; };
-  }, [novelId, date, upDates, upSource]);
+  const days = useUploads(novelId, upDates[0], date, true, { date, source: cYear ? 'contest' : 'daily' })!;
 
   const points = useMemo(() => {
     if (typeof state !== 'object' || !start || !base) return [];
@@ -89,25 +83,13 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
 
   const s = summarizeMetrics(points);
   const n = points.length;
-  const days: UploadsState = upDays?.date === date ? upDays.days : 'loading';
   const up = uploadSummary(typeof days === 'object' ? days : {});
   const slot = (UW - 6) / (WINDOW - 1);
   const UX = (i: number) => 3 + i * slot;
   const ucw = Math.max(2, slot - 1.5);
   const upSummary = days === 'loading' ? '불러오는 중' : days === 'error' ? '불러오지 못했습니다' : up.known > 0 ? <>{up.known}일 중 <b>{up.uploaded}일</b></> : '기록 없음';
-  const X = (i: number) => (n <= 1 ? W / 2 : P + (i / (n - 1)) * (W - 2 * P));
   const ranks = points.map(p => (p.rec ? p.rank : null));
-  const vals = ranks.filter((r): r is number => r != null);
-  const lo = Math.min(...vals);
-  const hi = Math.max(...vals);
-  const Y = (r: number) => P + ((r - lo) / (hi - lo || 1)) * (H - 2 * P);
-  let d = '';
-  let pen = false;
-  ranks.forEach((r, i) => {
-    if (r == null) { pen = false; return; }
-    d += `${pen ? 'L' : 'M'}${X(i).toFixed(1)},${Y(r).toFixed(1)}`;
-    pen = true;
-  });
+  const { d, X, Y } = rankPath(ranks, W, H, P);
   // 끝 표지는 순위가 있는 마지막 날(공모전은 순위 없는 날이 있다 — MetricSummary.rankFirst 설명).
   const bestI = s && s.best.rank != null ? points.indexOf(s.best) : -1;
   const lastI = s?.rankLast ? points.indexOf(s.rankLast) : -1;
@@ -126,7 +108,7 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
           <b>{n}일 순위</b>
           <span>{formatDateKo(points[0]?.date ?? start)} – {formatDateKo(date)}</span>
         </div>
-        {vals.length > 0 ? (
+        {d ? (
           <svg width={W} height={H} className="mx-svg novel-expand__svg" role="img" aria-label={`${n}일 순위 추이`}>
             <path d={d} className="mx-rankline" />
             {ranks.map((r, i) => (lonely(i) ? <circle key={i} cx={X(i)} cy={Y(r!)} r={2.6} className="mx-rankdot" /> : null))}

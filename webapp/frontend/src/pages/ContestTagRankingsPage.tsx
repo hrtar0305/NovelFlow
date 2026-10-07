@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
-import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, Cell } from 'recharts';
+import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 import { Search as SearchIcon } from 'react-bootstrap-icons';
 import { getContestAvailableDates, getContestDailyTagRankingsByDate, getContestTagRankingsByDate } from '../services/api';
 import DailyTagBoard from '../components/tag/DailyTagBoard';
@@ -280,9 +280,7 @@ function CumulativeContestTags() {
                           {on ? <text x={cx} y={cy - 12} textAnchor="middle" className="contest-map__label">{payload.tag}</text> : null}
                         </g>
                       );
-                    }}>
-                    {mapRows.map(r => <Cell key={r.tag} />)}
-                  </Scatter>
+                    }} />
                 </ScatterChart>
               </ResponsiveContainer>
             </div>

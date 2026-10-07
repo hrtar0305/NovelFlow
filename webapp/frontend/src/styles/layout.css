@@ -156,18 +156,13 @@
   display: none;
 }
 
-.page-shell,
-.np-page-container {
+.page-shell {
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
   width: 100%;
   padding: 1.1rem 0 0;
 }
-
-/* 페이지 제목은 카드가 아니다. 테두리·그라데이션·그림자를 두른 패널이었는데,
-   화면 최상단에 또 하나의 카드가 얹히면 아래 내용과 위계가 겹친다.
-   캔버스 위에 제목만 놓고 아래 여백으로 구분한다. */
 
 @media (max-width: 991.98px) {
   .app-header-inner {
@@ -218,8 +213,7 @@
     display: none;
   }
 
-  .page-shell,
-  .np-page-container {
+  .page-shell {
     padding-top: 0.85rem;
     gap: 0.9rem;
   }
