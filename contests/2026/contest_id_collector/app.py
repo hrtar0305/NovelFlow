@@ -31,6 +31,11 @@
 - **제목이 없는 페이지는 일반작이 아니라 '다시 볼 번호'다.** 경고창·배지가 없다는 것만으로는 정상 페이지인지 모른다.
 - **작가의 다른 작품**(`/proc/novel_curation`, cmd=writer_other_novel)을 참가작을 처음 찾을 때 원본 JSON
   그대로 남긴다(작가당 1회). 기성 여부 판정은 나중에 한다(제안: 공모전 시작 번호 이전 작품이 있으면 기성).
+  **이 요청만 로그인 세션으로 보낸다**(2026-10-08) — 익명 응답은 19금 작품을 통째로 뺀다(작가 2,909명의 2,072건 중 19금 0건,
+  데일리에 19금 작품이 있는 참가 작가 31명이 신인으로 보였다). 쿠키는 데일리 크롤러가 매일 SSM 에 남기는 것을 빌린다.
+  만료된 쿠키는 오류 없이 익명 결과를 주므로, 받기 전에 19금 작품이 있는 작가(AUTH_CANARIES)로 로그인이 살아 있는지 보고,
+  아니면 그 실행은 작가를 받지 않는다(작가당 1회라 한 번 익명으로 받으면 틀린 값이 굳는다 — 미루면 화면은 '모름'이다).
+  상세 훑기는 그대로 익명이다(DECISIONS 2026-07-01).
 """
 import json
 import logging
@@ -70,6 +75,9 @@ AUTHOR_KEY = "authors/{}.json"
 # 적재가 매일 덮어쓰는 '그날 경고창·파싱 실패로 placeholder 가 된 참가작' 번호 배열(네트워크 실패분은 넣지 않는다).
 # contest 는 삭제·철회된 작품도 지우지 않는 누적이라, 노벨피아의 현재 등록 수와 견줄 때만 이것을 뺀다(없으면 빼지 않는다).
 GONE_KEY = "state/gone_ids.json"
+AUTH_COOKIE_PARAM = os.environ.get('AUTH_COOKIE_PARAM', '/NP-Trend/AUTH_COOKIES')   # 데일리 크롤러가 매일 21시에 쓴다
+# 로그인 확인용 '작가 번호:그 작가의 참가작 번호' — 다른 작품에 19금이 있는 작가. 하나라도 19금이 보이면 로그인 세션이다.
+AUTH_CANARIES = [tuple(p.split(':')) for p in os.environ.get('AUTH_CANARIES', '1097127:455819,114367:456230').split(',')]
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
 KST = ZoneInfo("Asia/Seoul")
@@ -131,6 +139,27 @@ def check(session, nid):
             err = str(e)[:120]
             time.sleep(1.5 * (attempt + 1))
     return 'retry', f'request failed: {err}'
+
+
+def auth_sessions(execution_id):
+    """작가의 다른 작품을 받을 로그인 세션 WORKERS 개. 쿠키를 못 읽거나 카나리아에서 19금이 안 보이면 None."""
+    try:
+        p = boto3.client('ssm', region_name='ap-northeast-2').get_parameter(Name=AUTH_COOKIE_PARAM, WithDecryption=True)
+        cookies = json.loads(p['Parameter']['Value'])
+    except Exception as e:  # noqa: BLE001
+        _log(logging.WARNING, execution_id, f"Auth cookies unavailable — author fetch skipped: {e}")
+        return None
+    out = []
+    for _ in range(WORKERS):
+        s = _session()
+        for c in cookies:
+            s.cookies.set(c['name'], c['value'], domain=c['domain'], path=c['path'])
+        out.append(s)
+    for aid, nno in AUTH_CANARIES:
+        if any(str(x.get('novel_age')) == '19' for pg in author_works(out[0], aid, int(nno)) for x in _writer_block(pg.get('raw')).get('list') or []):
+            return out
+    _log(logging.WARNING, execution_id, "Login not effective (no 19+ works on canaries) — author fetch skipped.")
+    return None
 
 
 def _upstream_failure(kind, info):
@@ -301,13 +330,16 @@ def handler(event, context):
                 pending[aid] = int(k)
         if not pending:
             return 0, 0, 0
+        auth = auth_sessions(execution_id)
+        if auth is None:
+            return 0, 0, len(pending)
         deadline = time.monotonic() + seconds if seconds else None
         todo, got, failed, batches = list(pending.items()), 0, 0, 0
 
         while todo and remaining() > BUDGET_MS // 2 and (deadline is None or time.monotonic() < deadline):
             part, todo = todo[:WORKERS], todo[WORKERS:]
-            for (aid, nno), pages in zip(part, pool.map(lambda t: author_works(sess[t[0]], t[1][0], t[1][1]), enumerate(part))):
-                _put(AUTHOR_KEY.format(aid), {'author_id': aid, 'fetched_at': _now(), 'novel_no': nno, 'pages': pages})
+            for (aid, nno), pages in zip(part, pool.map(lambda t: author_works(auth[t[0]], t[1][0], t[1][1]), enumerate(part))):
+                _put(AUTHOR_KEY.format(aid), {'author_id': aid, 'fetched_at': _now(), 'novel_no': nno, 'auth': True, 'pages': pages})
                 summary = summarize_author(pages)
                 if summary is None:
                     failed += 1
