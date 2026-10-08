@@ -217,7 +217,7 @@ def _parse_detail(html, novel_id, crawl_date, execution_id, crawled_at):
             "Badges": spans if spans is not None else [],
             "LifePick": extract.info_value(soup, "인생픽"),
         }
-    except Exception as e:  # noqa: BLE001 — 셀렉터가 깨진 페이지: 재시도해도 같으므로 placeholder
+    except Exception as e:  # noqa: BLE001 — 셀렉터가 깨진 페이지(잘린 응답 포함): placeholder. 실시간 수집이면 호출부가 다시 받는다
         _log(logging.ERROR, execution_id, f"Parsing failed for {novel_id}: {e}. Creating placeholder.", novel_id=novel_id, exc_info=True)
         return _create_placeholder_item(novel_id, crawl_date, reason=f"ParsingFailed: {type(e).__name__}", crawled_at=crawled_at), False
 
@@ -228,6 +228,10 @@ def _parse_detail(html, novel_id, crawl_date, execution_id, crawled_at):
     if days:
         item["SerialDays"] = days
     return item, True
+
+
+# 쓸 수 없는 결과를 묶음 끝에서 다시 받기 전 대기(데일리·2025 와 같은 값 — 잘림이 몰린 구간이 0.3~5.6초였다).
+PAGE_RETRY_WAITS = (2, 5)
 
 
 def _attach_retention(item, session, novel_id, crawl_date, pages, execution_id):
@@ -245,9 +249,10 @@ def _attach_retention(item, session, novel_id, crawl_date, pages, execution_id):
         # 지금 받으면 자정 값이 아니다(DECISIONS 2026-10-04 「하루의 값은 자정 값」).
         _log(logging.INFO, execution_id, f"Retention not reproducible from raw for {novel_id}: {e}", novel_id=novel_id)
         item.update(extract.RETENTION_DEFAULTS)
-    except Exception as e:  # noqa: BLE001 — 부가 필드의 해석 오류로 묶음 전체(Lambda)를 죽이지 않는다. 값 없음(-1)으로 둔다
+    except Exception as e:  # noqa: BLE001 — 부가 필드의 해석 오류로 묶음 전체(Lambda)를 죽이지 않는다. 값 없음(-1)으로 두고 표시한다
         _log(logging.WARNING, execution_id, f"Retention parse failed for {novel_id}: {e}", novel_id=novel_id, exc_info=True)
         item.update(extract.RETENTION_DEFAULTS)
+        item["RetentionFetchError"] = ["parse"]   # 실시간 수집이면 호출부가 다시 받는다(데일리와 같은 필드)
 
 
 def _parse_one(session, novel_id, crawl_date, execution_id, crawled_at=None):
@@ -320,7 +325,8 @@ def parse_dmap_batch(event, context):
 
     실패는 **묶음 안에 가둔다**: 네트워크 오류는 간격을 두고 다시 받고, 끝내 실패한 작품만 `failed` 로 돌려준다
     (묶음 전체를 실패시키면 받은 39편까지 버려진다). 대조 단계가 빠진 작품만 모아 다시 돌린다.
-    경고창·파싱 오류는 다시 받아도 같으므로 placeholder 로 끝낸다.
+    쓸 수 없는 결과(경고창·파싱 오류·잔류율 회차 값 누락)는 묶음 끝에서 2·5초 뒤 다시 받고, 끝내 같을 때만 placeholder 로 끝낸다
+    (DECISIONS 2026-10-08 — 예전엔 '다시 받아도 같다'고 보고 바로 끝냈다).
     **시간 예산**(`DMAP_TIME_BUDGET_SECONDS`)을 넘기면 새 작품·새 시도를 시작하지 않고 남은 작품을 `failed`(TimeBudget)로
     돌려준다 — EXPRESS 자식 5분을 넘겨 받은 작품까지 버려지는 것보다, 받은 것은 남기고 나머지만 다음 라운드로 넘기는 편이 낫다.
     """
@@ -341,6 +347,7 @@ def parse_dmap_batch(event, context):
     session = requests.Session()
     session.headers.update({"User-Agent": Config.USER_AGENT})
     results, failed, raw_batch = [], [], []
+    retry, fallback, replaced, cut = [], {}, {}, []   # 다시 받을 번호, 그 번호의 최신 결과, 다시 받은 원본, 예산 때문에 못 다시 받은 번호
     # 재시도 경로 시험(그림자 실행 전용): 첫 라운드에서 번호 % N == 0 인 작품을 받지 않고 네트워크 실패로 돌려준다.
     inject = int(bi.get('inject_fail_mod') or 0) if bi.get('dry_run') and int(bi.get('round') or 0) == 0 else 0
     for novel_id in ids:
@@ -366,8 +373,48 @@ def parse_dmap_batch(event, context):
                     time.sleep(2 * (attempt + 1))   # 2초, 4초 — 순간적인 끊김을 넘긴다
         if item is None:
             failed.append({"id": novel_id, "error": last_error})
+        elif not _ok or item.get("RetentionFetchError"):
+            retry.append(novel_id)
+            fallback[novel_id] = item
         else:
             results.append(item)
+    # 쓸 수 없는 결과(경고창·셀렉터 없음·잔류율 해석 실패)는 **묶음 끝에서 다시 받는다**(사용자 결정 2026-10-08). 데일리에서 200 인데
+    # 31KB 에서 잘린 응답이 6번 placeholder 가 됐고 전부 다음 날 멀쩡했다 — 다시 받았으면 산 값이다. 끝내 같으면 마지막 결과를 쓴다.
+    for wait in PAGE_RETRY_WAITS:
+        if not retry or over_budget():
+            break
+        _log(logging.WARNING, execution_id, f"Retrying {len(retry)} unusable results.", ids=retry[:20])
+        time.sleep(wait)
+        again = []
+        for n, novel_id in enumerate(retry):
+            if over_budget():
+                cut += retry[n:]
+                break
+            try:
+                item, pages, _ok = _parse_one(session, novel_id, crawl_date, execution_id)
+            except requests.exceptions.RequestException as e:
+                _log(logging.WARNING, execution_id, f"Network error on retry for {novel_id}: {e}", novel_id=novel_id)
+                again.append(novel_id)
+                continue
+            fallback[novel_id] = item
+            replaced[novel_id] = (pages, item.get("CrawledAt"))
+            if not _ok or item.get("RetentionFetchError"):
+                again.append(novel_id)
+            else:
+                _log(logging.INFO, execution_id, "Recovered on retry.", novel_id=novel_id)
+        retry = again
+    if retry and over_budget():
+        cut += retry   # 라운드를 시작하지도 못했다
+    if cut:
+        # 시간 예산 때문에 다시 받지 못한 것만 '받지 못함'으로 돌려 reconcile 라운드(30초·120초 뒤)가 다시 받게 한다.
+        # 끝까지 다시 받고도 같은 것은 그 결과(placeholder)로 확정한다.
+        for novel_id in cut:
+            failed.append({"id": novel_id, "error": f"TimeBudget (unusable: {fallback.pop(novel_id).get('Title')})"})
+            replaced.pop(novel_id, None)
+        raw_batch = [r for r in raw_batch if r[0] not in set(cut)]
+    results += [fallback[k] for k in fallback]
+    # 원본은 작품마다 마지막으로 받은 쪽만 남긴다 — 원본 재계산이 같은 주소의 응답을 하나로 되풀이한다.
+    raw_batch = [(k, *replaced[k]) if k in replaced else (k, p, at) for k, p, at in raw_batch]
     # 그림자 실행(dry_run)은 원본을 올리지 않는다 — 받기 마감(자정 + 1시간)에서 면제라 며칠 뒤에 받은 값일 수 있고, 그 묶음이
     # `{date}/` 접두어에 섞이면 원본 재계산이 늦은 값을 그 날짜의 자정 값으로 적재한다(리뷰 2026-10-04). `raw: false` 를 빠뜨려도 막힌다.
     upload = bi.get('raw', True) and not bi.get('dry_run')
@@ -460,8 +507,8 @@ class ReprocessIncomplete(Exception):
 
 
 # 원본 재계산의 범위 검사 상한 — 자정 실행의 기대 목록 중 원본에 없는 작품이 이 비율을 넘으면 쓰지 않는다.
-# 적재 단계의 결손 상한(consolidate `DMAP_MAX_MISSING_FRACTION`, 5%)과 같은 뜻·같은 값이다(이미지가 달라 따로 읽는다).
-REPROCESS_MAX_MISSING_FRACTION = float(os.environ.get('DMAP_MAX_MISSING_FRACTION', '0.05'))
+# 적재 단계의 결손 상한(consolidate `DMAP_MAX_MISSING_FRACTION`, 2% — DECISIONS 2026-10-08)과 같은 뜻·같은 값이다(이미지가 달라 따로 읽는다).
+REPROCESS_MAX_MISSING_FRACTION = float(os.environ.get('DMAP_MAX_MISSING_FRACTION', '0.02'))
 
 
 def _ts(value):

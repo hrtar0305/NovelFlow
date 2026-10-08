@@ -16,10 +16,16 @@ class Config:
     DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
     SQS_RESULT_QUEUE_URL = os.environ.get('SQS_RESULT_QUEUE_URL')
     LOOP_TIMEOUT_SECONDS = 600  # 10 minutes
-    # ParsingFailed 자리표시가 이 비율을 넘으면 쓰지 않고 실패한다(데일리 consolidate 의 5% 게이트와 같은 취지).
-    # Inaccessible(삭제·비공개)은 1년째 추적 중이라 평소에도 절반이 넘으므로 세지 않는다 — 실측 2026-10-02 2,570/4,719,
-    # ParsingFailed 는 표본 12일 모두 0건.
-    MAX_PARSING_FAILED_RATIO = 0.05
+    # 품질 기준 — 371일 전수 실측(2026-10-08; 예전 5% 는 12일 표본만 보고 정한 값이었다). 파서가 쓸 수 없는 페이지를 다시
+    # 받으므로(parser.PAGE_ATTEMPTS) 남는 것은 코드 버그나 장애다.
+    #  - ParsingFailed: 하루 최대 11(2026-07-12, 5.6초 흔들림 — 다시 받으면 산다), 그 밖엔 1(코드 버그 5일) → 1건이라도 경고, 2% 초과면 실패
+    #    (세 파이프라인 공통 — 정상 최대 0.8% 의 약 2.5배, 가장 작은 계통 장애 63% 의 1/30. DECISIONS 2026-10-08).
+    #  - 전날 실데이터였는데 오늘 Inaccessible: 중앙값 3, 최근 p99 17, 최대 237(2025-11 공모전 정리 때 실제 삭제) → 50 초과 경고,
+    #    500 초과 실패(노벨피아가 모든 쪽에 경고창을 띄우는 장애면 2,000편대로 뛴다). 예전엔 Inaccessible 을 아예 보지 않았다.
+    MAX_PARSING_FAILED_RATIO = 0.02
+    WARN_NEW_INACCESSIBLE = 50
+    MAX_NEW_INACCESSIBLE = 500
+    NOTIFY_FUNCTION = os.environ.get('NOTIFY_FUNCTION', 'novelflow-discord-notify')
 
 if not Config.DYNAMODB_TABLE_NAME or not Config.SQS_RESULT_QUEUE_URL:
     raise ValueError("DYNAMODB_TABLE_NAME and SQS_RESULT_QUEUE_URL env vars must be set.")
@@ -109,18 +115,67 @@ def _validate_data(execution_id, items, expected_count):
         raise ValueError(error_message)
     _log(logging.INFO, execution_id, f"Validation successful: {collected_data_count}/{expected_count} unique items collected.")
 
-def _check_quality(execution_id, items):
-    """수량은 맞아도 셀렉터가 깨진 날(전 건 ParsingFailed)은 쓰지 않는다.
+def _notify(execution_id, date, title, lines):
+    """품질 경고를 Discord 알림 Lambda 로(멘션). 알림 실패가 적재를 막지 않는다."""
+    try:
+        boto3.client('lambda').invoke(
+            FunctionName=Config.NOTIFY_FUNCTION, InvocationType='Event',
+            Payload=json.dumps({'notice': {'level': 'warn', 'pipeline': '2025 공모전', 'date': date, 'title': title,
+                                           'lines': lines, 'run': execution_id}, 'mention': True}, ensure_ascii=False).encode())
+    except Exception as e:  # noqa: BLE001
+        _log(logging.ERROR, execution_id, f"Failed to send warning '{title}': {e}")
+
+
+def _previous_real_ids(table, date):
+    """직전 수집일에 실데이터(자리표시 아님)였던 작품 번호. 직전 수집일이 없으면 None."""
+    meta = table.get_item(Key={'ID': 'CONTEST_AVAILABLE_DATES', 'Date': 'METADATA'}).get('Item') or {}
+    earlier = sorted(d for d in (meta.get('dates') or []) if d < date)
+    if not earlier:
+        return None
+    from boto3.dynamodb.conditions import Key
+    out, kw = set(), {'IndexName': 'DateViewIndex', 'KeyConditionExpression': Key('Date').eq(earlier[-1]),
+                      'ProjectionExpression': 'ID, Title'}
+    while True:
+        r = table.query(**kw)
+        out |= {str(i['ID']) for i in r['Items'] if not str(i.get('Title', '')).startswith('N/A (')}
+        if 'LastEvaluatedKey' not in r:
+            return out
+        kw['ExclusiveStartKey'] = r['LastEvaluatedKey']
+
+
+def _check_quality(execution_id, items, table):
+    """수량은 맞아도 내용이 망가진 날(셀렉터 변경·경고창 장애)은 쓰지 않는다. 기준값은 Config 주석의 실측.
 
     commit 전에 올려야 DynamoDB 쓰기와 SQS 삭제가 둘 다 막히고, 실행이 실패해 알림이 간다.
     """
     if not items:
         return
-    failed = sum(1 for i in items if str(i.get('Title', '')).startswith('N/A (ParsingFailed'))
-    if failed / len(items) > Config.MAX_PARSING_FAILED_RATIO:
-        error_message = f"Quality gate failed: {failed}/{len(items)} ParsingFailed placeholders."
+    date = items[0].get('Date')
+    failed = [i for i in items if str(i.get('Title', '')).startswith('N/A (ParsingFailed')]
+    if len(failed) > Config.MAX_PARSING_FAILED_RATIO * len(items):
+        error_message = f"Quality gate failed: {len(failed)}/{len(items)} ParsingFailed placeholders after retries."
         _log(logging.ERROR, execution_id, error_message)
         raise ValueError(error_message)
+    if failed:
+        _notify(execution_id, date, f"다시 받아도 못 읽은 작품 {len(failed)}편",
+                [f"{i.get('ID')}: {i.get('Title')}" for i in failed[:10]] + ["나머지 작품은 저장했습니다(막지 않음)."])
+
+    try:
+        prev = _previous_real_ids(table, date)
+    except Exception as e:  # noqa: BLE001 — 부가 검사라 실패해도 적재를 막지 않는다(그날 결과 큐는 다음 날 비워진다)
+        _log(logging.WARNING, execution_id, f"Could not load the previous collection for the inaccessible check: {e}")
+        return
+    if prev is None:
+        return
+    gone = [str(i['ID']) for i in items if str(i.get('Title', '')) == 'N/A (Inaccessible)' and str(i['ID']) in prev]
+    if len(gone) > Config.MAX_NEW_INACCESSIBLE:
+        error_message = f"Quality gate failed: {len(gone)} novels became Inaccessible since the previous collection."
+        _log(logging.ERROR, execution_id, error_message)
+        raise ValueError(error_message)
+    _log(logging.INFO, execution_id, "Quality gate passed.", parsing_failed=len(failed), new_inaccessible=len(gone))
+    if len(gone) > Config.WARN_NEW_INACCESSIBLE:
+        _notify(execution_id, date, f"하루 사이 접근 불가가 된 작품 {len(gone)}편",
+                [f"평소 하루 3편 안팎(최근 p99 17편)입니다. 저장은 했습니다(막지 않음).", f"예: {', '.join(gone[:10])}"])
 
 def _calculate_and_store_tag_stats(dynamodb_table, execution_id, items):
     """Calculates tag statistics from all items and stores them in a single DynamoDB item."""
@@ -254,7 +309,7 @@ def handler(event, context):
     # 2. Deduplicate and Validate
     unique_items = _deduplicate_items(all_messages, execution_id)
     _validate_data(execution_id, unique_items, expected_count)
-    _check_quality(execution_id, unique_items)
+    _check_quality(execution_id, unique_items, table)
 
     # 3. Commit Phase: Process, Upload, then Delete
     try:

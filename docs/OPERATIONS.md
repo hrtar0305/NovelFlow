@@ -228,7 +228,7 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
     D+1 00:00 + 60분 안(자정 5분 전 이후)에 시작해야 하고, 벗어나면 `LateRefetchRefused` 로 거절된다. 수동 `{"target_date": "YYYY-MM-DD"}` 도 같다.
   - 첫 시도의 실패 상태(오류·어디까지 했나)는 상태 버킷 `runs/{date}/{실행 이름}/attempt-errors/` 에 남고 적재·실패 알림에 요약된다.
   - **받기는 끝났는데 적재가 실패한 날**: 원본 재계산 `{"reprocess": true, "target_date": "YYYY-MM-DD"}`(마감 없음). 먼저 `"dry_run": true` 로
-    운영 행과 견준다. 원본에 없는 작품이 자정 기대 목록의 5%를 넘으면 `ReprocessIncomplete` — 확인했으면 `"accept_partial": true`.
+    운영 행과 견준다. 원본에 없는 작품이 자정 기대 목록의 2%를 넘으면 `ReprocessIncomplete` — 확인했으면 `"accept_partial": true`.
     장부는 `failures/{date}-reprocess.json`. 2026-10-04 이전 원본에는 회차 조회수가 없어 잔류율이 비어 나온다.
   - 그림자 실행(쓰기 없음): `{"skip_discovery": true, "raw": false, "dry_run": true, "target_date": "YYYY-MM-DD"}`, 재실행 경로 시험은 `"fail_first_attempt": true` 추가.
   - 매일의 결과·결손 장부: 상태 버킷 `failures/{date}.json`. 결손이 있으면 Discord 로 멘션 없는 경고, 실패는 멘션.
@@ -263,7 +263,7 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 | 500건 · 2025-07-20까지 300건 | 크롤러 수집 범위 변경 |
 | 500건을 다 읽는 데 2분 남짓 | Step Functions 실행 시간이 눈에 띄게 달라졌을 때 |
 | 공모전 4,719건 · 2025-10-02 시작 | 2026 공모전 파이프라인 추가 시 |
-| 자리표시 5% · 조회수 감소 100건 | `consolidate_data.py`의 품질 게이트 상수 변경 |
+| 다시 받기 3번 · 자리표시 2% · 조회수 감소 10건(1건부터 경고) | `crawler/app.py` PAGE_ATTEMPTS · `consolidate_data.py` 품질 게이트 상수 변경 |
 | 동시 20건 · 재시도 5회 · 월 0.5달러 | 워크플로 동시성/재시도 설정, 요금 변화 |
 | 2026-04-13 이전엔 상위권 집중도 없음 | 없음(집계 도입일) |
 
