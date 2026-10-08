@@ -689,6 +689,213 @@ def _parse_int_from_raw_text(text, suffix_to_remove=""):
     """Helper to parse an integer from cleaned text."""
     return int(text.rstrip(suffix_to_remove).replace(",", ""))
 
+class PageUnusable(Exception):
+    """노벨피아가 준 페이지로 항목을 만들 수 없다(경고창 등). 다시 받아 볼 일이다."""
+
+
+# 쓸 수 없는 페이지·빠진 값은 **같은 호출 안에서** 다시 받는다(사용자 결정 2026-10-08). 실측: 6번의 파싱 실패가 전부
+# 31KB 에서 잘린 200 응답이었고 다음 날엔 멀쩡했다 — 다시 받았으면 살았을 값이다. 2·5초를 쉬는 이유: 잘림이 몰린 구간이
+# 0.3초(2026-08-24)~5.6초(2025 공모전 07-12)였다. 대기 합 7초라 계통 장애(500편 전부 실패)여도 동시 20에서 약 3분 안이다.
+PAGE_ATTEMPTS = 3
+PAGE_RETRY_WAITS = (2, 5)
+
+
+# 실패한 시도의 상세 쪽은 이보다 작을 때만(잘린 응답 등 — 정상은 37만 자 이상) 원본에 남긴다. SQS 메시지가 256KB 라
+# 정상 크기 쪽을 겹쳐 실으면 넘는다(한 편 원본 ≈ 122KB).
+FAILED_PAGE_KEEP_CHARS = 100_000
+# 잔류율만 다시 받을 때의 대기. 상세 잘림(2·5초)과 달리 근거 구간이 없고, 회차 목록 장애가 전 작품에 걸리면 편당 대기가
+# 그대로 Express 300초 여유를 깎는다(2초면 약 275초) — 짧게 둔다.
+RETENTION_RETRY_WAIT = 0.5
+RETENTION_FIELDS = ("FirstEpView", "FirstEpNum", "Ep30View", "Ep30Num", "RecentBaseView", "RecentBaseNum",
+                    "TargetLatestEpView", "TargetLatestEpNum")
+
+
+def _retry_later(raw_pages, tried, attempt, execution_id, novel_id, reason):
+    """이번 시도에서 받은 원본은 작은 상세 쪽만 `detail_failed` 로 남기고(무엇이 왔는지 보려고) 잠시 쉰다.
+    재파싱은 성공한 시도의 `detail` 만 본다."""
+    kept = [{**p, "kind": "detail_failed"} for p in raw_pages[tried:]
+            if p.get("kind") == "detail" and len(p.get("html") or "") < FAILED_PAGE_KEEP_CHARS]
+    raw_pages[tried:] = kept
+    _log(logging.WARNING, execution_id, f"Unusable result, retrying: {reason}", novel_id=novel_id, attempt=attempt)
+    time.sleep(PAGE_RETRY_WAITS[attempt - 1])
+
+
+def _collect_retention(session, novel_id, item, raw_pages, execution_id):
+    """잔류율 재료(1화·30화·최신화·그 30화 전의 조회수)를 받아 `item` 에 채운다. 끝내 못 받은 창은 `RetentionFetchError` 에 적는다."""
+    # Fetch episode data for retention rate calculation
+    if item["Eps"] > 0:
+        # 회차 목록을 끝내 못 받은 창. 그 결과 -1 로 남은 값을 '30화 미만이라 계산 안 함'과
+        # 구별하려고 항목에 싣는다(정상이면 필드 자체가 없다).
+        retention_fetch_errors = []
+        early_valid_eps = []   # (ep_id_str, ep_num_int), sort=DOWN order (oldest first)
+        recent_valid_eps = []  # (ep_id_str, ep_num_int), sort=UP order (newest first)
+
+        # --- Early window: sort=DOWN, 최대 2페이지 ---
+        # 페이지당 2개 기준, 유효 30개 확보.
+        # 중복 ep_id 감지로 API 마지막 페이지 반복 반환 방어.
+        early_seen_ids: set = set()
+        try:
+            for page_num in range(2):
+                html = _get_episode_list_html(session, novel_id, 'DOWN', page=page_num, pages=raw_pages)
+                soup_ep = BeautifulSoup(html, 'html.parser')
+                if not soup_ep.select(Config.Selectors.EPISODE_INFO_DIV):
+                    break  # 진짜 빈 페이지
+                parsed = _parse_valid_episodes(soup_ep)
+                page_ids = {ep[0] for ep in parsed}
+                if page_ids and page_ids.issubset(early_seen_ids):
+                    break  # 중복 페이지 — 마지막 페이지 반복 반환
+                for ep in parsed:
+                    if ep[0] not in early_seen_ids:
+                        early_valid_eps.append(ep)
+                        early_seen_ids.add(ep[0])
+                if len(early_valid_eps) >= 30:
+                    break
+        except requests.exceptions.RequestException as ep_e:
+            _log(logging.WARNING, execution_id, f"Failed to fetch early episode list: {ep_e}", novel_id=novel_id)
+            retention_fetch_errors.append("early")
+
+        # --- Recent window: sort=UP, 최대 5페이지 ---
+        # Early의 2.5배 탐색: 최신화 앞에 BONUS + 역순 30개 확보.
+        recent_seen_ids: set = set()
+        try:
+            for page_num in range(5):
+                html = _get_episode_list_html(session, novel_id, 'UP', page=page_num, pages=raw_pages)
+                soup_ep = BeautifulSoup(html, 'html.parser')
+                if not soup_ep.select(Config.Selectors.EPISODE_INFO_DIV):
+                    break  # 진짜 빈 페이지
+                parsed = _parse_valid_episodes(soup_ep)
+                page_ids = {ep[0] for ep in parsed}
+                if page_ids and page_ids.issubset(recent_seen_ids):
+                    break  # 중복 페이지
+                for ep in parsed:
+                    if ep[0] not in recent_seen_ids:
+                        recent_valid_eps.append(ep)
+                        recent_seen_ids.add(ep[0])
+                if len(recent_valid_eps) >= 30:
+                    break
+        except requests.exceptions.RequestException as ep_e:
+            _log(logging.WARNING, execution_id, f"Failed to fetch recent episode list: {ep_e}", novel_id=novel_id)
+            retention_fetch_errors.append("recent")
+
+        # 회차가 있다는데 목록에서 한 화도 못 읽었으면(잘린 목록 쪽 등) 조용히 -1 로 두지 않는다 — 다시 받을 값이다.
+        # 실측: 운영 10-06~08 실데이터 1,499행에서 이런 행은 0건이라 정상 작품을 다시 받게 하지 않는다.
+        if not early_valid_eps and "early" not in retention_fetch_errors:
+            retention_fetch_errors.append("early_empty")
+        if not recent_valid_eps and "recent" not in retention_fetch_errors:
+            retention_fetch_errors.append("recent_empty")
+
+        # --- 수집된 에피소드로 요청할 ID 목록 결정 ---
+        first_ep_id = early_valid_eps[0][0] if early_valid_eps else None
+        ep30_id = early_valid_eps[29][0] if len(early_valid_eps) >= 30 else None
+        latest_ep_id = recent_valid_eps[0][0] if recent_valid_eps else None
+        recent_base_id = recent_valid_eps[29][0] if len(recent_valid_eps) >= 30 else None
+
+        # first가 있으면 배치 요청 실행. latest가 없거나 same-ep이어도 first는 저장.
+        if first_ep_id:
+            ep_ids_to_fetch = list(dict.fromkeys(
+                eid for eid in [first_ep_id, ep30_id, recent_base_id, latest_ep_id] if eid
+            ))
+            view_counts = _get_episode_view_counts(session, novel_id, ep_ids_to_fetch, execution_id)
+            if any(int(e) not in view_counts for e in ep_ids_to_fetch):
+                retention_fetch_errors.append("views")   # 회차는 찾았는데 조회수를 못 받았다 — 다시 받을 값이다
+
+            first_ep_id_int = int(first_ep_id)
+            if first_ep_id_int in view_counts:
+                item["FirstEpView"] = view_counts[first_ep_id_int]
+                item["FirstEpNum"] = early_valid_eps[0][1]
+            else:
+                _log(logging.WARNING, execution_id, "Could not retrieve view count for first episode.", novel_id=novel_id)
+
+            if latest_ep_id and latest_ep_id != first_ep_id:
+                latest_ep_id_int = int(latest_ep_id)
+                if latest_ep_id_int in view_counts:
+                    item["TargetLatestEpView"] = view_counts[latest_ep_id_int]
+                    item["TargetLatestEpNum"] = recent_valid_eps[0][1]
+            elif latest_ep_id and latest_ep_id == first_ep_id:
+                _log(logging.INFO, execution_id, "Novel has only one valid episode.", novel_id=novel_id)
+
+            if ep30_id:
+                ep30_id_int = int(ep30_id)
+                if ep30_id_int in view_counts:
+                    item["Ep30View"] = view_counts[ep30_id_int]
+                    item["Ep30Num"] = early_valid_eps[29][1]
+
+            if recent_base_id:
+                recent_base_id_int = int(recent_base_id)
+                if recent_base_id_int in view_counts:
+                    item["RecentBaseView"] = view_counts[recent_base_id_int]
+                    item["RecentBaseNum"] = recent_valid_eps[29][1]
+
+        if retention_fetch_errors:
+            item["RetentionFetchError"] = retention_fetch_errors
+    else:
+        _log(logging.INFO, execution_id, "Novel has 0 episodes. Skipping retention data.", novel_id=novel_id)
+
+
+def _collect_detail(session, novel_info, raw_pages, execution_id):
+    """상세 한 편을 받아 항목을 만든다. 페이지가 쓸 수 없으면(경고창·필수 요소 없음·숫자 아님) 예외를 던진다.
+
+    회차 목록·회차 조회수를 끝내 못 받은 값은 항목의 `RetentionFetchError` 에 적는다 — 호출한 쪽이 다시 받을지 정한다.
+    """
+    today, novel_id = novel_info['date'], novel_info['id']
+    novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
+    response = session.get(novel_url, timeout=10)
+    response.raise_for_status()
+    detail_at = datetime.now(Config.SEOUL_TIMEZONE)
+    raw_pages.append({
+        "kind": "detail", "url": novel_url, "method": "GET",
+        "status": response.status_code, "html": response.text,
+    })
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    if soup.select_one(Config.Selectors.ALERT_MODAL):
+        raise PageUnusable("Inaccessible")
+    title_el, author_el, synopsis_el, counter_line_a, info_count2 = _get_required_detail_elements(
+        soup, response, execution_id, novel_id
+    )
+    tags_raw = [tag.get_text(strip=True) for tag in soup.select(Config.Selectors.TAGS)]
+    badge_spans = _extract_badge_spans(soup)
+    serial_status = _serial_status_from_badges(badge_spans)
+
+    item = {
+        "Date": today, "Ranking": novel_info['ranking'], "ID": novel_id, "Score": novel_info['score'],
+        "Title": title_el.get_text(strip=True),
+        "AuthorName": author_el.get_text(strip=True),
+        "AuthorID": str(author_el['href'].split("/")[-1]),
+        "View": _parse_int_from_raw_text(counter_line_a[0].get_text(strip=True)),
+        "Like": _parse_int_from_raw_text(counter_line_a[1].get_text(strip=True)),
+        "Fav": _parse_int_from_raw_text(info_count2[0].get_text(strip=True)),
+        "Alr": _parse_int_from_raw_text(info_count2[1].get_text(strip=True)),
+        "Eps": _parse_int_from_raw_text(info_count2[2].get_text(strip=True), "회차"),
+        "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
+        "Synopsis": synopsis_el.get_text(separator='\n', strip=True),
+        "ThumbnailURL": _extract_thumbnail_url(soup),
+        "IsAdult": soup.select_one(Config.Selectors.ADULT_BADGE) is not None,
+        # 배지 원문. 예전 CSV 스키마에서는 이 필드를 넣어도 CSV_HEADERS 에
+        # 없어 사라졌을 것이다 — NDJSON 이라 그대로 실린다.
+        # `SerialStatus` 는 상태 배지가 있을 때만 아래에서 덧붙인다.
+        "Badges": badge_spans if badge_spans is not None else [],
+        # 인생픽 칸 원문('9위' / '공개전'). 순위 해석은 백엔드가 한다.
+        "LifePick": _info_value(soup, "인생픽"),
+        "FirstEpView": -1, "FirstEpNum": -1,
+        "Ep30View": -1, "Ep30Num": -1,
+        "RecentBaseView": -1, "RecentBaseNum": -1,
+        "TargetLatestEpView": -1, "TargetLatestEpNum": -1,
+    }
+
+    _collect_retention(session, novel_id, item, raw_pages, execution_id)
+
+    if serial_status:
+        item["SerialStatus"] = serial_status
+    serial_days = _info_value(soup, "연재")
+    if serial_days:
+        # 작가가 정한 연재 요일 원문('월/화/수' / '비정기'). 없으면 싣지 않는다.
+        item["SerialDays"] = serial_days
+
+    _validate_item(item, novel_id)
+    return item, detail_at
+
+
 def parse_novel_details(event, context):
     execution_id = event.get('execution_id', 'N/A')
     novel_info = event['novel']
@@ -717,162 +924,47 @@ def parse_novel_details(event, context):
             session.headers.update({"User-Agent": Config.USER_AGENT})
             _apply_auth_cookies(session, auth_cookies, execution_id)
 
-            novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
-            response = session.get(novel_url, timeout=10)
-            response.raise_for_status()
-            detail_at = datetime.now(Config.SEOUL_TIMEZONE)
-            raw_pages.append({
-                "kind": "detail", "url": novel_url, "method": "GET",
-                "status": response.status_code, "html": response.text,
-            })
-            soup = BeautifulSoup(response.text, 'html.parser')
+            item_to_send = None
+            for attempt in range(1, PAGE_ATTEMPTS + 1):
+                last = attempt == PAGE_ATTEMPTS
+                tried = len(raw_pages)
+                try:
+                    item, detail_at = _collect_detail(session, novel_info, raw_pages, execution_id)
+                except requests.exceptions.RequestException:
+                    raise
+                except Exception as e:  # noqa: BLE001 — 쓸 수 없는 페이지: 다시 받고, 끝내 안 되면 사유를 남긴 placeholder
+                    reason = "Inaccessible" if isinstance(e, PageUnusable) else f"ParsingFailed: {e}"
+                    if not last:
+                        _retry_later(raw_pages, tried, attempt, execution_id, novel_id, reason)
+                        continue
+                    _log(logging.ERROR, execution_id, f"Page still unusable after {attempt} attempts: {reason}. Creating placeholder.",
+                         novel_id=novel_id, exc_info=not isinstance(e, PageUnusable))
+                    item_to_send = _create_placeholder_item(novel_info, reason=reason)
+                    status = "PLACEHOLDER_CREATED"
+                    break
+                if attempt > 1:
+                    _log(logging.INFO, execution_id, "Recovered on retry.", novel_id=novel_id, attempt=attempt)
+                break
 
-            if soup.select_one(Config.Selectors.ALERT_MODAL):
-                _log(logging.WARNING, execution_id, "Novel is inaccessible. Creating placeholder.", novel_id=novel_id)
-                item_to_send = _create_placeholder_item(novel_info, reason="Inaccessible")
-                status = "PLACEHOLDER_CREATED"
-            else:
-                title_el, author_el, synopsis_el, counter_line_a, info_count2 = _get_required_detail_elements(
-                    soup, response, execution_id, novel_id
-                )
-                tags_raw = [tag.get_text(strip=True) for tag in soup.select(Config.Selectors.TAGS)]
-                badge_spans = _extract_badge_spans(soup)
-                serial_status = _serial_status_from_badges(badge_spans)
+            if item_to_send is None and item.get("RetentionFetchError"):
+                # 잔류율 재료만 빠졌으면 상세는 두고 그 부분만 한 번 다시 받는다 — 회차 목록 쪽 장애가 전 작품에 걸려도
+                # 편당 약 5초만 늘어 Express 300초 안에 끝난다(전체를 3번 받으면 넘어 그날 랭킹을 통째로 잃는다).
+                _log(logging.WARNING, execution_id, f"Retention values missing, retrying: {item['RetentionFetchError']}", novel_id=novel_id)
+                cut = max(i for i, p in enumerate(raw_pages) if p.get("kind") == "detail") + 1
+                first = ({k: item.get(k, -1) for k in RETENTION_FIELDS}, item.pop("RetentionFetchError"), raw_pages[cut:])
+                del raw_pages[cut:]                        # 두 시도의 회차 목록을 겹쳐 싣지 않는다(SQS 256KB)
+                item.update({k: -1 for k in RETENTION_FIELDS})
+                time.sleep(RETENTION_RETRY_WAIT)
+                _collect_retention(session, novel_id, item, raw_pages, execution_id)
+                if not item.get("RetentionFetchError"):
+                    _log(logging.INFO, execution_id, "Recovered retention on retry.", novel_id=novel_id)
+                elif len(item["RetentionFetchError"]) > len(first[1]):
+                    # 다시 받은 쪽이 더 많이 빠졌으면 첫 결과로 되돌린다 — 다시 받기가 값을 잃게 하지 않는다.
+                    item.update(first[0])
+                    item["RetentionFetchError"] = first[1]
+                    raw_pages[cut:] = first[2]
 
-                item = {
-                    "Date": today, "Ranking": novel_info['ranking'], "ID": novel_id, "Score": novel_info['score'],
-                    "Title": title_el.get_text(strip=True),
-                    "AuthorName": author_el.get_text(strip=True),
-                    "AuthorID": str(author_el['href'].split("/")[-1]),
-                    "View": _parse_int_from_raw_text(counter_line_a[0].get_text(strip=True)),
-                    "Like": _parse_int_from_raw_text(counter_line_a[1].get_text(strip=True)),
-                    "Fav": _parse_int_from_raw_text(info_count2[0].get_text(strip=True)),
-                    "Alr": _parse_int_from_raw_text(info_count2[1].get_text(strip=True)),
-                    "Eps": _parse_int_from_raw_text(info_count2[2].get_text(strip=True), "회차"),
-                    "Tags": [t.lstrip("#") for t in tags_raw] if tags_raw else [],
-                    "Synopsis": synopsis_el.get_text(separator='\n', strip=True),
-                    "ThumbnailURL": _extract_thumbnail_url(soup),
-                    "IsAdult": soup.select_one(Config.Selectors.ADULT_BADGE) is not None,
-                    # 배지 원문. 예전 CSV 스키마에서는 이 필드를 넣어도 CSV_HEADERS 에
-                    # 없어 사라졌을 것이다 — NDJSON 이라 그대로 실린다.
-                    # `SerialStatus` 는 상태 배지가 있을 때만 아래에서 덧붙인다.
-                    "Badges": badge_spans if badge_spans is not None else [],
-                    # 인생픽 칸 원문('9위' / '공개전'). 순위 해석은 백엔드가 한다.
-                    "LifePick": _info_value(soup, "인생픽"),
-                    "FirstEpView": -1, "FirstEpNum": -1,
-                    "Ep30View": -1, "Ep30Num": -1,
-                    "RecentBaseView": -1, "RecentBaseNum": -1,
-                    "TargetLatestEpView": -1, "TargetLatestEpNum": -1,
-                }
-
-                # Fetch episode data for retention rate calculation
-                if item["Eps"] > 0:
-                    # 회차 목록을 끝내 못 받은 창. 그 결과 -1 로 남은 값을 '30화 미만이라 계산 안 함'과
-                    # 구별하려고 항목에 싣는다(정상이면 필드 자체가 없다).
-                    retention_fetch_errors = []
-                    early_valid_eps = []   # (ep_id_str, ep_num_int), sort=DOWN order (oldest first)
-                    recent_valid_eps = []  # (ep_id_str, ep_num_int), sort=UP order (newest first)
-
-                    # --- Early window: sort=DOWN, 최대 2페이지 ---
-                    # 페이지당 2개 기준, 유효 30개 확보.
-                    # 중복 ep_id 감지로 API 마지막 페이지 반복 반환 방어.
-                    early_seen_ids: set = set()
-                    try:
-                        for page_num in range(2):
-                            html = _get_episode_list_html(session, novel_id, 'DOWN', page=page_num, pages=raw_pages)
-                            soup_ep = BeautifulSoup(html, 'html.parser')
-                            if not soup_ep.select(Config.Selectors.EPISODE_INFO_DIV):
-                                break  # 진짜 빈 페이지
-                            parsed = _parse_valid_episodes(soup_ep)
-                            page_ids = {ep[0] for ep in parsed}
-                            if page_ids and page_ids.issubset(early_seen_ids):
-                                break  # 중복 페이지 — 마지막 페이지 반복 반환
-                            for ep in parsed:
-                                if ep[0] not in early_seen_ids:
-                                    early_valid_eps.append(ep)
-                                    early_seen_ids.add(ep[0])
-                            if len(early_valid_eps) >= 30:
-                                break
-                    except requests.exceptions.RequestException as ep_e:
-                        _log(logging.WARNING, execution_id, f"Failed to fetch early episode list: {ep_e}", novel_id=novel_id)
-                        retention_fetch_errors.append("early")
-
-                    # --- Recent window: sort=UP, 최대 5페이지 ---
-                    # Early의 2.5배 탐색: 최신화 앞에 BONUS + 역순 30개 확보.
-                    recent_seen_ids: set = set()
-                    try:
-                        for page_num in range(5):
-                            html = _get_episode_list_html(session, novel_id, 'UP', page=page_num, pages=raw_pages)
-                            soup_ep = BeautifulSoup(html, 'html.parser')
-                            if not soup_ep.select(Config.Selectors.EPISODE_INFO_DIV):
-                                break  # 진짜 빈 페이지
-                            parsed = _parse_valid_episodes(soup_ep)
-                            page_ids = {ep[0] for ep in parsed}
-                            if page_ids and page_ids.issubset(recent_seen_ids):
-                                break  # 중복 페이지
-                            for ep in parsed:
-                                if ep[0] not in recent_seen_ids:
-                                    recent_valid_eps.append(ep)
-                                    recent_seen_ids.add(ep[0])
-                            if len(recent_valid_eps) >= 30:
-                                break
-                    except requests.exceptions.RequestException as ep_e:
-                        _log(logging.WARNING, execution_id, f"Failed to fetch recent episode list: {ep_e}", novel_id=novel_id)
-                        retention_fetch_errors.append("recent")
-
-                    # --- 수집된 에피소드로 요청할 ID 목록 결정 ---
-                    first_ep_id = early_valid_eps[0][0] if early_valid_eps else None
-                    ep30_id = early_valid_eps[29][0] if len(early_valid_eps) >= 30 else None
-                    latest_ep_id = recent_valid_eps[0][0] if recent_valid_eps else None
-                    recent_base_id = recent_valid_eps[29][0] if len(recent_valid_eps) >= 30 else None
-
-                    # first가 있으면 배치 요청 실행. latest가 없거나 same-ep이어도 first는 저장.
-                    if first_ep_id:
-                        ep_ids_to_fetch = list(dict.fromkeys(
-                            eid for eid in [first_ep_id, ep30_id, recent_base_id, latest_ep_id] if eid
-                        ))
-                        view_counts = _get_episode_view_counts(session, novel_id, ep_ids_to_fetch, execution_id)
-
-                        first_ep_id_int = int(first_ep_id)
-                        if first_ep_id_int in view_counts:
-                            item["FirstEpView"] = view_counts[first_ep_id_int]
-                            item["FirstEpNum"] = early_valid_eps[0][1]
-                        else:
-                            _log(logging.WARNING, execution_id, "Could not retrieve view count for first episode.", novel_id=novel_id)
-
-                        if latest_ep_id and latest_ep_id != first_ep_id:
-                            latest_ep_id_int = int(latest_ep_id)
-                            if latest_ep_id_int in view_counts:
-                                item["TargetLatestEpView"] = view_counts[latest_ep_id_int]
-                                item["TargetLatestEpNum"] = recent_valid_eps[0][1]
-                        elif latest_ep_id and latest_ep_id == first_ep_id:
-                            _log(logging.INFO, execution_id, "Novel has only one valid episode.", novel_id=novel_id)
-
-                        if ep30_id:
-                            ep30_id_int = int(ep30_id)
-                            if ep30_id_int in view_counts:
-                                item["Ep30View"] = view_counts[ep30_id_int]
-                                item["Ep30Num"] = early_valid_eps[29][1]
-
-                        if recent_base_id:
-                            recent_base_id_int = int(recent_base_id)
-                            if recent_base_id_int in view_counts:
-                                item["RecentBaseView"] = view_counts[recent_base_id_int]
-                                item["RecentBaseNum"] = recent_valid_eps[29][1]
-
-                    if retention_fetch_errors:
-                        item["RetentionFetchError"] = retention_fetch_errors
-                else:
-                    _log(logging.INFO, execution_id, "Novel has 0 episodes. Skipping retention data.", novel_id=novel_id)
-
-                if serial_status:
-                    item["SerialStatus"] = serial_status
-                serial_days = _info_value(soup, "연재")
-                if serial_days:
-                    # 작가가 정한 연재 요일 원문('월/화/수' / '비정기'). 없으면 싣지 않는다.
-                    item["SerialDays"] = serial_days
-
-                _validate_item(item, novel_id)
+            if item_to_send is None:
                 item_to_send = item
                 status = "SUCCESS"
 

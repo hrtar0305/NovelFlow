@@ -150,10 +150,14 @@ def _validate_data(execution_id, collected_data, target_count):
 #      채운다. 역시 500건이라 통과하고, 데이터의 1/4이 조용히 바뀐다
 #      (2026-08-24 실측: 상위 500건 중 성인작 132건 = 26.4%).
 #
-# 임계값은 감이 아니라 실측 기반이다:
-#   - placeholder: 정상일 0.0~0.8% (2026-08-22~24 실측) → 5%에서 실패
-#   - View 감소: 정상일 0건 (6개 날짜쌍 실측) → 100건에서 실패
-#     누적 조회수는 단조 증가해야 하므로 대량 감소는 다른 날짜/다른 사이트를 긁었다는 신호.
+# 임계값은 전 기간 실측으로 정했다(2026-10-08, 커밋된 651일 — 예전 5%·100건은 사흘·6쌍만 보고 정한 값이었다):
+#   - placeholder: 정상일 최대 4편(2026-08-24, 전부 잘린 응답), 커밋된 7편 전부 다음 날 멀쩡했다. 계통 장애는 314편(04-29 DOM)
+#     ~500편(03-29). 이제 크롤러가 쓸 수 없는 페이지를 다시 받으므로(app.PAGE_ATTEMPTS) 남는 것은 0이 정상이다 →
+#     **1편이라도 남으면 경고, 2%(500편이면 10편)를 넘으면 실패**(정상 최대 0.8% 의 2.5배, 가장 작은 장애 63% 의 1/30).
+#     작은 수동 실행(target 10~100편)도 500편 기준으로 재지 않게 비율로 둔다.
+#   - View 감소: 646개 날짜쌍 전부 0건 → **1건이라도 경고, MAX_VIEW_DECREASE_COUNT 건을 넘으면 실패**.
+#     누적 조회수는 단조 증가해야 하므로 감소는 다른 날짜/다른 사이트를 긁었다는 신호.
+#   실패하면 그날 자동 재실행(RetryOnce) 한 번이 돈다 — 그래서 경고와 실패를 나눴다.
 #   - 성인작 0건: 로그인·성인 모드가 풀리면 성인작이 목록에서 **통째로** 빠진다(위 시나리오 ②) — 비율이 낮아지는 게
 #     아니라 0이 된다(정상일 22.6~27.2%, 2026-08-25~10-02 실측). 그래서 비율 하한이 아니라 '0건'만 본다(사용자 결정
 #     2026-10-04). **적재는 막지 않고 Discord 로 멘션 경고**만 보낸다 — 막으면 그날 메시지가 다음 날 purge 로 사라져 손쓸
@@ -164,27 +168,22 @@ def _validate_data(execution_id, collected_data, target_count):
 #     표본이 작은 수동 실행(target_novel_count 가 작은 시험)은 비율이 흔들리므로
 #     실데이터가 MIN_ADULT_SAMPLE 건 이상일 때만 본다.
 PLACEHOLDER_TITLE_PREFIX = "N/A ("
-MAX_PLACEHOLDER_RATIO = 0.05
-MAX_VIEW_DECREASE_COUNT = 100
+MAX_PLACEHOLDER_FRACTION = 0.02
+MAX_VIEW_DECREASE_COUNT = 10
 MIN_ADULT_SAMPLE = 100
 NOTIFY_FUNCTION = os.environ.get('NOTIFY_FUNCTION', 'novelflow-discord-notify')
 
 
-def _notify_adult_zero(execution_id, date, real_count):
-    """성인작 0건 경고를 Discord 알림 Lambda 로 보낸다(멘션). 알림 실패가 적재를 막지 않는다."""
+def _notify(execution_id, date, title, lines, action):
+    """품질 경고를 Discord 알림 Lambda 로 보낸다(멘션). 알림 실패가 적재를 막지 않는다."""
     try:
         boto3.client('lambda').invoke(
             FunctionName=NOTIFY_FUNCTION, InvocationType='Event',
             Payload=json.dumps({'notice': {
-                'level': 'warn', 'pipeline': '데일리 랭킹', 'date': date, 'title': '성인작이 0편 — 로그인 확인 필요',
-                'lines': [f"받은 작품 {real_count}편 중 성인작이 **한 편도 없습니다**. 평소에는 22~27% 입니다.",
-                          "로그인이나 성인 모드가 풀려 성인작이 랭킹에서 통째로 빠졌을 가능성이 큽니다.",
-                          "데이터는 그대로 저장했습니다(막지 않음)."],
-                'action': "사이트의 그날 랭킹에 성인작이 빠졌는지 보고, 노벨피아 로그인 계정(Parameter Store "
-                          "`/NP-Trend/NOVELPIA_ID`·`/NP-Trend/NOVELPIA_PASS`) 상태를 확인하세요.",
-                'run': execution_id}, 'mention': True}).encode())
+                'level': 'warn', 'pipeline': '데일리 랭킹', 'date': date, 'title': title, 'lines': lines,
+                'action': action, 'run': execution_id}, 'mention': True}).encode())
     except Exception as e:  # noqa: BLE001
-        _log(logging.ERROR, execution_id, f"Failed to send adult-zero warning: {e}")
+        _log(logging.ERROR, execution_id, f"Failed to send warning '{title}': {e}")
 
 
 def _is_placeholder(item):
@@ -222,15 +221,20 @@ def _quality_gate(s3_client, execution_id, data, date):
     if total == 0:
         raise ValueError("Quality gate: no data to validate.")
 
-    # ① placeholder 비율
-    placeholders = sum(1 for item in data if _is_placeholder(item))
+    # ① placeholder — 크롤러가 이미 다시 받은 뒤에도 남은 것
+    holders = [item for item in data if _is_placeholder(item)]
+    placeholders = len(holders)
     ratio = placeholders / total
-    if ratio > MAX_PLACEHOLDER_RATIO:
+    if placeholders > MAX_PLACEHOLDER_FRACTION * total:
         raise ValueError(
-            f"Quality gate failed: placeholder ratio {ratio:.1%} "
-            f"({placeholders}/{total}) exceeds {MAX_PLACEHOLDER_RATIO:.0%}. "
+            f"Quality gate failed: {placeholders}/{total} placeholders after retries exceed {MAX_PLACEHOLDER_FRACTION:.0%}. "
             "Likely a DOM change or auth failure."
         )
+    if placeholders:
+        _notify(execution_id, date, f"다시 받아도 끝내 못 받은 작품 {placeholders}편",
+                [f"{h.get('Ranking')}위 {h.get('ID')}: {h.get('Title')}" for h in holders[:10]]
+                + ["나머지 작품은 저장했습니다(막지 않음)."],
+                "원본(raw 버킷 그날 묶음)에서 그 작품 페이지가 어떻게 왔는지 확인하세요.")
 
     # ② 누적 조회수 단조성
     previous_views = _load_previous_day_views(s3_client, execution_id, date)
@@ -251,6 +255,10 @@ def _quality_gate(s3_client, execution_id, data, date):
                 f"Quality gate failed: cumulative View decreased for {decreased} novels "
                 f"(threshold {MAX_VIEW_DECREASE_COUNT}). Cumulative views must not shrink."
             )
+        if decreased:
+            _notify(execution_id, date, f"누적 조회수가 줄어든 작품 {decreased}편",
+                    ["646일 동안 한 번도 없던 일입니다. 저장은 했습니다(막지 않음)."],
+                    "그날 그 작품의 조회수가 전날보다 작은 이유(노벨피아 보정·다른 페이지)를 확인하세요.")
 
     # ③ 성인작 비율 — 로그인·성인 모드가 조용히 빠진 날을 잡는다
     real_items = [item for item in data if not _is_placeholder(item)]
@@ -259,7 +267,12 @@ def _quality_gate(s3_client, execution_id, data, date):
     if len(real_items) >= MIN_ADULT_SAMPLE and adults == 0:
         _log(logging.WARNING, execution_id, "No adult novels in the ranking — login or adult mode may have been lost.",
              real=len(real_items))
-        _notify_adult_zero(execution_id, date, len(real_items))
+        _notify(execution_id, date, '성인작이 0편 — 로그인 확인 필요',
+                [f"받은 작품 {len(real_items)}편 중 성인작이 **한 편도 없습니다**. 평소에는 22~27% 입니다.",
+                 "로그인이나 성인 모드가 풀려 성인작이 랭킹에서 통째로 빠졌을 가능성이 큽니다.",
+                 "데이터는 그대로 저장했습니다(막지 않음)."],
+                "사이트의 그날 랭킹에 성인작이 빠졌는지 보고, 노벨피아 로그인 계정(Parameter Store "
+                "`/NP-Trend/NOVELPIA_ID`·`/NP-Trend/NOVELPIA_PASS`) 상태를 확인하세요.")
 
     _log(logging.INFO, execution_id,
          f"Quality gate passed: placeholders {placeholders}/{total} ({ratio:.1%}), "

@@ -336,7 +336,15 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
 
 RETRY_ROUNDS = int(os.environ.get('DMAP_RETRY_ROUNDS', '2'))
 RETRY_WAITS = [30, 120]                      # 라운드별 대기(초) — 노벨피아의 순간 장애를 넘길 시간
-MAX_MISSING_FRACTION = float(os.environ.get('DMAP_MAX_MISSING_FRACTION', '0.05'))
+# 품질 기준(2026-10-08 전 기간 실측으로 다시 정함 — 예전 5% 는 실측 없이 둔 값). 파서가 쓸 수 없는 결과를 다시 받고 reconcile 이 빠진 것을
+# 다시 받은 뒤에도 남은 것: 받지 못함(FetchFailed) + 읽지 못함(ParsingFailed). 운영 7일 20,771쪽에서 0건, 데일리 651일 정상일 최대 0.8%,
+# 가장 작은 계통 장애 63%(데일리 04-29 DOM) → 2% 를 넘으면 쓰지 않는다(정상 최대의 2.5배, 장애의 1/30). 예전엔 FetchFailed 만 세서
+# 셀렉터가 깨져 전부 ParsingFailed 인 날이 그대로 적재됐다.
+# 새로 경고창(Inaccessible)이 된 작품 — 어제 gone_ids 에 없던 것 — 은 따로 본다: 2025 공모전 371일 중앙값 3, 최대 237(실제 삭제 몰림) →
+# 50 초과 경고, 500 초과 실패(노벨피아가 모든 쪽에 경고창을 띄우는 장애).
+MAX_MISSING_FRACTION = float(os.environ.get('DMAP_MAX_MISSING_FRACTION', '0.02'))
+WARN_NEW_INACCESSIBLE = 50
+MAX_NEW_INACCESSIBLE = 500
 ID_LIST_KEY = 'contest_novel_ids_2026.json'
 
 
@@ -568,6 +576,15 @@ def _notice(date, ledger, test=False, run=None):
         lines.append(f"{why} **{placeholders:,}편**은 "
                      + ("실제였다면 '수집 실패'로 기록돼 그날과 다음 수집일의 일간 순위·태그 통계에서 빠졌을 것입니다." if test else
                         "'수집 실패'로 기록했습니다 — 그날과 다음 수집일(견줄 전날 값이 없음)의 일간 순위·태그 통계에서 빠집니다."))
+    unreadable = (ledger.get('placeholders') or {}).get('ParsingFailed') or 0
+    if unreadable:
+        warn = True
+        lines.append(f"{'저장된 원본으로' if reprocess else '다시 받아도'} 페이지를 읽지 못한 **{unreadable:,}편** — "
+                     "페이지가 잘렸거나 노벨피아 화면이 바뀌었을 수 있습니다.")
+    new_gone = ledger.get('new_inaccessible') or []
+    if len(new_gone) > WARN_NEW_INACCESSIBLE:
+        warn = True
+        lines.append(f"하루 사이 삭제·비공개 안내가 뜬 작품 **{len(new_gone):,}편** — 평소보다 많습니다(예: {', '.join(new_gone[:5])}).")
     if ledger['recovered']:
         lines.append(f"처음엔 실패했다가 다시 받아 살린 작품 {ledger['recovered']:,}편 — 데이터에는 문제 없습니다.")
     if ledger['raw_failed']:
@@ -695,10 +712,16 @@ def handler_dmap(event, context):
         'previous_errors': attempt_info.get('previous_errors') or [],
         'late_minutes': _minutes_after_midnight(date, unique),
     }
-    if len(still) > MAX_MISSING_FRACTION * len(expected):
+    prev_gone = _get_json('state/gone_ids.json')   # 없으면(첫날) 새 경고창을 셀 기준이 없다 — 세지 않는다
+    unreadable = [str(i['ID']) for i in unique if str(i.get('Title', '')).startswith('N/A (ParsingFailed')]
+    ledger['new_inaccessible'] = [] if prev_gone is None else [
+        str(i['ID']) for i in unique if str(i.get('Title', '')).startswith('N/A (Inaccessible') and str(i['ID']) not in set(prev_gone)]
+    bad = len(still) + len(unreadable)
+    if bad > MAX_MISSING_FRACTION * len(expected) or len(ledger['new_inaccessible']) > MAX_NEW_INACCESSIBLE:
         if not event.get('dry_run'):
             _put_json(_ledger_key(date, reprocess), {**ledger, 'written': False})
-        raise TooManyMissing(f"{len(still)}/{len(expected)} novels still missing after retries — not writing {date}.")
+        raise TooManyMissing(f"{len(still)} missing + {len(unreadable)} unreadable / {len(expected)}, "
+                             f"{len(ledger['new_inaccessible'])} newly inaccessible after retries — not writing {date}.")
     table = boto3.resource('dynamodb').Table(Config.DYNAMODB_TABLE_NAME)
     prod = _rows_for_date(table, date) if (reprocess or event.get('dry_run')) else None
     kept = []

@@ -129,9 +129,13 @@ def retention_fields(session, novel_id, pages, log, before=None):
 
     초기 30 유효 회차(오래된 순, 최대 2쪽)와 최근 30 유효 회차(최신순, 최대 5쪽)를 모아
     1화·30화·최신화·최신 30번째 전 회차의 조회수를 한 번에 받는다. 값을 못 얻으면 -1.
+    목록에서 한 화도 못 읽었거나(`early_empty`·`recent_empty`) 회차 조회수가 빠졌으면(`views`) `RetentionFetchError` 에 적는다
+    — 크롤러와 같은 규칙. 호출부가 다시 받을지 정한다(DECISIONS 2026-10-08).
     """
     from bs4 import BeautifulSoup
     item = dict(RETENTION_DEFAULTS)
+
+    rows = {}   # 목록에 회차 줄이 하나라도 있었나 — `before` 로 다 걸러져 빈 것(기록 날짜에 30화 넘게 올림)은 결손이 아니다
 
     def collect(sort_order, max_pages):
         eps, seen = [], set()
@@ -139,6 +143,7 @@ def retention_fields(session, novel_id, pages, log, before=None):
             soup = BeautifulSoup(_episode_list_html(session, novel_id, sort_order, page, pages), 'html.parser')
             if not soup.select(EPISODE_INFO_DIV):
                 break
+            rows[sort_order] = True
             parsed = _valid_episodes(soup, before)
             ids = {e[0] for e in parsed}
             if ids and ids.issubset(seen):
@@ -157,10 +162,15 @@ def retention_fields(session, novel_id, pages, log, before=None):
     ep30_id = early[29][0] if len(early) >= 30 else None
     latest_id = recent[0][0] if recent else None
     base_id = recent[29][0] if len(recent) >= 30 else None
+    errors = [k for k, eps, sort in (("early_empty", early, 'DOWN'), ("recent_empty", recent, 'UP')) if not eps and not rows.get(sort)]
+    if errors:
+        item["RetentionFetchError"] = errors
     if not first_id:
         return item
     ids = list(dict.fromkeys(e for e in [first_id, ep30_id, base_id, latest_id] if e))
     vc = _episode_view_counts(session, novel_id, ids, log, pages)
+    if any(int(e) not in vc for e in ids):
+        item["RetentionFetchError"] = errors + ["views"]
     if int(first_id) in vc:
         item["FirstEpView"], item["FirstEpNum"] = vc[int(first_id)], early[0][1]
     if latest_id and latest_id != first_id and int(latest_id) in vc:
