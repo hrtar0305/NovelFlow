@@ -223,7 +223,7 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 - 2026 공모전(이름은 `NovelFlowContest2026*`):
   - 준비 실행 `NovelFlowContest2026Prep`: 매일 11:30·23:30 — 수집기 Lambda 직접 호출(`mode: prep`). 새 번호 훑기 + 재확인(짝수 번호 = 오전, 홀수 = 밤) + 새 작가의 다른 작품.
   - 본 수집 `NovelFlowContest2026Daily`: 매일 00:00 → `NovelFlowContest2026DMapWorkflow`(기록 날짜 = 실행 시작 − 12시간). 날짜 잠금 `RUN_LOCK#{date}` 로 중복 전달을 건너뛴다.
-  - **수집 기간은 개막부터 1년**: 두 스케줄에 종료일(`deploy.sh` 의 `COLLECT_END=2027-10-01`)이 걸려 2027-10-01 00:00 실행(2027-09-30 값)이 마지막이다.
+  - **수집은 공모전 일정에 맞춰 사람이 끝낸다**(약 1년 가정) — 스케줄에 종료일을 걸지 않는다. 끝낼 때는 아래 「공모전 수집 종료」.
   - SQS 판은 2026-10-04 삭제했다(DMap 판만 남음).
   - **하루의 값은 자정 값이다(결정 2026-10-04).** 실패하면 60초 뒤 한 번 자동 재실행한다. 노벨피아에서 다시 받는 시도는
     D+1 00:00 + 60분 안(자정 5분 전 이후)에 시작해야 하고, 벗어나면 `LateRefetchRefused` 로 거절된다. 수동 `{"target_date": "YYYY-MM-DD"}` 도 같다.
@@ -248,11 +248,12 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 
 ## 공모전 수집 종료 (1년 원칙, 결정 2026-10-12)
 
-공모전 데이터는 **개막일부터 1년**만 받는다 — 매년 새 공모전이 열리고, 끝난 공모전을 계속 받으면 쌓이기만 한다. 끝낼 때 할 일:
+공모전 데이터는 **약 1년(그 공모전 일정)** 만 받는다 — 매년 새 공모전이 열리고, 끝난 공모전을 계속 받으면 쌓이기만 한다. 일정이 미리
+정해지지 않아 종료일을 걸지 않고, 끝낼 때 사람이 한다:
 
-1. 스케줄을 끈다(2026 은 종료일이 걸려 있어 자동으로 멈춘다). 2025 는 `aws scheduler update-schedule ... --state DISABLED`.
+1. 스케줄을 끈다 — `aws scheduler update-schedule ... --state DISABLED`(2026 은 `NovelFlowContest2026Daily`·`NovelFlowContest2026Prep` 둘 다).
 2. 그 공모전의 **성공 부재 알람을 지운다** — 남겨 두면 마지막 실행 26시간 뒤 ALARM 이 되어 Discord 멘션·이메일이 간다.
-   `deploy.sh` 의 `novelflow-alarm-state` 규칙 목록에서도 뺀다. 2026 은 2027-10-02 무렵: `novelflow-contest-2026-no-success-26h`, `novelflow-contest-2026-collector-errors`.
+   `deploy.sh` 의 `novelflow-alarm-state` 규칙 목록에서도 뺀다. 2026 은 `novelflow-contest-2026-no-success-26h`, `novelflow-contest-2026-collector-errors`.
 3. Lambda·상태 머신·큐는 지우지 않아도 돈이 들지 않는다(실행이 없으면 0). 데이터와 화면은 그대로 둔다.
 
 ## 데이터 수집 안내 페이지의 수치
