@@ -13,7 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **데이터 흐름**: 크롤러(`crawler/app.py`, Step Functions가 소설 1편당 Lambda 1회) → SQS →
   `crawler/consolidate_data.py`가 수량 검증 후 `{date}.jsonl`을 S3에 커밋 + 원본 HTML 묶음을 raw 버킷에 PUT
   → S3 트리거로 `data-pipeline/data_ingestion.py`가 DynamoDB 적재 → Streams로 `update_search_index.py`가 Algolia 동기화.
-  공모전 2025(`contests/2025/`)는 Express 5분 제한 때문에 SQS Task/Result 큐 + 완료 폴링 구조로 따로 돕니다.
+  공모전 2025(`contests/2025/`)는 Express 5분 제한 때문에 SQS Task/Result 큐 + 완료 폴링 구조였고 **2026-10-12 수집을 끝냈습니다**
+  (공모전은 개막부터 1년만 받음 — OPERATIONS 「공모전 수집 종료」).
   2026(`contests/2026/`)은 같은 구조로 시작해 2026-10-02 자정분부터 Distributed Map 판으로 돕니다(SQS 판은 2026-10-04 삭제).
 - **DynamoDB는 테이블당 PK=`ID`, SK=`Date` 하나에 특수 항목이 섞여 있습니다.** 소설 스냅샷 외에
   `STATS#<date>`(태그 통계), `RSNAP#<date>`(분석 리포트용 압축 스냅샷), `AVAILABLE_DATES`,

@@ -219,10 +219,11 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
   재시도 경로 시험은 여기에 `"fail_first_attempt": true`.
   로그인 쿠키는 get-ranking 이 SSM SecureString `/NP-Trend/AUTH_COOKIES` 에 쓰고 버전만 넘긴다 — 크롤러 이미지와 두 상태 머신
   (NpTrendCrawlerWorkflow·NpTrendCrawlerExpressWorkflow)은 함께 바꿔야 한다(필드 `auth_cookies_version`).
-- 2025 공모전 파이프라인: 매일 14:00
+- 2025 공모전 파이프라인: 매일 14:00 이었다 — **2026-10-12 수집 종료**(스케줄 `RunContestDataPipelineDaily` 비활성, 성공 부재 알람 삭제). 데이터·화면은 그대로 남는다.
 - 2026 공모전(이름은 `NovelFlowContest2026*`):
   - 준비 실행 `NovelFlowContest2026Prep`: 매일 11:30·23:30 — 수집기 Lambda 직접 호출(`mode: prep`). 새 번호 훑기 + 재확인(짝수 번호 = 오전, 홀수 = 밤) + 새 작가의 다른 작품.
   - 본 수집 `NovelFlowContest2026Daily`: 매일 00:00 → `NovelFlowContest2026DMapWorkflow`(기록 날짜 = 실행 시작 − 12시간). 날짜 잠금 `RUN_LOCK#{date}` 로 중복 전달을 건너뛴다.
+  - **수집 기간은 개막부터 1년**: 두 스케줄에 종료일(`deploy.sh` 의 `COLLECT_END=2027-10-01`)이 걸려 2027-10-01 00:00 실행(2027-09-30 값)이 마지막이다.
   - SQS 판은 2026-10-04 삭제했다(DMap 판만 남음).
   - **하루의 값은 자정 값이다(결정 2026-10-04).** 실패하면 60초 뒤 한 번 자동 재실행한다. 노벨피아에서 다시 받는 시도는
     D+1 00:00 + 60분 안(자정 5분 전 이후)에 시작해야 하고, 벗어나면 `LateRefetchRefused` 로 거절된다. 수동 `{"target_date": "YYYY-MM-DD"}` 도 같다.
@@ -237,13 +238,22 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 
 | 알람 | 무엇을 잡나 |
 |---|---|
-| `novelflow-daily-no-success-26h` / `novelflow-contest-no-success-26h`(2025) / `novelflow-contest-2026-no-success-26h` | 하루 넘게 성공한 실행이 없음 — 실행 자체가 시작되지 않은 날까지. 시험 실행의 성공도 성공으로 센다 |
+| `novelflow-daily-no-success-26h` / `novelflow-contest-2026-no-success-26h` (2025 것은 수집 종료와 함께 2026-10-12 삭제) | 하루 넘게 성공한 실행이 없음 — 실행 자체가 시작되지 않은 날까지. 시험 실행의 성공도 성공으로 센다 |
 | `np-trend-crawler-dlq-alarm` | 데일리 예약 실행이 시작되지 못해 스케줄러 DLQ 에 남음 |
 | `novelflow-contest-2026-collector-errors` | 2026 ID 수집기(준비 실행·자정) 오류 |
 | `novelflow-daily-ingestion-errors` | 데일리 적재 Lambda 오류 — S3 트리거(비동기)는 2번 재시도 뒤 조용히 버리고, 상태 머신은 이미 성공이라 실패 알림이 없다 |
 
 `novelflow-alarm-state` 규칙은 알람 ARN 목록을 패턴으로 가진다 — `put-rule` 은 패턴을 통째로 바꾸므로, 알람을 더할 때는 목록 전체를 다시 적는다
 (`contests/2026/deploy.sh` 의 `collector_alarm` 이 그 목록을 가진다). 데일리 성인작 0편 경고는 알람이 아니라 consolidate 가 알림 Lambda 를 직접 부른다.
+
+## 공모전 수집 종료 (1년 원칙, 결정 2026-10-12)
+
+공모전 데이터는 **개막일부터 1년**만 받는다 — 매년 새 공모전이 열리고, 끝난 공모전을 계속 받으면 쌓이기만 한다. 끝낼 때 할 일:
+
+1. 스케줄을 끈다(2026 은 종료일이 걸려 있어 자동으로 멈춘다). 2025 는 `aws scheduler update-schedule ... --state DISABLED`.
+2. 그 공모전의 **성공 부재 알람을 지운다** — 남겨 두면 마지막 실행 26시간 뒤 ALARM 이 되어 Discord 멘션·이메일이 간다.
+   `deploy.sh` 의 `novelflow-alarm-state` 규칙 목록에서도 뺀다. 2026 은 2027-10-02 무렵: `novelflow-contest-2026-no-success-26h`, `novelflow-contest-2026-collector-errors`.
+3. Lambda·상태 머신·큐는 지우지 않아도 돈이 들지 않는다(실행이 없으면 0). 데이터와 화면은 그대로 둔다.
 
 ## 데이터 수집 안내 페이지의 수치
 

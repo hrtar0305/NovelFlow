@@ -31,6 +31,7 @@ LAMBDA_ROLE=arn:aws:iam::$ACC:role/NpTrendCrawlerLambdaExecutionRole
 SFN_ROLE_NAME=NpTrendCrawlerStepFunctionExecutionRole
 SM_NAME=NovelFlowContest${Y}DMapWorkflow
 SCHED_NAME=NovelFlowContest${Y}Daily
+COLLECT_END=2027-10-01                    # 개막(2026-10-01)부터 1년 — 이날 00:00 실행(2027-09-30 값)이 마지막
 SCHED_ROLE_NAME=Amazon_EventBridge_Scheduler_SFN_376ddf2108
 SCHED_POLICY_ARN=arn:aws:iam::$ACC:policy/service-role/Amazon-EventBridge-Scheduler-Execution-Policy-9ebb732f-2dab-4fbf-b8d1-533947056425
 RAW_BUCKET=$(aws lambda get-function-configuration --region $R --function-name np-trend-crawler-get-novel-data --query 'Environment.Variables.RAW_HTML_BUCKET' --output text)
@@ -196,8 +197,11 @@ schedule() {
       {\"Effect\":\"Allow\",\"Action\":[\"lambda:InvokeFunction\"],\"Resource\":[\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\"]}]}" >/dev/null
 
   # 시작 요청이 실패해도 1시간 안에서만 다시 보낸다 — 그보다 늦은 시작은 자정 값이 아니다(실행도 거절하지만 애초에 보내지 않는다).
-  echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → $SM_NAME)"
+  # 공모전 데이터는 개막일부터 1년만 받는다(사용자 결정 2026-10-12 — 매년 새 공모전이 열리고 쌓이기만 한다). 마지막 실행은 END 의
+  # 자정(전날 값). 끝난 뒤엔 성공 부재 알람($NOSUCCESS)이 울리니 지운다(OPERATIONS 「공모전 수집 종료」).
+  echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → $SM_NAME, $COLLECT_END 00:30 까지)"
   ARGS=(--region $R --name $SCHED_NAME --schedule-expression "cron(0 0 * * ? *)" --schedule-expression-timezone Asia/Seoul
+        --end-date "${COLLECT_END}T00:30:00+09:00"
         --flexible-time-window Mode=OFF
         --target "Arn=$SM_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME,RetryPolicy={MaximumEventAgeInSeconds=3600,MaximumRetryAttempts=185}")
   if exists aws scheduler get-schedule --region $R --name $SCHED_NAME; then aws scheduler update-schedule "${ARGS[@]}" >/dev/null
@@ -207,6 +211,7 @@ schedule() {
   # 실행 ID 는 날마다 달라야 한다(재확인의 '이번 실행에서 본 번호' 판정) — 스케줄러가 예약 시각을 넣어 준다.
   echo "== 스케줄 ${SCHED_NAME%Daily}Prep (매일 11:30·23:30 KST, 수집기 직접 호출)"
   PARGS=(--region $R --name ${SCHED_NAME%Daily}Prep --schedule-expression "cron(30 11,23 * * ? *)" --schedule-expression-timezone Asia/Seoul
+         --end-date "${COLLECT_END}T00:00:00+09:00"
          --flexible-time-window Mode=OFF
          --target "{\"Arn\":\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\",\"RoleArn\":\"arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME\",\"Input\":\"{\\\"mode\\\":\\\"prep\\\",\\\"execution_id\\\":\\\"prep-<aws.scheduler.scheduled-time>\\\"}\",\"RetryPolicy\":{\"MaximumRetryAttempts\":0}}")
   if exists aws scheduler get-schedule --region $R --name ${SCHED_NAME%Daily}Prep; then aws scheduler update-schedule "${PARGS[@]}" >/dev/null
@@ -242,7 +247,6 @@ collector_alarm() {
     --description "NovelFlow 알람 상태 변경 → Discord (ALARM 은 멘션)" --event-pattern "{
     \"source\":[\"aws.cloudwatch\"],\"detail-type\":[\"CloudWatch Alarm State Change\"],\"resources\":[
       \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-daily-no-success-26h\",
-      \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-contest-no-success-26h\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:np-trend-crawler-dlq-alarm\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:novelflow-daily-ingestion-errors\",
       \"arn:aws:cloudwatch:$R:$ACC:alarm:$NOSUCCESS\",
