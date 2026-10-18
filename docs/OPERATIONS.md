@@ -119,7 +119,12 @@ aws cloudfront create-invalidation --distribution-id E1PP4QRS4HH998 --paths "/*"
   `pricing-plan-manager create-subscription`(최신 boto3, CLI 2.27 에는 없음)으로 했다. Free · Pro 는 직접 만든 캐시 정책 · 원본 요청 정책을 받지 않는다 —
   `/api/*` 는 관리형 CachingOptimized(쿼리 문자열을 버림)라 API 값은 **경로로** 받는다.
 - WAF web ACL `novelflow-web-plan`(us-east-1): IP당 5분 1,000건 차단(모든 경로 — `/api/` 만 고르는 조건은 Free 에 없다).
-- 기본 문서 `index.html`(첫 화면이 오류 응답 경로로 나가던 것을 고침), 403/404 → `/index.html` 200(SPA).
+- 화면 주소(확장자 없는 경로)는 CloudFront Function `novelflow-spa-rewrite`(기본 동작, viewer-request)가 `/index.html` 로 바꾼다.
+  배포 전체의 오류 응답(403/404 → `/index.html` 200)은 **쓰지 않는다** — 그러면 WAF 차단(403)과 API 404 까지 200 HTML 이 되어 막힘이 보이지 않았다.
+  기본 문서 `index.html`.
+
+**부하 테스트(2026-10-18, k6 · 서울 한 곳)** — 결과는 DECISIONS 같은 날 항목. 다시 할 때: 시험 IP 를 IP 세트로 만들어 web ACL 맨 앞에 허용 규칙으로
+잠깐 넣는다(안 넣으면 5분 1,000건에서 막힌다), 끝나면 규칙과 IP 세트를 지운다. 원본 시험은 매번 다른 주소(캐시 불가)로 — API 월 한도를 쓴다.
 
 ## 재배포 체크리스트
 
