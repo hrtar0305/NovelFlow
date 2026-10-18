@@ -15,8 +15,8 @@ export default function ScrollTop() {
   if (!show) return null;
   const toTop = () => window.scrollTo({ top: 0, behavior: window.scrollY > SMOOTH_MAX_SCREENS * window.innerHeight ? 'instant' : 'smooth' });
   return (
-    <button type="button" className="scroll-top" onClick={toTop} aria-label="맨 위로" title="맨 위로">
-      <ArrowUp size={18} aria-hidden="true" />
+    <button type="button" className="scroll-top" onClick={toTop}>
+      <ArrowUp size={16} aria-hidden="true" />맨 위로
     </button>
   );
 }
