@@ -87,7 +87,7 @@ export default function NovelRowExpand({ novelId, date, availableDates, synopsis
   const slot = (UW - 6) / (WINDOW - 1);
   const UX = (i: number) => 3 + i * slot;
   const ucw = Math.max(2, slot - 1.5);
-  const upSummary = days === 'loading' ? '불러오는 중' : days === 'error' ? '불러오지 못했습니다' : up.known > 0 ? <>{up.days}일 중 <b>{up.uploaded}일</b>{up.unknown ? <span> · 미확인 {up.unknown}일</span> : null}</> : '기록 없음';
+  const upSummary = days === 'loading' ? '불러오는 중' : days === 'error' ? '불러오지 못했습니다' : up.known > 0 ? <>{up.unknown ? <>미확인 {up.unknown}일 · </> : null}{up.days}일 중 <b>{up.uploaded}일</b></> : '기록 없음';
   const ranks = points.map(p => (p.rec ? p.rank : null));
   const { d, X, Y } = rankPath(ranks, W, H, P);
   // 끝 표지는 순위가 있는 마지막 날(공모전은 순위 없는 날이 있다 — MetricSummary.rankFirst 설명).

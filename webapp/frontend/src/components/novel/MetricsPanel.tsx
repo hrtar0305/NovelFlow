@@ -141,7 +141,8 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
   // 21시 스냅샷의 총 회차 차이(전날 21시 → 마지막 날 21시)는 21시 뒤에 올리는 작가에서 하루씩 밀려 칸 합계와 어긋났다(453091: 칸 7 · 차이 +8).
   const up = uploadSummary(typeof upDays === 'object' ? upDays : {});
   const uploadTotal = uploads === 'loading' ? '불러오는 중' : uploads === 'error' ? '불러오지 못했습니다' : up.known > 0 ? (
-    <>{up.days}일 중 <b>{up.uploaded}일</b> · <b>{up.episodes}화</b> 연재{up.unknown ? <span> · 미확인 {up.unknown}일</span> : null}</>
+    // 다른 줄처럼 '흐린 이름표 + 굵은 값' 짝으로 끝낸다 — 굵은 값이 붙거나 늘 흐린 '미확인'이 끝에 오면 무게가 어긋난다(2026-10-18).
+    <>{up.unknown ? <>미확인 {up.unknown}일 · </> : null}기간 <b>{up.episodes}화</b> · {up.days}일 중 <b>{up.uploaded}일</b></>
   ) : null;
   // 점수의 '마지막 날'은 마지막 기록일 — summary.last 는 수치가 있는 마지막 기록이라 자리표시 날(순위·점수만 정상)이면 앞날이다.
   const lastScore = points.filter(p => p.rec).at(-1)?.score ?? null;
