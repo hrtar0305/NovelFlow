@@ -30,15 +30,16 @@ const MAX_SPAN_DAYS = 180;
 
 type Tab = 'risers' | 'fallers' | 'entered' | 'left' | 'spikes' | 'zones';
 const TAB_LABEL: Record<Tab, string> = {
-  risers: '뜬 태그', fallers: '식은 태그', entered: '새로 들어옴', left: '빠짐', spikes: '치솟았다 돌아옴', zones: '구역 바뀜',
+  // 짝이 보이는 두 글자 명사로 통일(사용자 2026-10-18) — 예전엔 '뜬 태그' · '빠짐' · '치솟았다 돌아옴'처럼 꼴이 섞였다.
+  risers: '상승', fallers: '하락', entered: '진입', left: '이탈', spikes: '반짝', zones: '구역 이동',
 };
 const EMPTY_TEXT: Record<Tab, string> = {
-  risers: `이 기간에 인기 점수가 ${pctp(SHARE_MIN_CHANGE)} 이상 오른 태그가 없습니다.`,
-  fallers: `이 기간에 인기 점수가 ${pctp(SHARE_MIN_CHANGE)} 이상 내린 태그가 없습니다.`,
-  entered: '이 기간에 새로 들어온 태그가 없습니다.',
-  left: '이 기간에 빠진 태그가 없습니다.',
-  spikes: '이 기간에 치솟았다 돌아온 태그가 없습니다.',
-  zones: '이 기간에 구역이 바뀐 태그가 없습니다.',
+  risers: `이 기간에 인기 점수가 ${pctp(SHARE_MIN_CHANGE).slice(1)} 이상 오른 태그가 없습니다.`,
+  fallers: `이 기간에 인기 점수가 ${pctp(SHARE_MIN_CHANGE).slice(1)} 이상 내린 태그가 없습니다.`,
+  entered: '이 기간에 진입한 태그가 없습니다.',
+  left: '이 기간에 이탈한 태그가 없습니다.',
+  spikes: '이 기간에 반짝 오른 태그가 없습니다.',
+  zones: '이 기간에 구역을 옮긴 태그가 없습니다.',
 };
 
 // 각주는 탭마다 그 표의 열 순서대로, 값의 식 한 줄씩(태그 랭킹과 같은 글귀 — 2026-10-18).
@@ -49,7 +50,7 @@ const notesFor = (tab: Tab, N: number | null | undefined): { id: string; content
     case 'risers':
     case 'fallers':
       return [{ id: 'elig', content: BOTH_ENDS }, { id: 'score', content: SCORE_NOTE },
-        { id: 'chg', content: `변화 = 마지막 날 인기 점수 − 첫날 인기 점수. 뜬 태그 ${pctp(SHARE_MIN_CHANGE)} 이상, 식은 태그 ${pctp(-SHARE_MIN_CHANGE)} 이하.` }];
+        { id: 'chg', content: `변화 = 마지막 날 인기 점수 − 첫날 인기 점수. 상승 ${pctp(SHARE_MIN_CHANGE)} 이상, 하락 ${pctp(-SHARE_MIN_CHANGE)} 이하.` }];
     case 'spikes':
       return [{ id: 'elig', content: BOTH_ENDS }, { id: 'score', content: SCORE_NOTE },
         { id: 'spike', content: `치솟은 폭 = 기간 최고 − 첫날·마지막 날 중 높은 쪽. ${pctp(SPIKE_MIN_SHARE)} 이상이고, 마지막 날 − 첫날이 그 폭의 절반 안인 태그.` }];
@@ -138,7 +139,7 @@ export default function TagTrendsPage() {
     setEndDate(latest);
   };
   const toggle = (tag: string) => setOpenTag(cur => (cur === tag ? null : tag));
-  // '빠짐'은 마지막 날에 그 태그가 없다 — 작품 보기는 마지막으로 집계된 날로 보낸다.
+  // '이탈'은 마지막 날에 그 태그가 없다 — 작품 보기는 마지막으로 집계된 날로 보낸다.
   const expand = (tag: string, at = last) => (series && last
     ? <TagRowExpand tag={tag} date={last} series={series} novelsHref={`/novels/rankings/${at}?tag=${encodeURIComponent(tag)}`} />
     : null);

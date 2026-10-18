@@ -21,7 +21,7 @@ import { formatInt, formatRatio } from '../../utils/format';
 type Zone = 'all' | ZoneKey;
 type Row = ZonedTag<DailyTag>;
 
-/** none = 구역이 없을 때 쓸 말(표 칸은 '–', 태그 트렌드의 '구역 바뀜'은 '구역 없음' — '– → 대세'는 읽히지 않았다) */
+/** none = 구역이 없을 때 쓸 말(표 칸은 '–', 태그 트렌드의 '구역 이동'은 '구역 없음' — '– → 대세'는 읽히지 않았다) */
 export const ZoneName = ({ zone, edge, none = '–' }: { zone: ZoneKey | null; edge?: boolean; none?: string }) => (zone
   ? <span className={`zone-name zone-name--${zone}`}><i className="zone-dot" aria-hidden="true" />{ZONE_LABEL[zone]}{edge ? <span className="zone-edge">경계</span> : null}</span>
   : <span className="zone-name zone-name--none">{none}</span>);
