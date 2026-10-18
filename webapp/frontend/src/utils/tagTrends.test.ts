@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTagTrends, computeChurn, crossesSampleChange, type TagSeriesResponse } from './tagTrends';
+import { buildTagTrends, crossesSampleChange, type TagSeriesResponse } from './tagTrends';
 
 /** rank · 점유율(score, 0~1) · 작품 수. null = 그날 없음 */
 const row = (rank: (number | null)[], score: (number | null)[], count: number | (number | null)[] = 10) => ({
@@ -13,7 +13,7 @@ const S = (tags: TagSeriesResponse['tags'], n = 4): TagSeriesResponse => ({ date
 describe('buildTagTrends', () => {
   it('수집일이 2일 미만이면 빈 목록', () => {
     expect(buildTagTrends(S({ a: row([1], [0.5]) }, 1)).risers).toEqual([]);
-    expect(buildTagTrends(null).churn).toBeNull();
+    expect(buildTagTrends(null).zones).toEqual([]);
   });
 
   it('뜬·식은 태그는 인기 점수(점유율) 변화 %p 순 — 순위가 그대로인 큰 태그의 흐름도 잡는다', () => {
@@ -25,7 +25,6 @@ describe('buildTagTrends', () => {
     expect(r.risers.map(t => t.tag)).toEqual(['big', 'tail']);
     expect(r.fallers.map(t => t.tag)).toEqual(['down']);
     expect(r.risers[0].shareChange).toBeCloseTo(0.045);
-    expect(r.risers[1]).toMatchObject({ rankChange: 28 });
   });
 
   it('변화가 ±0.2%p 미만이면 뜬·식은에 넣지 않는다', () => {
@@ -61,20 +60,28 @@ describe('buildTagTrends', () => {
   });
 });
 
-describe('computeChurn', () => {
-  it('순서가 그대로면 τ = 1, 완전히 뒤집히면 −1', () => {
-    const same = computeChurn({ a: row([1, 1], [0.3, 0.3]), b: row([2, 2], [0.2, 0.2]), c: row([3, 3], [0.1, 0.1]) }, 1)!;
-    expect(same).toMatchObject({ footrule: 0, tau: 1, common: 3 });
-    const flip = computeChurn({ a: row([1, 3], [0.3, 0.1]), b: row([2, 2], [0.2, 0.2]), c: row([3, 1], [0.1, 0.3]) }, 1)!;
-    expect(flip.tau).toBe(-1);
-    expect(flip.footrule).toBeCloseTo(4 / 3);
+describe('구역 바뀜(zones)', () => {
+  // N=500: 흔한 기준 30편, 전체 20%(경계 ±2%p), 숨은 강자 5~29편 · 100위 안 4편 · 30% 이상
+  const z = (count: [number, number], top: [number, number]) => ({ rank: [1, 1], score: [0.1, 0.1], count, top });
+  const Z = (tags: TagSeriesResponse['tags']): TagSeriesResponse => ({ dates: ['2026-09-01', '2026-09-02'], tags, ranked_total: [500, 500] });
+
+  it('첫날과 마지막 날 구역이 다른 태그만, 구역 없음 → 구역도 포함', () => {
+    const r = buildTagTrends(Z({
+      up: z([100, 100], [15, 25]),     // 과포화(15%) → 대세(25%)
+      same: z([100, 100], [25, 30]),   // 대세 그대로
+      gem: z([10, 12], [2, 5]),        // 구역 없음 → 숨은 강자(5편 · 42%)
+    })).zones;
+    expect(r.map(m => [m.tag, m.from, m.to])).toEqual([['gem', null, 'gem'], ['up', 'saturated', 'mainstream']].sort());
   });
-  it('양쪽에 다 있는 태그가 2개 미만이면 null', () => {
-    expect(computeChurn({ a: row([1, 1], [0.3, 0.3]), b: row([2, null], [0.2, null]) }, 1)).toBeNull();
+
+  it('어느 한쪽이라도 경계(전체 ±2%p 안)면 뺀다 — 하루 사이에도 잘 바뀐다', () => {
+    const r = buildTagTrends(Z({ edge: z([100, 100], [19, 21]) })).zones;   // 19% · 21% 모두 경계
+    expect(r).toEqual([]);
   });
-  it('작품 5편 미만 태그는 세지 않는다 — 아래 목록과 같은 모집단', () => {
-    const c = computeChurn({ a: row([1, 1], [0.3, 0.3]), b: row([2, 2], [0.2, 0.2]), tail: row([3, 9], [0.01, 0.005], 2) }, 1)!;
-    expect(c).toMatchObject({ common: 2, footrule: 0 });
+
+  it('N 이 없는 응답(구 백엔드)이면 구역을 판정하지 않는다', () => {
+    const r = buildTagTrends({ dates: ['2026-09-01', '2026-09-02'], tags: { up: z([100, 100], [15, 25]) } }).zones;
+    expect(r).toEqual([]);
   });
 });
 

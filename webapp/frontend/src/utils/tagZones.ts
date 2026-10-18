@@ -124,3 +124,18 @@ export function shareAxis(p0: number, maxShare: number) {
   const ticks = Array.from({ length: n + 1 }, (_, i) => Math.round(i * step * 1000) / 1000);
   return { top: ticks[n], bottom: -step * 0.25, ticks };
 }
+
+/** 각주 글귀 — 태그 랭킹과 태그 트렌드가 같은 말을 쓰게 한곳에 둔다(2026-10-18). */
+const pct1 = (v: number) => `${Math.round(v * 1000) / 10}%`;
+export const shareNoteText = (N: number | null | undefined): string => {
+  const lines = zoneLines(N);
+  return `100위 안 비율 = 100위 안 ÷ 작품 수. 전체 ${lines ? pct1(lines.p0) : ''} = 100 ÷ ${N ? N.toLocaleString('ko-KR') : '순위 작품 수'}(태그를 가리지 않은 모든 작품의 100위 안 비율). ${MIN_WORKS}편 미만 태그는 생략.`;
+};
+export const zoneNoteText = (N: number | null | undefined, rules: ZoneRules = DAILY_RULES): string | null => {
+  const l = zoneLines(N, rules);
+  if (!l) return null;
+  const all = pct1(l.p0);
+  return `구역 — 대세: 작품 ${l.cut}편 이상 · 100위 안 비율 ${all} 이상 / 과포화: 작품 ${l.cut}편 이상 · ${all} 미만 / `
+    + `숨은 강자: 작품 ${MIN_WORKS}~${l.cut - 1}편 · 100위 안 ${rules.gemMinTop}편 이상 · 비율 ${pct1(l.gemShare)} 이상 / `
+    + `경계: 비율이 ${all} ±${Math.round(rules.edge * l.p0 * 1000) / 10}%p 안`;
+};

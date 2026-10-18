@@ -9,9 +9,12 @@
  *  - 치솟았다 돌아옴: 기간 최고 점유율이 처음·끝보다 SPIKE_MIN_SHARE 이상 높고, 처음과 끝 차이가 그 폭의 절반 이하(= 돌아옴).
  *  - 대상은 뜬·식은·치솟음이 첫날과 마지막 날 모두, 들어옴은 끝날·빠짐은 첫날 작품 MIN_WORKS 편 이상(꼬리 태그 노이즈).
  *  - '많이 출렁임'은 없앴다 — 점유율로 재면 큰 태그일수록 하루 흔들림이 커서 사실상 태그 크기 순이었다.
+ *  - 구역 바뀜: 첫날과 마지막 날의 구역(태그 랭킹과 같은 판정, tagZones.zoneOf)이 다른 태그. 어느 쪽이든 '경계'면 뺀다(2026-10-18).
+ *  - 위 요약 줄(평균 순위 이동 · 순서 일치도)은 없앴다 — 시점과 무관하게 기간 길이로 거의 정해졌다(7일 5계단 · 0.91, 30일 9계단 · 0.83).
  */
+import { DAILY_RULES, MIN_WORKS, zoneOf, type ZoneKey } from './tagZones';
 
-export const MIN_WORKS = 5;
+export { MIN_WORKS };
 /** 뜬·식은 태그의 최소 변화(0.2%p). 7일 창에서 24·28개, 30일 창에서 38·38개(2026-10-07 실측) */
 export const SHARE_MIN_CHANGE = 0.002;
 /** 치솟았다 돌아옴의 최소 폭(0.5%p) */
@@ -23,6 +26,8 @@ export type TagSeriesResponse = {
   dates: string[];
   /** score = 그날 인기 점수(점유율 0~1), top = 100위 안 작품 수 */
   tags: Record<string, { rank: (number | null)[]; count: (number | null)[]; score: (number | null)[]; top?: (number | null)[] }>;
+  /** 날짜별 순위 작품 수 N(구역 판정의 기준). 없는 응답이면 구역을 판정하지 않는다. */
+  ranked_total?: (number | null)[];
 };
 
 export type TrendPoint = { date: string; rank: number; count: number; score: number };
@@ -33,8 +38,6 @@ export interface TagTrend {
   last: TrendPoint;
   /** 점유율 변화(%p 의 소수: 0.012 = +1.2%p) */
   shareChange: number;
-  /** + 면 순위가 올랐다 */
-  rankChange: number;
   /** 기간 최고 점유율 */
   peak: TrendPoint;
   /** 최고 점유율이 처음·끝 중 높은 쪽보다 얼마나 높았나 */
@@ -43,15 +46,8 @@ export interface TagTrend {
 
 export interface TagEdge { tag: string; rank: number; count: number; score: number; /** 빠짐: 마지막으로 집계된 날 */ lastSeen: string }
 
-export interface Churn {
-  /** 양쪽에 다 있는 태그의 평균 |순위 변동| */
-  footrule: number;
-  /** Kendall τ. 1 = 순서 그대로, 0 = 무작위 */
-  tau: number | null;
-  common: number;
-  startTags: number;
-  endTags: number;
-}
+export interface ZoneEnd { count: number; top: number }
+export interface ZoneMove { tag: string; from: ZoneKey | null; to: ZoneKey | null; first: ZoneEnd; last: ZoneEnd; lastRank: number }
 
 export interface TagTrendLists {
   risers: TagTrend[];
@@ -59,37 +55,33 @@ export interface TagTrendLists {
   entered: TagEdge[];
   left: TagEdge[];
   spikes: TagTrend[];
-  churn: Churn | null;
+  zones: ZoneMove[];
 }
 
 /** 기간이 수집 범위 변경(2025-07-20 → 21)을 사이에 두는가 */
 export const crossesSampleChange = (first: string, last: string) => first <= SAMPLE_CHANGE_LAST_300 && last > SAMPLE_CHANGE_LAST_300;
 
-/** 태그판 전체가 얼마나 갈렸나(평균 이동, Kendall τ) — 아래 목록과 같은 모집단(양 끝 작품 MIN_WORKS 편 이상)으로 센다. */
-export function computeChurn(tags: TagSeriesResponse['tags'], lastIdx: number): Churn | null {
-  const a = new Map<string, number>();
-  const b = new Map<string, number>();
-  for (const [tag, s] of Object.entries(tags)) {
-    if (s.rank[0] != null && (s.count[0] ?? 0) >= MIN_WORKS) a.set(tag, s.rank[0]);
-    if (s.rank[lastIdx] != null && (s.count[lastIdx] ?? 0) >= MIN_WORKS) b.set(tag, s.rank[lastIdx]!);
+/** 첫날 → 마지막 날 구역이 바뀐 태그(양 끝 모두 집계된 태그만). 한쪽이라도 경계면 뺀다. */
+function zoneMoves(series: TagSeriesResponse, lastIdx: number): ZoneMove[] {
+  const N = series.ranked_total;
+  if (!N || N[0] == null || N[lastIdx] == null) return [];
+  const end = (count: number | null, top: number | null | undefined, n: number) => {
+    const z = zoneOf({ count: count ?? 0, top100: top ?? null, ranked_total: n }, DAILY_RULES);
+    return { ...z, count: count ?? 0, top: top ?? 0 };
+  };
+  const out: ZoneMove[] = [];
+  for (const [tag, s] of Object.entries(series.tags)) {
+    if (s.rank[0] == null || s.rank[lastIdx] == null) continue;
+    const a = end(s.count[0], s.top?.[0], N[0]!);
+    const b = end(s.count[lastIdx], s.top?.[lastIdx], N[lastIdx]!);
+    if (a.zone === b.zone || a.edge || b.edge) continue;
+    out.push({ tag, from: a.zone, to: b.zone, first: { count: a.count, top: a.top }, last: { count: b.count, top: b.top }, lastRank: s.rank[lastIdx]! });
   }
-  const common = [...b.keys()].filter(t => a.has(t));
-  if (common.length < 2) return null;
-  const footrule = common.reduce((acc, t) => acc + Math.abs(a.get(t)! - b.get(t)!), 0) / common.length;
-  let con = 0;
-  let dis = 0;
-  for (let i = 0; i < common.length; i += 1) {
-    for (let j = i + 1; j < common.length; j += 1) {
-      const s2 = (a.get(common[i])! - a.get(common[j])!) * (b.get(common[i])! - b.get(common[j])!);
-      if (s2 > 0) con += 1;
-      else if (s2 < 0) dis += 1;
-    }
-  }
-  return { footrule, tau: con + dis ? (con - dis) / (con + dis) : null, common: common.length, startTags: a.size, endTags: b.size };
+  return out.sort((x, y) => x.lastRank - y.lastRank || x.tag.localeCompare(y.tag, 'ko'));
 }
 
 export function buildTagTrends(series: TagSeriesResponse | null): TagTrendLists {
-  const empty: TagTrendLists = { risers: [], fallers: [], entered: [], left: [], spikes: [], churn: null };
+  const empty: TagTrendLists = { risers: [], fallers: [], entered: [], left: [], spikes: [], zones: [] };
   if (!series || series.dates.length < 2) return empty;
   const { dates, tags } = series;
   const lastIdx = dates.length - 1;
@@ -123,7 +115,6 @@ export function buildTagTrends(series: TagSeriesResponse | null): TagTrendLists 
     trends.push({
       tag, first, last, peak,
       shareChange: last.score - first.score,
-      rankChange: first.rank - last.rank,
       spike: peak.score - Math.max(first.score, last.score),
     });
   }
@@ -137,6 +128,6 @@ export function buildTagTrends(series: TagSeriesResponse | null): TagTrendLists 
     left: left.sort((a, b) => a.rank - b.rank),
     spikes: eligible.filter(t => t.spike >= SPIKE_MIN_SHARE - 1e-12 && Math.abs(t.shareChange) <= t.spike / 2)
       .sort((a, b) => b.spike - a.spike || byName(a, b)),
-    churn: computeChurn(tags, lastIdx),
+    zones: zoneMoves(series, lastIdx),
   };
 }

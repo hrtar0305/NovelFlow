@@ -1555,7 +1555,9 @@ def get_tag_series(start_date: str, end_date: str, response: Response):
                 slot['top'][idx] = r['top100']
 
         response.headers["Cache-Control"] = "public, max-age=300"
-        return {'dates': present, 'tags': series}   # _one_day_tag_rows 가 int·float 로 낸 값뿐이다
+        # ranked_total = 날짜별 순위 작품 수 N — 화면이 구역(태그 랭킹과 같은 판정)을 매기는 기준(태그 트렌드 '구역 바뀜').
+        ranked_total = [int(items_by_date[d].get('RankedTotal') or 0) or None for d in present]
+        return {'dates': present, 'tags': series, 'ranked_total': ranked_total}   # _one_day_tag_rows 가 int·float 로 낸 값뿐이다
 
     except HTTPException:
         raise

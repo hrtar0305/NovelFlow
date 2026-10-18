@@ -7,7 +7,7 @@ import RankTable, { type RankColumn } from '../ranking/RankTable';
 import TagTerrainMap from './TagTerrainMap';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import {
-  DAILY_RULES, DEFAULT_TAG_SORT, MIN_WORKS, ZONE_LABEL, ZONE_ORDER, formatTop, formatTopShare, nextTagSort, sortTags, withZones, zoneCounts, zoneLines,
+  DAILY_RULES, DEFAULT_TAG_SORT, MIN_WORKS, ZONE_LABEL, ZONE_ORDER, formatTop, formatTopShare, nextTagSort, shareNoteText, zoneNoteText, sortTags, withZones, zoneCounts, zoneLines,
   type DailyTag, type TagSort, type TagSortKey, type ZonedTag, type ZoneKey, type ZoneRules,
 } from '../../utils/tagZones';
 import { formatInt, formatRatio } from '../../utils/format';
@@ -19,12 +19,12 @@ import { formatInt, formatRatio } from '../../utils/format';
  */
 
 type Zone = 'all' | ZoneKey;
-const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 type Row = ZonedTag<DailyTag>;
 
-const ZoneName = ({ zone, edge }: { zone: ZoneKey | null; edge?: boolean }) => (zone
+/** none = 구역이 없을 때 쓸 말(표 칸은 '–', 태그 트렌드의 '구역 바뀜'은 '구역 없음' — '– → 대세'는 읽히지 않았다) */
+export const ZoneName = ({ zone, edge, none = '–' }: { zone: ZoneKey | null; edge?: boolean; none?: string }) => (zone
   ? <span className={`zone-name zone-name--${zone}`}><i className="zone-dot" aria-hidden="true" />{ZONE_LABEL[zone]}{edge ? <span className="zone-edge">경계</span> : null}</span>
-  : <span className="zone-name zone-name--none">–</span>);
+  : <span className="zone-name zone-name--none">{none}</span>);
 
 interface DailyTagBoardProps {
   tags: DailyTag[];
@@ -67,15 +67,14 @@ export default function DailyTagBoard({
   // 각주 = 열 순서대로 그 값의 식. 숫자는 그날 N 으로 채운다(데일리 500편, 공모전 약 3,000편).
   const notes = useMemo(() => {
     const n = N ? `${formatInt(N)}편` : '순위 작품';
-    const all = lines ? pct(lines.p0) : '';
     return [
       { id: 'score', content: <>인기 점수 = 이 태그 작품들의 {scoreLabel} 합 ÷ {n} 전체의 {scoreLabel} 합. {scoreNote}</> },
       { id: 'count', content: <>작품 수 = {n} 중 이 태그를 단 작품 수.</> },
       { id: 'top', content: <>100위 안 = 이 태그 작품 중 100위 안에 든 작품 수.</> },
-      { id: 'share', content: <>100위 안 비율 = 100위 안 ÷ 작품 수. 전체 {all} = 100 ÷ {N ? formatInt(N) : '순위 작품 수'}(태그를 가리지 않은 모든 작품의 100위 안 비율). {MIN_WORKS}편 미만 태그는 생략.</> },
-      { id: 'zone', content: lines ? <>구역 — 대세: 작품 {lines.cut}편 이상 · 100위 안 비율 {all} 이상 / 과포화: 작품 {lines.cut}편 이상 · {all} 미만 / 숨은 강자: 작품 {MIN_WORKS}~{lines.cut - 1}편 · 100위 안 {rules.gemMinTop}편 이상 · 비율 {pct(lines.gemShare)} 이상 / 경계: 비율이 {all} ±{Math.round(rules.edge * lines.p0 * 1000) / 10}%p 안</> : null },
+      { id: 'share', content: shareNoteText(N) },
+      { id: 'zone', content: zoneNoteText(N, rules) },
     ];
-  }, [N, lines, scoreLabel, scoreNote, rules]);
+  }, [N, scoreLabel, scoreNote, rules]);
 
   const zoned = useMemo(() => withZones(tags, rules), [tags, rules]);
   const counts = useMemo(() => zoneCounts(zoned), [zoned]);
