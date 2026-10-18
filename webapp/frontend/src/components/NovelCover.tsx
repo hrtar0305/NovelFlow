@@ -12,6 +12,9 @@ type NovelCoverProps = {
   className?: string;
   /** 가린 동안 원본을 받지 않고 흐린 색 덩어리를 그린다(표의 작은 썸네일 — 원본 한 장 약 500KB, 2026-10-18). 보기를 누르면 받는다. */
   placeholder?: boolean;
+  /** 받는 순서. 'high' = 첫 화면의 가장 큰 그림(쇼케이스 1위) — 바로 · 먼저 받는다. 'low' = 같은 화면의 나머지 쇼케이스 표지.
+   *  표지 원본 10장이 한꺼번에 받히며 1위 카드가 늦게 끝나 PC 첫 화면이 4초였다(2026-10-19). */
+  priority?: 'high' | 'low';
 };
 
 /**
@@ -22,7 +25,7 @@ type NovelCoverProps = {
  * 성인작 전용 단계는 없다. 성인작 표지도 다른 표지와 같은 규칙(기본 가림 + 개별
  * 해제)을 따른다. 성인작을 목록에서 빼는 일은 백엔드 `HIDE_ADULT_CONTENT` 가 맡는다.
  */
-const NovelCover = ({ url, title, imageClassName, className, placeholder }: NovelCoverProps) => {
+const NovelCover = ({ url, title, imageClassName, className, placeholder, priority }: NovelCoverProps) => {
   const { maskAll } = useCoverMask();
   const [override, setOverride] = useState<boolean | null>(null);
 
@@ -49,7 +52,9 @@ const NovelCover = ({ url, title, imageClassName, className, placeholder }: Nove
         src={url}
         alt={`${title || '소설'} 썸네일`}
         className={imageClassName}
-        loading="lazy"
+        loading={priority === 'high' ? 'eager' : 'lazy'}
+        // React 18 은 fetchPriority 를 모른다 — 소문자 속성으로 그대로 넘긴다.
+        {...(priority ? { fetchpriority: priority } : {})}
         onError={(event) => {
           event.currentTarget.style.display = 'none';
         }}

@@ -14,7 +14,10 @@
 
 .app-main {
   flex: 1 0 auto;
-  min-height: 0;
+  /* 첫 화면 높이만큼 비워 둔다 — 페이지 코드가 오기 전 본문이 비어 바닥글이 위에 그려졌다가, 본문이 들어오면 아래로 밀려
+     모든 페이지가 레이아웃 밀림(CLS) 0.4~0.6 이었다(2026-10-19). 바닥글이 처음부터 화면 밖에 있으면 밀려도 셈하지 않는다. */
+  min-height: calc(100vh - var(--np-header-h));
+  min-height: calc(100dvh - var(--np-header-h));
   padding: 0 var(--np-space-4) var(--np-space-7);
   background: transparent;
 }

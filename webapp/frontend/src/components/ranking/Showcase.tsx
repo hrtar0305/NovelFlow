@@ -23,12 +23,12 @@ interface ShowcaseProps {
   movers: ShowcaseItem[];
 }
 
-function Poster({ item, chip, meta, cls }: { item: ShowcaseItem; chip: ReactNode; meta: ReactNode; cls: string }) {
+function Poster({ item, chip, meta, cls, first = false }: { item: ShowcaseItem; chip: ReactNode; meta: ReactNode; cls: string; first?: boolean }) {
   return (
     <Link to={item.href} className={`media-rank-card media-rank-card--poster media-rank-card--link ${cls}`} aria-label={`${item.title} 상세 보기`}>
       {/* 칩은 표지 안에 둔다 — 띠(overlay)가 position: relative라 그 안에 두면 제목 옆으로 내려온다. */}
       <div className="media-rank-card__cover">
-        <NovelCover url={item.cover} title={item.title} imageClassName="media-rank-card__cover-image" />
+        <NovelCover url={item.cover} title={item.title} imageClassName="media-rank-card__cover-image" priority={first ? 'high' : 'low'} />
         <div className="media-rank-card__rank">{chip}</div>
       </div>
       <div className="media-rank-card__overlay">
@@ -52,7 +52,7 @@ export default function Showcase({ top, movers }: ShowcaseProps) {
             </div>
             <div className="ranking-showcase-top-grid">
               {top.slice(0, COUNT).map((n, i) => (
-                <Poster key={`top-${n.id}`} item={n} chip={n.rank} cls={`media-rank-card--split media-rank-card--rank-${i + 1}`}
+                <Poster key={`top-${n.id}`} item={n} chip={n.rank} first={i === 0} cls={`media-rank-card--split media-rank-card--rank-${i + 1}`}
                   meta={<>{n.author ? <span className="mini-kpi">{n.author}</span> : null}<span className="mini-kpi">{n.stat}</span></>} />
               ))}
             </div>
