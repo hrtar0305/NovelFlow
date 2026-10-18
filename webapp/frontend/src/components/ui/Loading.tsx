@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 /**
- * 로딩 중에 요소를 지우지 않는다(2026-10-18 사용자). 날짜·기간을 바꾸는 동안 이전 값을 흐리게 둔 채 위에 로딩 막대를 띄우고,
+ * 로딩 중에 요소를 지우지 않는다(2026-10-18 사용자). 날짜·기간을 바꾸는 동안 이전 값을 흐리게 둔 채,
  * 새 값이 오면 바꿔 끼운다 — 블록이 사라졌다 나타나며 아래가 밀리던 것을 없앤다. 처음처럼 이전 값이 없으면 평소 크기의 빈 틀(Skeleton*)을 둔다.
  */
 export function Stale({ loading, children, className }: { loading: boolean; children: ReactNode; className?: string }) {
