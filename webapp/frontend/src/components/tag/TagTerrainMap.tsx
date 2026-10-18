@@ -4,7 +4,7 @@ import {
   CartesianGrid, Label, ReferenceLine, ReferenceArea, Tooltip,
 } from 'recharts';
 import { formatRatio } from '../../utils/format';
-import { DAILY_RULES, ZONE_LABEL, formatTop, shareAxis, zoneLines, type ZonedTag, type ZoneKey, type ZoneRules } from '../../utils/tagZones';
+import { ZONE_LABEL, formatTop, shareAxis, zoneLines, type ZonedTag, type ZoneKey } from '../../utils/tagZones';
 
 /**
  * 태그 지형 지도 — 가로 작품 수(로그), 세로 100위 안 비율(DECISIONS 2026-10-06, 하루 판정).
@@ -27,7 +27,6 @@ type ShapeProps = { cx?: number; cy?: number; payload?: Plotted; 'data-recharts-
 
 interface Props {
   rows: MapTag[];
-  rules?: ZoneRules;
   /** 펼친 태그 — 지도 강조는 이것만 따른다. 마우스를 올린 표 행까지 따르면, 행을 눌러 닫은 뒤에도 마우스가 그 행에 있거나
    *  휠로 스크롤해 '떠났다'는 신호가 안 오면 강조가 남았다(2026-10-18). 점에 마우스를 올리면 설명창만 뜬다. */
   active: string | null;
@@ -61,8 +60,8 @@ const MapTip = ({ active, payload }: { active?: boolean; payload?: { payload: Pl
   );
 };
 
-export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, matches, onPick }: Props) {
-  const lines = zoneLines(rows[0]?.ranked_total, rules);
+export default function TagTerrainMap({ rows, active, matches, onPick }: Props) {
+  const lines = zoneLines(rows[0]?.ranked_total);
 
   const countDomain = useMemo(() => {
     const counts = rows.map(d => d.count);

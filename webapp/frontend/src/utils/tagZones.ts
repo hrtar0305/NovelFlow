@@ -27,8 +27,6 @@ export const ZONE_LABEL: Record<ZoneKey, string> = {
 
 export interface ZoneRules { cutShare: number; gemMult: number; gemMinTop: number; edge: number }
 export const DAILY_RULES: ZoneRules = { cutShare: 0.06, gemMult: 1.5, gemMinTop: 4, edge: 0.1 };
-/** 공모전(N 약 3,000)은 100위가 전체의 3% 라 100위 안 편수가 작다 — 숨은 강자에 6편(개막 5일 측정: 하루 바뀜 8.5 → 4.2개). */
-export const CONTEST_RULES: ZoneRules = { ...DAILY_RULES, gemMinTop: 6 };
 
 export interface DailyTag {
   Rank: number;

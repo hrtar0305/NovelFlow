@@ -5,7 +5,7 @@ import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAx
 import { Search as SearchIcon } from 'react-bootstrap-icons';
 import { getContestAvailableDates, getContestDailyTagRankingsByDate, getContestTagRankingsByDate } from '../services/api';
 import DailyTagBoard from '../components/tag/DailyTagBoard';
-import { CONTEST_RULES, type DailyTag } from '../utils/tagZones';
+import type { DailyTag } from '../utils/tagZones';
 import ContestHeader from '../components/contest/ContestHeader';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
@@ -90,9 +90,9 @@ function DailyContestTags() {
       <ContestHeader year={year} date={dateParam ?? null} availableDates={dates} view="tags"
         onDateChange={d => navigate(`/contests/${year}/tags/rankings/${d}`)}
         onYearChange={y => navigate(`/contests/${y}/tags/rankings`)}
-        meta={`${cfg.schedule} · 일간 순위 작품에 달린 태그`} />
+        meta={`${cfg.schedule} · 일간 ${formatInt(tags[0]?.ranked_total ?? 500)}위 안 작품에 달린 태그`} />
       <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
-        scoreLabel="조회 증가" scoreNote="조회 증가는 직전 수집일 대비 조회수가 늘어난 양(일간 순위의 기준)." rules={CONTEST_RULES}
+        scoreLabel="조회 증가" scoreNote="조회 증가는 직전 수집일 대비 조회수가 늘어난 양(일간 순위의 기준)."
         novelHref={id => `/contests/${year}/novels/${id}`}
         ariaLabel="공모전 태그 순위"
         emptyText="이 날짜는 일간 순위가 없어 태그 순위도 없습니다. 일간 순위는 직전 수집일과 비교할 수 있는 다음 날부터 생깁니다."
@@ -100,7 +100,8 @@ function DailyContestTags() {
         renderExpanded={t => (
           <div className="row-expand row-expand--tag">
             <span>작품 <b>{formatInt(t.count)}편</b></span>
-            <Link to={`/contests/${year}/${dateParam}?tag=${encodeURIComponent(t.tag)}`} className="row-expand__go" onClick={e => e.stopPropagation()}>'{t.tag}' 작품 보기</Link>
+            {/* 태그 수치와 같은 모집단(일간 500위 안)으로 연다 — 작품 목록에 수치 조건 '일간 순위 N위 이내'가 걸린다. */}
+            <Link to={`/contests/${year}/${dateParam}?tag=${encodeURIComponent(t.tag)}&within=${t.ranked_total ?? 500}`} className="row-expand__go" onClick={e => e.stopPropagation()}>'{t.tag}' 작품 보기</Link>
           </div>
         )} />
     </div>

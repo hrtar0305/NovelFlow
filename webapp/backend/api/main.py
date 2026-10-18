@@ -530,6 +530,40 @@ def _attach_top_novels(rows: list[dict], items: list[dict], rank_key: str) -> No
 
 _TOP_NOVEL_NAMES = {'#i': 'ID', '#t': 'Title', '#g': 'Tags', '#a': 'IsAdult'}
 
+# 2026 공모전 태그 랭킹의 모집단 = 그날 일간 500위 안 작품(데일리 태그 랭킹과 같은 크기 · 같은 식, 2026-10-18).
+# 참여작 전부(약 4,700편, 누적 조회 중앙값 37)로 세면 '100위 안'이 2% 라 작품 100편 미만 태그의 대부분이 0편이었고(지도 무의미),
+# 조회가 거의 없는 작품들이 작품 수 · 평균선을 끌어내렸다. DAILY_TAG_STATS(전체 기준)는 파이프라인이 계속 쌓지만 화면은 읽지 않는다.
+CONTEST_TAG_POOL = 500
+
+
+def _contest_pool_tag_rows(items: list[dict], pool: int = CONTEST_TAG_POOL) -> list[dict]:
+    """그날 공모전 작품 중 일간 순위 pool 위 안만으로 태그 행을 만든다 — data-pipeline/tag_stats.daily_tag_stats 와 같은 식
+    (작품 수 · 100위 안 · 인기 점수 = 조회 증가 점유율 · 2편 미만 태그 제외) + 대표 작품. items 는 콘텐츠 정책을 지난 목록."""
+    ranked = [it for it in items if it.get('DailyRank') is not None and int(it['DailyRank']) <= pool]
+    if not ranked:
+        return []
+    counts: dict[str, int] = {}
+    top: dict[str, int] = {}
+    ssum: dict[str, int] = {}
+    logw: dict[str, float] = {}
+    total = 0
+    for it in ranked:
+        rank, delta = int(it['DailyRank']), int(it.get('ViewDelta') or 0)
+        total += delta
+        for tag in it.get('Tags') or []:
+            counts[tag] = counts.get(tag, 0) + 1
+            ssum[tag] = ssum.get(tag, 0) + delta
+            logw[tag] = logw.get(tag, 0.0) + 1 / math.log(rank + 1)
+            if rank <= 100:
+                top[tag] = top.get(tag, 0) + 1
+    counts = {t: n for t, n in counts.items() if n >= 2}   # 등장 2회 미만은 노이즈(STATS 와 같은 규칙)
+    rows = _one_day_tag_rows(counts, top, ssum, total, len(ranked))
+    for r in rows:
+        r['power_score'] = float(logw.get(r['tag'], 0.0))
+        r['local_lift'] = None
+    _attach_top_novels(rows, ranked, 'DailyRank')
+    return rows
+
 
 def _one_day_tag_rows(counts: dict, top100: dict | None, score_sum: dict | None,
                       score_total: int | None, ranked_total: int | None) -> list[dict]:
@@ -1453,44 +1487,19 @@ def get_contest_tags_by_date(year: int, date: str, response: Response):
     except ClientError as e:
         raise _server_error("DynamoDB query failed")
 
-def _contest_daily_tag_ranking(tbl, date: str) -> Optional[list]:
-    """`DAILY_TAG_STATS#{date}` → 데일리 태그 랭킹과 같은 꼴(인기 점수 순 + 상위권 집중도). 항목이 없으면 None."""
-    item = tbl.get_item(Key={'ID': f"DAILY_TAG_STATS#{date}", 'Date': date}).get('Item')
-    if not item:
-        return None
-    ranked_total = int(item.get('RankedTotal', 0) or 0)
-    scores = item.get('TagWeightedScoresLogarithmic', {}) or {}
-    counts = item.get('TagCounts', {}) or {}
-    top = item.get('TagCountsTop100', {}) or {}
-    # 하루 판정(2026-10-06): 순서 = 인기 점수(그날 조회 증가 점유율), 동점은 태그 이름.
-    rows = _one_day_tag_rows(counts, top, item.get('TagScoreSum'), item.get('ScoreTotal'), ranked_total)
-    for r in rows:
-        r['power_score'] = float(scores.get(r['tag'], 0))
-        r['local_lift'] = (_compute_local_lift(r['top100'], r['count'], rest_total=ranked_total - 100, min_top=2)
-                           if r['top100'] is not None else None)
-    return rows
-
-
 @app.get("/api/contests/{year}/ranks/daily-tags/{date}", response_model=List[TagRankData])
 def get_contest_daily_tags_by_date(year: int, date: str, response: Response):
-    """공모전 태그 랭킹 — **일간 순위 기준**(2026~, 대표 순위와 같은 기준 — DECISIONS 2026-10-02).
+    """공모전 태그 랭킹 — **일간 500위 안 작품만**으로 데일리 태그 랭킹과 같은 하루 판정(2026-10-18, `_contest_pool_tag_rows`).
 
-    데일리 태그 랭킹과 같은 하루 판정(인기 점수 = 그날 조회 증가 점유율, 100위 안). 변동은 실제 직전 수집일 대비
-    (공모전 규칙 — 달력 −1 아님). 일간 순위가 없는 날(수집 첫날)은 404.
+    인기 점수 = 그 500편의 그날 조회 증가 중 이 태그 작품들의 몫. 일간 순위가 없는 날(수집 첫날)은 404.
+    전날 대비 변동은 내지 않는다 — 화면에서 뺐다(2026-10-18).
     """
     tbl = _contest_table_for(year)
     try:
-        rows = _contest_daily_tag_ranking(tbl, date)
-        if rows is None:
+        items = _fetch_all_contest_items(date, '#i, #t, #g, #a, #r, #v', {**_TOP_NOVEL_NAMES, '#r': 'DailyRank', '#v': 'ViewDelta'}, tbl)
+        rows = _contest_pool_tag_rows(_apply_content_policy_all(items))
+        if not rows:
             raise HTTPException(status_code=404, detail="No daily tag statistics found for the given date.")
-        prev_date = _get_previous_contest_date(date, tbl)
-        prev = _contest_daily_tag_ranking(tbl, prev_date) if prev_date else None
-        _set_tag_rank_change(rows, {r['tag']: r['Rank'] for r in prev} if prev else {})
-        try:
-            novels = _fetch_all_contest_items(date, '#i, #t, #g, #a, #r', {**_TOP_NOVEL_NAMES, '#r': 'DailyRank'}, tbl)
-            _attach_top_novels(rows, _apply_content_policy_all(novels), 'DailyRank')
-        except Exception as e:   # 대표 작품은 곁들이 — 없어도 표는 낸다
-            logger.warning(f"Failed to attach contest top novels: {e}")
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return rows
     except HTTPException:

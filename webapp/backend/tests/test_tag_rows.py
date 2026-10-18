@@ -57,3 +57,25 @@ class TopNovel(unittest.TestCase):
         M._attach_top_novels(rows, items, 'Ranking')
         self.assertEqual([r.get('top_novel') for r in rows],
                          [{'id': '2', 'title': 'B', 'rank': 1}, {'id': '1', 'title': 'A', 'rank': 3}, None])
+
+
+class ContestPoolRows(unittest.TestCase):
+    """2026 공모전 태그 = 일간 500위 안 작품만(데일리와 같은 모집단 · 같은 식, 2026-10-18)."""
+    def items(self):
+        return [
+            {'ID': '1', 'Title': 'A', 'DailyRank': 1, 'ViewDelta': 900, 'Tags': ['하렘', '판타지']},
+            {'ID': '2', 'Title': 'B', 'DailyRank': 150, 'ViewDelta': 100, 'Tags': ['하렘', '판타지', '단독']},
+            {'ID': '3', 'Title': 'C', 'DailyRank': 501, 'ViewDelta': 5, 'Tags': ['하렘', '판타지']},   # 500위 밖 — 세지 않는다
+            {'ID': '4', 'Title': 'D', 'DailyRank': None, 'ViewDelta': None, 'Tags': ['하렘']},          # 일간 순위 없음
+        ]
+
+    def test_pool_counts_share_and_top_novel(self):
+        rows = M._contest_pool_tag_rows(self.items(), pool=500)
+        by = {r['tag']: r for r in rows}
+        self.assertEqual(set(by), {'하렘', '판타지'})                     # '단독'(1편)은 2편 미만이라 뺀다
+        self.assertEqual((by['하렘']['count'], by['하렘']['top100'], by['하렘']['ranked_total']), (2, 1, 2))
+        self.assertAlmostEqual(by['하렘']['score_share'], 1.0)            # (900 + 100) ÷ 1000 — 500위 밖 5 는 분모에도 없다
+        self.assertEqual(by['하렘']['top_novel'], {'id': '1', 'title': 'A', 'rank': 1})
+
+    def test_no_ranked_items(self):
+        self.assertEqual(M._contest_pool_tag_rows([{'ID': '1', 'DailyRank': None, 'Tags': ['a', 'b']}], pool=500), [])

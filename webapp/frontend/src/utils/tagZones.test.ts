@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTEST_RULES, shareAxis, formatTop, formatTopShare, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
+import { shareAxis, formatTop, formatTopShare, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
 
 const t = (Rank: number, count: number, local_lift: number | null, power_score = 10 - Rank): DailyTag =>
   ({ Rank, tag: `t${Rank}`, count, local_lift, power_score });
@@ -28,12 +28,6 @@ describe('zoneOf (하루 판정, 데일리 N=500)', () => {
   it('100위 안 · N 정보가 없으면 구역 없음', () => {
     expect(zoneOf({ count: 50, top100: null, ranked_total: 500 }).zone).toBeNull();
     expect(zoneOf({ count: 50, top100: 20, ranked_total: null }).zone).toBeNull();
-  });
-  it('공모전은 숨은 강자에 100위 안 6편 이상', () => {
-    const c = (count: number, top100: number) => zoneOf({ count, top100, ranked_total: 3000 }, CONTEST_RULES).zone;
-    expect(c(100, 5)).toBeNull();           // 5% · 5편
-    expect(c(100, 6)).toBe('gem');           // 6% ≥ 1.5 × 3.3%
-    expect(c(180, 7)).toBe('mainstream');    // 180편 = 6% · 3.9% ≥ 3.3%
   });
 });
 

@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
 import { getContestAvailableDates, getContestDataByDate, getContestShowcase } from '../services/api';
@@ -84,9 +84,18 @@ export default function ContestPage() {
   const [winnersOnly, setWinnersOnly] = useState(false);
   const [sort, setSort] = useState<ContestSort>(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT);
   const [career, setCareer] = useState<Career>('all');
-  const [conds, setConds] = useState<ColumnCondition[]>([]);
-  // 2025 ↔ 2026 는 열이 달라(일간 순위 · 잔류율) 수치 조건도 비운다.
-  useEffect(() => { setSort(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT); setCareer('all'); setWinnersOnly(false); setConds([]); }, [daily]);
+  // ?within=N 으로 들어오면(공모전 태그 랭킹의 '작품 보기' — 태그 수치는 일간 500위 안 작품만 센다) '일간 순위 N위 이내'를 건다.
+  const [conds, setConds] = useState<ColumnCondition[]>(() => {
+    const within = Number(params.get('within'));
+    return daily && within > 0 ? [{ key: 'daily_rank', op: 'lte', value: within }] : [];
+  });
+  // 2025 ↔ 2026 는 열이 달라(일간 순위 · 잔류율) 수치 조건도 비운다. 처음 그릴 때는 건너뛴다(위 ?within= 을 지우지 않게).
+  const lastDaily = useRef(daily);
+  useEffect(() => {
+    if (lastDaily.current === daily) return;
+    lastDaily.current = daily;
+    setSort(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT); setCareer('all'); setWinnersOnly(false); setConds([]);
+  }, [daily]);
   const [drawer, setDrawer] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -110,8 +119,7 @@ export default function ContestPage() {
   useEffect(() => {
     if (dates.size === 0) return;
     if (!dateParam || !isValid(parseISO(dateParam)) || !dates.has(dateParam)) {
-      const tag = params.get('tag');
-      navigate(`/contests/${year}/${[...dates].sort().at(-1)}${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`, { replace: true });
+      navigate(`/contests/${year}/${[...dates].sort().at(-1)}${params.size ? `?${params}` : ''}`, { replace: true });
       return;
     }
     let cancelled = false;

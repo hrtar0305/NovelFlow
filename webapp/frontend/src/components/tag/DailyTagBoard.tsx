@@ -7,8 +7,8 @@ import RankTable, { type RankColumn } from '../ranking/RankTable';
 import TagTerrainMap from './TagTerrainMap';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import {
-  DAILY_RULES, DEFAULT_TAG_SORT, MIN_WORKS, ZONE_LABEL, ZONE_ORDER, formatTop, formatTopShare, nextTagSort, shareNoteText, zoneNoteText, sortTags, withZones, zoneCounts, zoneLines,
-  type DailyTag, type TagSort, type TagSortKey, type ZonedTag, type ZoneKey, type ZoneRules,
+  DEFAULT_TAG_SORT, MIN_WORKS, ZONE_LABEL, ZONE_ORDER, formatTop, formatTopShare, nextTagSort, shareNoteText, zoneNoteText, sortTags, withZones, zoneCounts, zoneLines,
+  type DailyTag, type TagSort, type TagSortKey, type ZonedTag, type ZoneKey,
 } from '../../utils/tagZones';
 import { formatInt, formatRatio } from '../../utils/format';
 
@@ -37,8 +37,6 @@ interface DailyTagBoardProps {
   scoreNote: ReactNode;
   /** 대표 작품 링크 */
   novelHref: (id: string) => string;
-  /** 구역 판정 기준(공모전은 숨은 강자에 100위 안 6편 — tagZones.CONTEST_RULES) */
-  rules?: ZoneRules;
   ariaLabel: string;
   emptyText: string;
   /** 있으면 행을 눌러 펼친다. */
@@ -47,7 +45,7 @@ interface DailyTagBoardProps {
 }
 
 export default function DailyTagBoard({
-  tags, loading, error, resetKey, scoreLabel, scoreNote, novelHref, rules = DAILY_RULES, ariaLabel, emptyText, renderExpanded, onOpenTag,
+  tags, loading, error, resetKey, scoreLabel, scoreNote, novelHref, ariaLabel, emptyText, renderExpanded, onOpenTag,
 }: DailyTagBoardProps) {
   const [sort, setSort] = useState<TagSort>(DEFAULT_TAG_SORT);
   const [zone, setZone] = useState<Zone>('all');
@@ -62,21 +60,22 @@ export default function DailyTagBoard({
   useEffect(() => { setOpenTagState(null); }, [resetKey]);
 
   const N = tags[0]?.ranked_total ?? null;
-  const lines = zoneLines(N, rules);
+  const lines = zoneLines(N);
   // 각주는 정의만 — 숫자는 그날 N 으로 채운다(데일리 30편 · 20%, 공모전 179편 · 3.4%).
   // 각주 = 열 순서대로 그 값의 식. 숫자는 그날 N 으로 채운다(데일리 500편, 공모전 약 3,000편).
   const notes = useMemo(() => {
-    const n = N ? `${formatInt(N)}편` : '순위 작품';
+    // '일간 500위 안 작품' — 데일리는 랭킹 전체, 공모전은 참여작 중 일간 500위 안(같은 모집단 크기, 2026-10-18).
+    const n = N ? `일간 ${formatInt(N)}위 안 작품` : '순위 작품';
     return [
       { id: 'score', content: <>인기 점수 = 이 태그 작품들의 {scoreLabel} 합 ÷ {n} 전체의 {scoreLabel} 합. {scoreNote}</> },
       { id: 'count', content: <>작품 수 = {n} 중 이 태그를 단 작품 수.</> },
       { id: 'top', content: <>100위 안 = 이 태그 작품 중 100위 안에 든 작품 수.</> },
       { id: 'share', content: shareNoteText(N) },
-      { id: 'zone', content: zoneNoteText(N, rules) },
+      { id: 'zone', content: zoneNoteText(N) },
     ];
-  }, [N, scoreLabel, scoreNote, rules]);
+  }, [N, scoreLabel, scoreNote]);
 
-  const zoned = useMemo(() => withZones(tags, rules), [tags, rules]);
+  const zoned = useMemo(() => withZones(tags), [tags]);
   const counts = useMemo(() => zoneCounts(zoned), [zoned]);
   const hasZones = lines != null && zoned.some(t => t.zone);
   const activeZone: Zone = hasZones ? zone : 'all';
@@ -142,7 +141,7 @@ export default function DailyTagBoard({
       {mobile && !mapOpen ? (
         <button type="button" className="link-button tag-map__open" onClick={() => setMapOpen(true)}>지형 지도 보기</button>
       ) : (
-        <TagTerrainMap rows={mapRows} rules={rules} active={openTag} matches={matches} onPick={pickFromMap} />
+        <TagTerrainMap rows={mapRows} active={openTag} matches={matches} onPick={pickFromMap} />
       )}
     </section></Stale>
   ) : firstLoad ? (
