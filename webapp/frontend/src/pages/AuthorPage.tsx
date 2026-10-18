@@ -95,7 +95,7 @@ export default function AuthorPage() {
     { key: 'title', header: '제목', width: 'minmax(0,1fr)',
       render: n => (
         <span className="rank-titlecell">
-          <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span>
+          <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" placeholder /></span>
           <Link to={`/novels/${n.ID}`} className="rank-title">{n.Title || '(제목 없음)'}</Link>
         </span>
       ) },
@@ -108,7 +108,7 @@ export default function AuthorPage() {
 
   const mobileRow = (n: AuthorNovel) => (
     <div className="rank-mrow rank-mrow--author">
-      <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span>
+      <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" placeholder /></span>
       <div className="rank-mrow__main">
         <Link to={`/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title || '(제목 없음)'}</Link>
         <p>{formatInt(n.Eps)}화 · 조회 <b>{formatMan(n.View)}</b> · 선호 {formatInt(n.Fav)} · {todayRank(n) != null ? <b>오늘 {todayRank(n)}위</b> : '순위 밖'}</p>

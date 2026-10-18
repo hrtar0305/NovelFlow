@@ -109,7 +109,7 @@ export default function NovelRankingsPage() {
     { key: 'title', header: '제목', width: 'minmax(0,1fr)',
       render: n => (
         <span className="rank-titlecell">
-          <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span>
+          <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" placeholder /></span>
           <Link to={`/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link>
         </span>
       ) },
@@ -129,7 +129,7 @@ export default function NovelRankingsPage() {
   const mobileRow = (n: RankingNovel) => (
     <div className="rank-mrow">
       <div className="rank-mrow__rank"><span className={`rank-num${n.Ranking <= 3 ? ' is-top' : ''}`}>{n.Ranking}</span><ChangeMark value={n.rank_change} /></div>
-      <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span>
+      <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" placeholder /></span>
       <div className="rank-mrow__main">
         <Link to={`/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title}</Link>
         <p>{n.AuthorName} · 점수 <b>{formatInt(n.Score)}</b> · {formatInt(n.Eps)}화</p>

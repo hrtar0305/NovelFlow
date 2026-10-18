@@ -195,7 +195,7 @@ export default function ContestPage() {
     { key: 'title', header: '제목', width: 'minmax(0,1fr)',
       render: n => (
         <span className="rank-titlecell">
-          <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span>
+          <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" placeholder /></span>
           {isDeletedContestNovel(n)
             ? <span className="rank-title rank-title--muted">삭제된 작품 ({n.ID})</span>
             : <Link to={`/contests/${year}/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link>}
@@ -230,7 +230,7 @@ export default function ContestPage() {
   const mobileRow = (n: ContestNovel) => (
     <div className="rank-mrow">
       <div className="rank-mrow__rank"><RankNum n={n} /><ChangeMark value={headChange(n)} /></div>
-      <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" /></span>
+      <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" placeholder /></span>
       <div className="rank-mrow__main">
         {isDeletedContestNovel(n)
           ? <span className="rank-title rank-title--wrap rank-title--muted">삭제된 작품 ({n.ID})</span>
