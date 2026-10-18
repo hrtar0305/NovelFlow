@@ -92,7 +92,8 @@ function DailyContestTags() {
         onYearChange={y => navigate(`/contests/${y}/tags/rankings`)}
         meta={`${cfg.schedule} · 일간 순위 작품에 달린 태그`} />
       <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
-        scoreLabel="조회 증가" rules={CONTEST_RULES}
+        scoreLabel="조회 증가" scoreNote="조회 증가는 직전 수집일 대비 조회수가 늘어난 양(일간 순위의 기준)." rules={CONTEST_RULES}
+        novelHref={id => `/contests/${year}/novels/${id}`}
         ariaLabel="공모전 태그 순위"
         emptyText="이 날짜는 일간 순위가 없어 태그 순위도 없습니다. 일간 순위는 직전 수집일과 비교할 수 있는 다음 날부터 생깁니다."
         // 공모전 태그 시계열 API 가 아직 없어 순위선 없이 그 태그의 참가작 목록으로 가는 길만 둔다(DECISIONS 2026-10-03 의 미룸).

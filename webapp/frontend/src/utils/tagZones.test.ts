@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTEST_RULES, shareAxis, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
+import { CONTEST_RULES, shareAxis, formatTop, formatTopShare, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
 
 const t = (Rank: number, count: number, local_lift: number | null, power_score = 10 - Rank): DailyTag =>
   ({ Rank, tag: `t${Rank}`, count, local_lift, power_score });
@@ -99,5 +99,13 @@ describe('shareAxis (지형 지도 세로축)', () => {
   it('아래 끝도 0 보다 조금 아래 — 0% 점이 축선에 겹치지 않게', () => {
     expect(shareAxis(0.2, 0.6).bottom).toBeLessThan(0);
     expect(shareAxis(0.2, 0.6).ticks[0]).toBe(0);
+  });
+});
+
+describe('formatTopShare (100위 안 비율 열)', () => {
+  it('비율만, 5편 미만은 –', () => {
+    expect(formatTopShare({ count: 150, top100: 37, ranked_total: 500 })).toBe('25%');
+    expect(formatTopShare({ count: 3, top100: 2, ranked_total: 500 })).toBe('–');
+    expect(formatTopShare({ count: 10, top100: null, ranked_total: 500 })).toBe('–');
   });
 });

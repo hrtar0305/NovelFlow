@@ -513,6 +513,24 @@ def _tag_stats_without_blocked(date: str, scores_log: dict, counts_total: dict,
     return scores_log, counts_total, counts_top100, score_sum, score_total
 
 
+def _attach_top_novels(rows: list[dict], items: list[dict], rank_key: str) -> None:
+    """태그마다 그날 순위가 가장 높은 작품을 `top_novel` 로 단다(태그 랭킹의 '대표 작품', 2026-10-18).
+    items 는 `_apply_content_policy_all()` 을 지난 목록이어야 한다 — 성인작 숨김을 켜면 대표로도 나오지 않는다."""
+    best: dict[str, dict] = {}
+    for it in items:
+        rank = it.get(rank_key)
+        if rank is None:
+            continue
+        for tag in it.get('Tags') or []:
+            if tag not in best or rank < best[tag]['rank']:
+                best[tag] = {'id': str(it['ID']), 'title': it.get('Title'), 'rank': int(rank)}
+    for r in rows:
+        r['top_novel'] = best.get(r['tag'])
+
+
+_TOP_NOVEL_NAMES = {'#i': 'ID', '#t': 'Title', '#g': 'Tags', '#a': 'IsAdult'}
+
+
 def _one_day_tag_rows(counts: dict, top100: dict | None, score_sum: dict | None,
                       score_total: int | None, ranked_total: int | None) -> list[dict]:
     """태그 랭킹 하루 판정의 행(DECISIONS 2026-10-06): 작품 수 · 100위 안 작품 수 · 인기 점수(랭킹 점수 점유율).
@@ -749,6 +767,7 @@ class TagRankData(BaseModel):
     top100: Optional[int] = None  # 100위 안 작품 수
     score_share: Optional[float] = None  # 인기 점수 = 그날 전체 랭킹 점수(공모전은 조회 증가) 중 이 태그 작품들의 몫. 필드 없는 날은 null
     ranked_total: Optional[int] = None  # 그날 순위 작품 수 N(구역 판정의 기준)
+    top_novel: Optional[Dict[str, Any]] = None  # 대표 작품 {id, title, rank}: 이 태그에서 그날 순위가 가장 높은 작품
 
 class ContestTagRankData(BaseModel):
     tag: str
@@ -1102,6 +1121,13 @@ def get_tags_by_date(date: str, response: Response):
             logger.warning(f"Failed to fetch previous day tag ranks for rank_change: {e}")
 
         _set_tag_rank_change(sorted_data, prev_rank_map)
+
+        try:
+            novels = _query_all_pages(table, IndexName='DateRankIndex', KeyConditionExpression=Key('Date').eq(date),
+                                      ProjectionExpression='#i, #t, #g, #a, #r', ExpressionAttributeNames={**_TOP_NOVEL_NAMES, '#r': 'Ranking'})
+            _attach_top_novels(sorted_data, _apply_content_policy_all(_convert_decimals(novels)), 'Ranking')
+        except Exception as e:   # 대표 작품은 곁들이 — 없어도 표는 낸다
+            logger.warning(f"Failed to attach top novels: {e}")
 
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return sorted_data
@@ -1460,6 +1486,11 @@ def get_contest_daily_tags_by_date(year: int, date: str, response: Response):
         prev_date = _get_previous_contest_date(date, tbl)
         prev = _contest_daily_tag_ranking(tbl, prev_date) if prev_date else None
         _set_tag_rank_change(rows, {r['tag']: r['Rank'] for r in prev} if prev else {})
+        try:
+            novels = _fetch_all_contest_items(date, '#i, #t, #g, #a, #r', {**_TOP_NOVEL_NAMES, '#r': 'DailyRank'}, tbl)
+            _attach_top_novels(rows, _apply_content_policy_all(novels), 'DailyRank')
+        except Exception as e:   # 대표 작품은 곁들이 — 없어도 표는 낸다
+            logger.warning(f"Failed to attach contest top novels: {e}")
         response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
         return rows
     except HTTPException:

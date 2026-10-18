@@ -46,3 +46,14 @@ class BlockedSubtraction(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TopNovel(unittest.TestCase):
+    def test_best_rank_per_tag(self):
+        items = [{'ID': '1', 'Title': 'A', 'Ranking': 3, 'Tags': ['판타지', '하렘']},
+                 {'ID': '2', 'Title': 'B', 'Ranking': 1, 'Tags': ['판타지']},
+                 {'ID': '3', 'Title': 'C', 'Ranking': None, 'Tags': ['하렘']}]   # 순위 없는 작품은 대표가 될 수 없다
+        rows = [{'tag': '판타지'}, {'tag': '하렘'}, {'tag': '없음'}]
+        M._attach_top_novels(rows, items, 'Ranking')
+        self.assertEqual([r.get('top_novel') for r in rows],
+                         [{'id': '2', 'title': 'B', 'rank': 1}, {'id': '1', 'title': 'A', 'rank': 3}, None])

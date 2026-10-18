@@ -115,6 +115,10 @@
 .rank-cover .novel-cover-mask button { display: none; } /* 표 안 작은 표지에는 토글을 두지 않는다 — 전체 가리기 토글이 헤더에 있다 */
 .rank-title { display: block; font-size: 0.9375rem; font-weight: 700; letter-spacing: -0.02em; color: var(--np-text-heading); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rank-title--wrap { white-space: normal; }
+/* 태그 표의 대표 작품: 한 줄로 자르고, 순위는 흐리게 */
+.rank-toplink { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--np-text-primary); text-decoration: none; }
+.rank-toplink:hover { color: var(--np-text-heading); text-decoration: underline; }
+.rank-toplink__rank { color: var(--np-text-secondary); font-variant-numeric: tabular-nums; }
 .rank-author { display: block; font-weight: 600; color: var(--np-text-primary); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rank-strong { color: var(--np-text-heading); font-weight: 600; }
 .toolbar-search { width: 240px; border: 0; border-bottom: 1.5px solid var(--np-text-heading); background: none; color: var(--np-text-primary); padding: 4px 2px; font-size: 0.875rem; }

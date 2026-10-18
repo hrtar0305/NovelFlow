@@ -79,7 +79,8 @@ export default function TagRankingsPage() {
         meta={`일간 랭킹 ${tags[0]?.ranked_total ? `${tags[0].ranked_total}편` : '작품'}에 달린 태그`} />
 
       <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
-        scoreLabel="랭킹 점수"
+        scoreLabel="랭킹 점수" scoreNote="랭킹 점수는 노벨피아가 매긴 일간 랭킹 점수(랭킹 표의 '점수')."
+        novelHref={id => `/novels/${id}`}
         ariaLabel="태그 순위" emptyText="이 날짜의 태그 랭킹이 없습니다."
         onOpenTag={setOpenTag}
         renderExpanded={t => (

@@ -42,6 +42,8 @@ export interface DailyTag {
   score_share?: number | null;
   /** 그날 순위 작품 수 N */
   ranked_total?: number | null;
+  /** 대표 작품: 이 태그에서 그날 순위가 가장 높은 작품 */
+  top_novel?: { id: string; title: string | null; rank: number } | null;
 }
 
 export type ZonedTag<T extends DailyTag = DailyTag> = T & { zone: ZoneKey | null; edge: boolean };
@@ -77,7 +79,7 @@ export function zoneCounts(rows: { zone: ZoneKey | null }[]): Record<ZoneKey, nu
   return out;
 }
 
-export type TagSortKey = 'Rank' | 'count' | 'score_share' | 'top_share';
+export type TagSortKey = 'Rank' | 'count' | 'score_share' | 'top100' | 'top_share';
 export type TagSort = Sort<TagSortKey>;
 export const DEFAULT_TAG_SORT: TagSort = { key: 'Rank', direction: 'ascending' };
 
@@ -97,11 +99,17 @@ export const sortTags = <T extends DailyTag>(rows: T[], sort: TagSort): T[] => s
 export const sharePct = (share: number, N: number | null | undefined): string =>
   (N && 100 / N < 0.1 ? `${(share * 100).toFixed(1)}%` : `${Math.round(share * 100)}%`);
 
-/** 100위 안 'N편 · x%'. 작품 5편 미만은 편수만. */
-export const formatTop = (t: { count: number; top100?: number | null; ranked_total?: number | null }): string =>
+type TopLike = { count: number; top100?: number | null; ranked_total?: number | null };
+
+/** 100위 안 비율(100위 안 ÷ 작품 수). 작품 5편 미만은 –. */
+export const formatTopShare = (t: TopLike): string =>
+  (t.top100 == null || t.count < MIN_WORKS ? DASH : sharePct(t.top100 / t.count, t.ranked_total));
+
+/** 100위 안 'N편 · x%'(설명창·폰 한 줄용). 작품 5편 미만은 편수만. */
+export const formatTop = (t: TopLike): string =>
   (t.top100 == null || t.count <= 0 ? DASH
     : t.count < MIN_WORKS ? `${t.top100}편`
-    : `${t.top100}편 · ${sharePct(t.top100 / t.count, t.ranked_total)}`);
+    : `${t.top100}편 · ${formatTopShare(t)}`);
 
 
 /**

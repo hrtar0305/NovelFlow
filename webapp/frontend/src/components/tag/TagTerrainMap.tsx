@@ -156,7 +156,7 @@ export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, match
               <ReferenceArea x1={lines.cut} x2={countDomain[1]} y1={lines.p0} y2={yMax} fillOpacity={0} ifOverflow="hidden" label={zoneName('mainstream', 'insideTopRight')} />
               <ReferenceArea x1={lines.cut} x2={countDomain[1]} y1={0} y2={lines.p0} fillOpacity={0} ifOverflow="hidden" label={zoneName('saturated', 'insideBottomRight')} />
               <ReferenceLine y={lines.p0} stroke="var(--np-text-secondary)" strokeDasharray="4 4" strokeOpacity={0.6}
-                label={{ value: `평균 ${pctTick(lines.p0)}`, position: 'insideLeft', dy: -8, className: 'tag-map__avg' }} />
+                label={{ value: `전체 ${pctTick(lines.p0)}`, position: 'insideLeft', dy: -8, className: 'tag-map__avg' }} />
               <ReferenceLine x={lines.cut} stroke="var(--np-text-secondary)" strokeDasharray="4 4" strokeOpacity={0.6}
                 label={{ value: `${lines.cut}편`, position: 'insideBottomLeft', dx: 4, className: 'tag-map__avg' }} />
             </>
