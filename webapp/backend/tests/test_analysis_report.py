@@ -8,20 +8,14 @@ def snap(date, eps):
     return {'date': date, 'ids': ['1'], 'rank': [5], 'eps': [eps], 'view': [1000], 'like': [10]}
 
 
-class RecentlyAdded(unittest.TestCase):
-    def test_stopped_serial_has_no_recent_episodes(self):
-        # 기간 초반에만 올리고 마지막 7일엔 회차가 그대로면 '연재 중'이 아니다(최신 잔류가 계속 차오르는 작품).
-        w = AR.per_work([snap('2026-09-01', 10), snap('2026-09-03', 14), snap('2026-09-20', 14), snap('2026-09-30', 14)])['1']
-        self.assertEqual(w['added_eps'], 4)
-        self.assertEqual(w['recent_added_eps'], 0)
-
-    def test_recent_episodes_count_from_last_value_a_week_before(self):
-        w = AR.per_work([snap('2026-09-01', 10), snap('2026-09-22', 12), snap('2026-09-25', 13), snap('2026-09-30', 15)])['1']
-        self.assertEqual(w['recent_added_eps'], 3)   # 09-22(마지막 날 −7일 이하 마지막 값) 12 → 15
-
-    def test_short_observation_uses_first_value(self):
-        w = AR.per_work([snap('2026-09-28', 10), snap('2026-09-30', 11)])['1']
-        self.assertEqual(w['recent_added_eps'], 1)
+class Pace(unittest.TestCase):
+    def test_added_eps_and_growing_flat(self):
+        works = AR.per_work([
+            {'date': '2026-09-01', 'ids': ['1', '2'], 'rank': [5, 6], 'eps': [10, 20], 'view': [1000, 900], 'like': [10, 9]},
+            {'date': '2026-09-08', 'ids': ['1', '2'], 'rank': [5, 6], 'eps': [17, 20], 'view': [1500, 950], 'like': [15, 9]},
+        ])
+        self.assertEqual((works['1']['added_eps'], works['1']['per_week']), (7, 7.0))
+        self.assertEqual(AR.pace_distribution(works, {'1', '2'}), {'growing': 1, 'flat': 1})
 
 
 class Combinations(unittest.TestCase):

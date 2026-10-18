@@ -5,7 +5,7 @@ import { formatDateDot, formatInt } from '../../utils/format';
 import type { AnalysisReport, ReportWork, ReportLeaver, TagCombo, DiagnoseWork } from './types';
 
 /**
- * 분석 리포트의 일곱 섹션(2026-09-30 개편). 그래프를 쓰지 않는다 — 막대와 히스토그램은
+ * 분석 리포트의 다섯 섹션(2026-09-30 개편, 2026-10-18 '순위가 얼마나 움직였나' · '잔류율' 섹션 삭제 — 기간과 무관하게 거의 같은 값이었다). 그래프를 쓰지 않는다 — 막대와 히스토그램은
  * 옆에 적힌 숫자를 다시 그린 것이었다. 섹션마다 h2 + 한 줄 수치 + 표/목록 + 끝에 각주 한 줄.
  * 해명 문구는 제목 아래가 아니라 끝의 한 줄로만 둔다(사실과 다르게 읽힐 수 있는 지점만).
  */
@@ -13,9 +13,9 @@ import type { AnalysisReport, ReportWork, ReportLeaver, TagCombo, DiagnoseWork }
 const pct = (v: number | null | undefined, digits = 0) => (v != null ? `${(v * 100).toFixed(digits)}%` : '–');
 const rankText = (v: number | null | undefined) => (v != null ? `${formatInt(Math.round(v))}위` : '–');
 
-const Section = ({ title, nums, foot, children }: { title: string; nums?: InlineNum[]; foot?: ReactNode; children: ReactNode }) => (
+const Section = ({ title, note, nums, foot, children }: { title: string; note?: string; nums?: InlineNum[]; foot?: ReactNode; children: ReactNode }) => (
   <section className="an-sec">
-    <h2>{title}</h2>
+    <h2>{title}{note ? <span className="an-h3-note">{note}</span> : null}</h2>
     {nums ? <InlineNums items={nums} /> : null}
     {children}
     {foot ? <p className="an-sec__foot">{foot}</p> : null}
@@ -61,7 +61,7 @@ export const FlowSection = ({ report }: { report: AnalysisReport }) => {
         { label: '빠진 작품', value: `${formatInt(totals.leavers)}편` },
         { label: '마지막 날 목록', value: `${formatInt(totals.end_works)}편` },
       ]}
-      foot={<>처음 진입은 수집을 시작한 {formatDateDot(b.first_collected)} 이후 처음 목록에 든 작품이고, 빠진 작품의 제목은 첫날 기준입니다.</>}>
+      foot={<>들어온 작품 = 마지막 날 목록에 있고 첫날 없던 작품 · 빠진 작품 = 첫날 있고 마지막 날 없는 작품 · 처음 진입 = 수집 시작({formatDateDot(b.first_collected)}) 뒤 처음 목록에 든 작품</>}>
       <div className="an-split">
         <div>
           <h3>새로 들어온 작품 <span className="an-h3-note">지금 순위순</span></h3>
@@ -84,31 +84,6 @@ export const FlowSection = ({ report }: { report: AnalysisReport }) => {
           )))}
         </div>
       </div>
-      <p className="an-tagline">어떤 태그가 뜨고 식었는지는 <Link to="/tags/trends">태그 트렌드</Link>에서 볼 수 있습니다.</p>
-    </Section>
-  );
-};
-
-// ── 순위가 얼마나 움직였나 ───────────────────────────────────────────────────
-
-export const ChurnSection = ({ report }: { report: AnalysisReport }) => {
-  const c = report.churn;
-  // "평균 80계단"은 그 자체로 크기를 알 수 없다 — 무작위로 섞었을 때의 평균 이동을 옆에 둔다.
-  return (
-    <Section title="순위가 얼마나 움직였나"
-      nums={[
-        { label: '평균 순위 이동', value: c.footrule != null ? `${c.footrule.toFixed(1)}계단` : '–' },
-        { label: '무작위라면', value: c.random_move != null ? `${c.random_move.toFixed(0)}계단` : '–' },
-        { label: '절반은', value: c.median_move != null ? `${c.median_move.toFixed(0)}계단 안` : '–' },
-        { label: '크게 움직인 10%', value: c.p90_move != null ? `${c.p90_move.toFixed(0)}계단+` : '–' },
-        { label: '순서 일치도', value: c.kendall_tau != null ? c.kendall_tau.toFixed(2) : '–' },
-      ]}
-      foot={<>첫날과 마지막 날에 다 있는 {formatInt(c.common)}편을 견줬고, 순서 일치도는 1이면 순서 그대로 · 0이면 무작위입니다.</>}>
-      <Table head={['지금 순위대', '작품', '첫날에도 있던 작품', '비율']} num={[1, 2, 3]}
-        rows={c.bands.map(b => ({
-          key: b.label,
-          cells: [b.label, b.rate != null ? `${formatInt(b.total)}편` : '–', b.rate != null ? `${formatInt(b.stayed)}편` : '–', pct(b.rate)],
-        }))} />
     </Section>
   );
 };
@@ -122,12 +97,9 @@ export const PaceSection = ({ report }: { report: AnalysisReport }) => {
     <Section title="회차가 많이 올라온 작품"
       nums={[
         { label: '회차 늘어난 작품', value: `${formatInt(p.growing)}편` },
-        { label: '주당 중앙값', value: f(p.median) },
-        { label: '상위 10%', value: `${f(p.p90)}+` },
-        { label: '최대', value: f(p.max) },
-        { label: '변동 없음', value: `${formatInt(p.flat)}편` },
+        { label: '회차 그대로', value: `${formatInt(p.flat)}편` },
       ]}
-      foot="'변동 없음'은 이 기간 회차 수가 그대로였다는 뜻으로, 완결과 휴재는 가르지 못합니다.">
+      foot="늘어난 회차 = 마지막 날 회차 − 첫날 회차 · 주당 = 늘어난 회차 ÷ 관측 일수 × 7 · 회차 그대로 = 완결 · 휴재를 가르지 않음">
       {p.top.length === 0 ? <Empty>이 기간에 회차가 늘어난 작품이 없습니다.</Empty> : (
         <Table head={['지금 순위', '제목', '늘어난 회차', '주당', '전체 회차']} num={[2, 3, 4]}
           rows={p.top.map(n => ({
@@ -158,11 +130,8 @@ export const RatioSection = ({ report }: { report: AnalysisReport }) => {
   ));
   return (
     <Section title="조회 대비 추천이 많은 작품"
-      nums={[
-        { label: '견준 작품', value: `${formatInt(r.counted)}편` },
-        { label: '기간 조회 증가', value: `${formatInt(r.floor_delta_view)} 이상` },
-      ]}
-      foot="작품 전체 누적이 아니라 이 기간에 늘어난 추천 수 ÷ 늘어난 조회수입니다.">
+      nums={[{ label: '견준 작품', value: `${formatInt(r.counted)}편` }]}
+      foot={<>기간 추천비 = 기간 추천 증가 ÷ 기간 조회 증가(조회 증가 {formatInt(r.floor_delta_view)} 이상인 작품만)</>}>
       <div className="an-split">
         <div><h3>지금 100위 안</h3>{list(r.top)}</div>
         <div><h3>지금 100위 밖</h3>{list(r.hidden)}</div>
@@ -170,28 +139,6 @@ export const RatioSection = ({ report }: { report: AnalysisReport }) => {
     </Section>
   );
 };
-
-// ── 회차를 넘겨도 조회가 이어지는 작품 ─────────────────────────────────────
-
-/** 기간을 바꿔도 같다 — 잔류율은 마지막 날 값이고, 후보는 '최근 7일 연재 중'이다(연재가 멈추면 최신화 조회수가 계속 차서
- *  최신 잔류가 오른다). 그래서 회차 열도 기간 전체가 아니라 최근 7일 증가다. */
-export const RetentionSection = ({ report }: { report: AnalysisReport }) => (
-  <Section title="회차를 넘겨도 조회가 이어지는 작품"
-    nums={[
-      { label: '최근 7일 연재 중', value: `${formatInt(report.retention.counted)}편` },
-      { label: '잔류율 기준', value: formatDateDot(report.end) },
-    ]}
-    foot="초반 잔류 = 30화 ÷ 1화 조회수, 최신 잔류 = 최신화 ÷ 30화 전 조회수(연독률과 다른 값)이고, 두 값의 순위를 평균해 줄 세웠습니다.">
-    {report.retention.rows.length === 0 ? <Empty>해당 작품이 없습니다.</Empty> : (
-      // 두 잔류율을 붙여 둔다 — 폰에서 행이 접힐 때 한 줄에 같이 남게.
-      <Table head={['지금 순위', '제목', '초반 잔류', '최신 잔류', '최근 7일 회차']} num={[2, 3, 4]}
-        rows={report.retention.rows.map(n => ({
-          key: n.id,
-          cells: [rankText(n.rank), <Work key="w" id={n.id} title={n.title} author={n.author} />, pct(n.early), pct(n.recent), `+${formatInt(n.recent_added_eps ?? 0)}`],
-        }))} />
-    )}
-  </Section>
-);
 
 // ── 작품 하나를 같은 순위대와 견주기 ─────────────────────────────────────────
 
@@ -241,7 +188,7 @@ export const DiagnoseSection = ({ report }: { report: AnalysisReport }) => {
         label: qt.label,
         value: <span className={target?.band != null && quartiles[target.band] === qt ? 'an-on' : undefined}>평균 {Math.max(1, Math.round(qt.min))}{qt.max ? `~${Math.round(qt.max)}위` : '위~'}</span>,
       }))}
-      foot="순위대는 이 기간 목록의 4분위이고, 작품의 순위는 하루 튄 값에 끌리지 않게 기간 평균 순위입니다.">
+      foot="순위대 = 이 기간 목록을 기간 평균 순위로 4등분 · 순위대 안 위치 = 같은 순위대에서 이 작품 이상인 작품의 비율">
       <div className="an-search">
         <input type="search" className="toolbar-search" value={q} onChange={e => setQ(e.target.value)} placeholder="제목 또는 작가" aria-label="견줄 작품 검색" />
         {hits.length > 0 ? (
@@ -288,10 +235,10 @@ const Combos = ({ rows, unit, date }: { rows: TagCombo[]; unit: string; date: st
   </ol>
 ));
 
-/** 기간을 바꿔도 같다 — 마지막 날 목록 하나로 센다. */
+/** 기간을 바꿔도 같다 — 마지막 날 목록 하나로 센다. 그래서 제목 옆에 그 날짜를 적는다(아래 끝 문장에만 있으면 기간 값으로 읽혔다). */
 export const TagSection = ({ report }: { report: AnalysisReport }) => (
-  <Section title="함께 달리는 태그"
-    foot={<>{formatDateDot(report.end)} 목록 기준으로, 우연히 만날 때보다(세 태그는 가장 강한 두 태그 짝보다) 몇 배인지 순이고 거의 겹치는 짝은 뺐습니다.</>}>
+  <Section title="함께 달리는 태그" note={`${formatDateDot(report.end)} 목록`}
+    foot="두 태그 배수 = 함께 달린 작품 수 ÷ 우연히 만날 기대값(두 태그 작품 수의 곱 ÷ 목록 편수) · 세 태그 배수 = 그중 가장 강한 두 태그 짝 대비 · 거의 겹치는 짝(같은 말인 태그)은 제외">
     <div className="an-split">
       <div><h3>두 태그 <span className="an-h3-note">10편 이상</span></h3><Combos rows={report.tags.pairs} unit="우연의" date={report.end} /></div>
       <div><h3>세 태그 <span className="an-h3-note">6편 이상</span></h3><Combos rows={report.tags.triples} unit="짝 대비" date={report.end} /></div>

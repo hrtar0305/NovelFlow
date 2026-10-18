@@ -463,9 +463,6 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .an-combo a { color: inherit; text-decoration: none; }
 .an-combo a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .an-combo i { font-style: normal; font-weight: 400; color: var(--np-text-faint); }
-.an-tagline { margin: 0.6rem 0 0; font-size: 0.875rem; line-height: 1.8; color: var(--np-text-secondary); }
-.an-tagline a { color: var(--np-text-primary); text-decoration: none; }
-.an-tagline a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .an-table-wrap { overflow-x: auto; }
 .an-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
 .an-table th, .an-table td { padding: 0.6rem 1rem 0.6rem 0; border-top: 1px solid var(--np-border); text-align: left; vertical-align: baseline; white-space: nowrap; }

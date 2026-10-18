@@ -10,7 +10,6 @@ export interface ReportWork {
   eps: number | null;
   added_eps: number | null;
   /** 마지막 7일에 늘어난 회차 */
-  recent_added_eps: number | null;
   rank: number | null;
   best_rank: number | null;
   avg_rank: number | null;
@@ -79,20 +78,7 @@ export interface AnalysisReport {
   ai_summary: AiSummary | null;
   entrants_basis: EntrantsBasis;
   totals: { end_works: number; entrants: number; first_entrants: number; leavers: number };
-  churn: {
-    footrule: number | null;
-    /** 순위가 무작위로 섞였다면 나올 평균 이동. `footrule` 의 비교 기준선이다. */
-    random_move: number | null;
-    median_move: number | null;
-    p90_move: number | null;
-    kendall_tau: number | null;
-    common: number;
-    start_works: number;
-    end_works: number;
-    bands: { label: string; total: number; stayed: number; rate: number | null }[];
-  };
   pace: {
-    median: number | null; p90: number | null; max: number | null;
     growing: number; flat: number;
     /** 이 기간에 회차가 가장 많이 늘어난 작품. 분포만으로는 "어떤 작품이"에 답하지 못한다. */
     top: ReportWork[];
@@ -103,8 +89,6 @@ export interface AnalysisReport {
     floor_delta_view: number; counted: number;
     top: ReportWork[]; hidden: ReportWork[];
   };
-  /** counted = 최근 7일에 회차가 늘고 두 잔류율이 다 있는 작품 수 */
-  retention: { counted: number; rows: ReportWork[] };
   diagnose: { quartiles: Quartile[]; works: DiagnoseWork[] };
   /** 두 태그: 우연 대비 배수. 세 태그: 가장 강한 두 태그 짝 대비 배수(2026-09-30, analysis_report.tag_combinations). */
   tags: { pairs: TagCombo[]; triples: TagCombo[] };

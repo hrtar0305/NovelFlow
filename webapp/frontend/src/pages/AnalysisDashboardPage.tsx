@@ -5,8 +5,7 @@ import { SkeletonBox, Stale } from '../components/ui/Loading';
 import PageTitle from '../components/ui/PageTitle';
 import type { AnalysisReport } from './analysis/types';
 import {
-  FlowSection, ChurnSection, PaceSection,
-  RatioSection, RetentionSection, DiagnoseSection, TagSection,
+  FlowSection, PaceSection, RatioSection, DiagnoseSection, TagSection,
 } from './analysis/sections';
 import { formatDateDot } from '../utils/format';
 
@@ -80,10 +79,8 @@ export default function AnalysisDashboardPage() {
               </section>
             ) : null}
             <FlowSection report={report} />
-            <ChurnSection report={report} />
             <PaceSection report={report} />
             <RatioSection report={report} />
-            <RetentionSection report={report} />
             <DiagnoseSection report={report} />
             <TagSection report={report} />
           </Stale>

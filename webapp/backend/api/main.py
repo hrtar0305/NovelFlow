@@ -1773,8 +1773,6 @@ def get_analysis_report(days: int, response: Response):
             'returning': len(seen_before),
             'first_collected': all_dates[-1],       # all_dates 는 내림차순
         }
-        bands_def = [('상위 50위', 1, 50), ('51~150위', 51, 150),
-                     ('151~300위', 151, 300), ('301위 밖', 301, math.inf)]
         report = {
             'days_requested': days,
             'dates': present,
@@ -1782,7 +1780,6 @@ def get_analysis_report(days: int, response: Response):
             'start': present[0], 'end': end_date,
             'ai_summary': _ai_period_summary(days, end_date),
             'entrants_basis': entrants_basis,
-            'churn': AR.churn(snaps, AR.band_retention(snaps, bands_def)),
             'pace': AR.pace_distribution(works, end_ids),
         }
         report.update(_report_lists(snaps, works, end_by_id, end_rows,
@@ -1823,7 +1820,6 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
             'author_id': lb.get('AuthorID'),
             'tags': (lb.get('Tags') or [])[:3],
             'eps': w.get('last_eps'), 'added_eps': w.get('added_eps'),
-            'recent_added_eps': w.get('recent_added_eps'),
             'rank': w.get('ranks', [None])[-1], 'best_rank': w.get('best_rank'),
             'avg_rank': w.get('avg_rank'),
             'early': base.get('EarlyRetentionRate'),
@@ -1883,33 +1879,6 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
     )
     pace_top = [ratio_row(w) for w in paced[:15]]
 
-    # 잔류율은 **지금 연재 중인 작품만**(마지막 7일에 회차가 늘어난 작품) 본다. 최신 잔류는 연재가 멈추면 최신화
-    # 조회수가 계속 차서 올라가므로, 완결·휴재작이 섞이면 목록이 그것들로만 찬다. '기간 동안 늘었나'로 거르면
-    # 90일 창 초반에 몇 화 올리고 멈춘 작품이 최신 잔류 136% 로 1위가 됐다(2026-10-05 리뷰).
-    active = [
-        w for n, w in works.items()
-        if n in end_ids and (w['recent_added_eps'] or 0) > 0
-        and end_by_id[n].get('EarlyRetentionRate') is not None
-        and end_by_id[n].get('RecentRetentionRate') is not None
-    ]
-    # **두 비율을 그냥 더하지 않는다.** 초반 잔류(30화/1화)와 최신 잔류(최신화/그
-    # 30화 전)는 분모가 달라 분포 폭도 다르다 — 합으로 줄 세우면 폭이 넓은 쪽이
-    # 순서를 혼자 결정하고, 화면에는 "둘 다 높은 작품"이라고 적히면서 실제로는
-    # 한 지표만 반영된 목록이 나온다. 그래서 각 지표를 **후보군 안에서의 백분위**로
-    # 바꾼 뒤 평균한다. 척도가 사라지므로 두 지표가 같은 무게를 갖는다.
-    _early = sorted(end_by_id[rid[id(w)]]['EarlyRetentionRate'] for w in active)
-    _recent = sorted(end_by_id[rid[id(w)]]['RecentRetentionRate'] for w in active)
-
-    def _retention_key(w: dict) -> float:
-        from bisect import bisect_left
-        base = end_by_id[rid[id(w)]]
-        n = max(len(active), 1)
-        pe = bisect_left(_early, base['EarlyRetentionRate']) / n
-        pr = bisect_left(_recent, base['RecentRetentionRate']) / n
-        return -(pe + pr) / 2
-
-    active.sort(key=_retention_key)
-
     avg_ranks = [w['avg_rank'] for n, w in works.items() if n in end_ids]
     quartiles = AR.rank_quartiles(avg_ranks)
     diagnose_works = []
@@ -1949,7 +1918,6 @@ def _report_lists(snaps: list, works: dict, end_by_id: dict, end_rows: list,
             'hidden': [ratio_row(w) for w in ratios if w['ranks'][-1] > 100][:12],
         },
         'pace_top': pace_top,
-        'retention': {'counted': len(active), 'rows': [ratio_row(w) for w in active[:12]]},
         'diagnose': {'quartiles': quartiles, 'works': diagnose_works},
         'tags': {
             # 두 태그 10편 이상 상위 15, 세 태그 6편 이상 상위 12(2026-09-30).

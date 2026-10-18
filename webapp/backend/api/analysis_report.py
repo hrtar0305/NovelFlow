@@ -20,8 +20,6 @@ from typing import Any
 # 기간 동안의 조회 증가분이 작으면 몇 건에 비율이 출렁인다. 30일 실측에서 258편 중
 # 이 하한을 넘는 것이 258편이라 사실상 전부 남는다(음수 0건).
 DELTA_VIEW_FLOOR = 5_000
-# '지금 연재 중'을 보는 창(일). 주 1회 연재도 걸리게 7일.
-RECENT_DAYS = 7
 
 
 def _pctl(sorted_vals: list[float], p: float) -> float | None:
@@ -58,7 +56,7 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
                     'first_eps': None, 'last_eps': None,
                     'first_view': None, 'last_view': None,
                     'first_like': None, 'last_like': None,
-                    'first_date': None, 'last_date': None, 'eps_obs': [],
+                    'first_date': None, 'last_date': None,
                 }
             w['ranks'].append(s['rank'][i])
             w['dates'].append(date)
@@ -71,7 +69,6 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
             w['last_view'] = s['view'][i]
             w['last_like'] = s['like'][i]
             w['last_date'] = date
-            w['eps_obs'].append((date, s['eps'][i]))
             w['value_obs'] += 1
 
     for w in out.values():
@@ -80,15 +77,10 @@ def per_work(snaps: list[dict]) -> dict[str, dict]:
         w['avg_rank'] = sum(rs) / len(rs)
         w['observations'] = len(rs)
         if w['first_eps'] is None:
-            w['added_eps'] = w['per_week'] = w['recent_added_eps'] = None
+            w['added_eps'] = w['per_week'] = None
             w['delta_view'] = w['period_ratio'] = None
             continue
         w['added_eps'] = w['last_eps'] - w['first_eps']
-        # 마지막 7일에 늘어난 회차 — '지금 연재 중'인지. 기간 초반에만 올리고 멈춘 작품도 added_eps 는 양수라,
-        # 잔류율 목록이 연재가 멈춘 작품(최신 잔류가 계속 차오른다)으로 찬다. 기준값 = 마지막 날 −7일 이하의 마지막 값
-        # (그만큼 관측되지 않았으면 첫 값).
-        before = [e for d, e in w['eps_obs'] if _day_gap(d, w['last_date']) >= RECENT_DAYS]
-        w['recent_added_eps'] = w['last_eps'] - (before[-1] if before else w['first_eps'])
         span = _day_gap(w['first_date'], w['last_date'])
         w['per_week'] = (w['added_eps'] / span) * 7 if span else 0.0
         dv = w['last_view'] - w['first_view']
@@ -107,138 +99,17 @@ def _day_gap(a: str, b: str) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 순위판이 얼마나 갈렸나
-# ─────────────────────────────────────────────────────────────────────────────
-
-def churn(snaps: list[dict], bands: list[dict]) -> dict:
-    """기간 시작과 끝 사이에 순위가 얼마나 뒤집혔는지 낸다.
-
-    **평균 순위 이동(footrule)** — 양쪽에 다 있는 작품의 `|시작순위 − 끝순위|` 평균.
-    전원이 제자리면 정확히 0이다.
-
-    **그런데 평균만으로는 그 값이 큰지 작은지 알 수 없다.** "평균 80계단"이 많이 갈린
-    것인지 아닌지는 목록 길이에 달려 있는데(500편 목록의 80계단과 100편 목록의 80계단은
-    다른 뜻이다) 화면에는 그 맥락이 없었다. 그래서 세 가지를 함께 낸다:
-
-      * `random_move`  — **순위가 무작위로 섞였다면** 나올 평균 이동. 비교 기준선이다.
-                         `footrule / random_move` 가 1에 가까우면 사실상 무작위,
-                         0에 가까우면 순위가 거의 그대로라는 뜻이 된다.
-      * `median_move`  — 중앙값. 평균은 크게 튄 몇 편에 끌려가므로 "절반은 이만큼
-                         안에서 움직였다"가 체감에 더 가깝다.
-      * `p90_move`     — 상위 10% 경계. 분포의 꼬리를 한 수로 보여 준다.
-
-    **Kendall tau** 도 유지한다. footrule 은 목록이 길어지면 커지지만 tau 는 −1~1에
-    묶여 있어 기간끼리 비교해도 기준이 흔들리지 않는다
-    (1 = 순서 그대로, 0 = 무작위, −1 = 완전 역순).
-    """
-    if len(snaps) < 2:
-        return {}
-    a, b = snaps[0], snaps[-1]
-    ra = {nid: a['rank'][i] for i, nid in enumerate(a['ids'])}
-    rb = {nid: b['rank'][i] for i, nid in enumerate(b['ids'])}
-    common = [nid for nid in rb if nid in ra]
-
-    moves = sorted(abs(ra[n] - rb[n]) for n in common)
-    footrule = (sum(moves) / len(moves)) if moves else None
-    tau = _kendall_tau([ra[n] for n in common], [rb[n] for n in common]) if len(common) > 1 else None
-
-    return {
-        'footrule': footrule,
-        'random_move': _expected_abs_diff([ra[n] for n in common],
-                                          [rb[n] for n in common]) if common else None,
-        'median_move': _pctl(moves, 0.5),
-        'p90_move': _pctl(moves, 0.9),
-        'kendall_tau': tau,
-        'common': len(common),
-        'start_works': len(a['ids']),
-        'end_works': len(b['ids']),
-        'bands': bands,
-    }
-
-
-def _expected_abs_diff(xs: list[int], ys: list[int]) -> float:
-    """두 순위 집합에서 하나씩 무작위로 뽑았을 때의 `E|X − Y|`.
-
-    "무작위로 섞였다면 평균 몇 계단 움직이나"의 답이다. 순위를 무작위로 재배정하는
-    것은 끝 순위를 시작 순위와 독립적으로 뽑는 것과 같으므로 이 기대값이 기준선이 된다.
-
-    `n²` 로 다 더하면 500편에서 25만 번인데, 정렬과 누적합으로 `n log n` 에 끝난다 —
-    `ys` 를 정렬해 두면 각 `x` 보다 작은 것들과 큰 것들을 통째로 계산할 수 있다.
-    """
-    if not xs or not ys:
-        return 0.0
-    ys = sorted(ys)
-    m = len(ys)
-    pre = [0]
-    for y in ys:
-        pre.append(pre[-1] + y)
-    from bisect import bisect_right
-    total = 0
-    for x in xs:
-        k = bisect_right(ys, x)
-        total += (k * x - pre[k]) + ((pre[m] - pre[k]) - (m - k) * x)
-    return total / (len(xs) * m)
-
-
-def _kendall_tau(x: list[int], y: list[int]) -> float:
-    """타이 보정 없는 tau-a. 순위에는 동값이 없으므로 보정이 필요 없다."""
-    n = len(x)
-    con = dis = 0
-    for i in range(n):
-        xi, yi = x[i], y[i]
-        for j in range(i + 1, n):
-            s = (xi - x[j]) * (yi - y[j])
-            if s > 0:
-                con += 1
-            elif s < 0:
-                dis += 1
-    total = con + dis
-    return (con - dis) / total if total else 0.0
-
-
-def band_retention(snaps: list[dict], bands_def: list[tuple[str, int, int]]) -> list[dict]:
-    """구간별로 기간 시작일에도 목록에 있던 비율. footrule 하나로는 '어느 구간이
-    갈렸나'를 알 수 없으므로 보조로 둔다."""
-    if len(snaps) < 2:
-        return []
-    a, b = snaps[0], snaps[-1]
-    start_ids = set(a['ids'])
-    out = []
-    for label, lo, hi in bands_def:
-        idxs = [i for i, r in enumerate(b['rank']) if lo <= r <= hi]
-        stayed = sum(1 for i in idxs if b['ids'][i] in start_ids)
-        out.append({
-            'label': label, 'min': lo, 'max': hi if hi != math.inf else None,
-            'total': len(idxs), 'stayed': stayed,
-            'rate': (stayed / len(idxs)) if idxs else None,
-        })
-    return out
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 연재 페이스 — 순위표가 아니라 분포로
 # ─────────────────────────────────────────────────────────────────────────────
 
 def pace_distribution(works: dict[str, dict], end_ids: set[str]) -> dict:
-    """주당 회차의 **분포**를 낸다.
-
-    한때 '가장 빠르게 연재 중' 순위표를 뒀는데, 그 구조가 문제였다 — 주당 30화가
-    넘는 값이 상위에 오르면 화면이 그것을 칭찬처럼 보여 준다. 이 사이트는 통계만
-    보여주고 작품에 대한 판단은 하지 않는다. 그래서 주당 값은 분위수만 낸다(구간별 막대는
-    화면이 쓰지 않아 2026-10-07에 뺐다). 특정 작품이 어디인지는 '같은 순위대와 견주기'가 답한다.
-    """
-    # 관측 횟수는 **값을 읽은 날**(자리표시 제외, `value_obs`)로 센다 — 순위만 있는 날로는 페이스를 잴 수 없다.
+    """회차가 늘어난 작품 수와 그대로인 작품 수. 주당 회차 분위수(중앙값 · 상위 10% · 최대)는 뺐다 — 대부분 매일 연재라
+    7 · 30 · 90일 모두 중앙값 약 7화, 상위 10% 약 8화로 기간과 무관했다(2026-10-18). 어떤 작품이 많이 올렸는지는 목록(pace_top)이 답한다.
+    관측 횟수는 **값을 읽은 날**(자리표시 제외, `value_obs`)로 센다 — 순위만 있는 날로는 페이스를 잴 수 없다."""
     rows = [w for nid, w in works.items() if nid in end_ids and w['value_obs'] >= 2]
-    growing = [w for w in rows if w['added_eps'] > 0]
-    flat = [w for w in rows if w['added_eps'] == 0]
-
-    vals = sorted(w['per_week'] for w in growing)
     return {
-        'median': _pctl(vals, 0.5),
-        'p90': _pctl(vals, 0.9),
-        'max': vals[-1] if vals else None,
-        'growing': len(growing),
-        'flat': len(flat),
+        'growing': sum(1 for w in rows if w['added_eps'] > 0),
+        'flat': sum(1 for w in rows if w['added_eps'] == 0),
     }
 
 
