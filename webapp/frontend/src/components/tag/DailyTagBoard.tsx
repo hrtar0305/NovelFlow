@@ -60,11 +60,16 @@ export default function DailyTagBoard({
   const N = tags[0]?.ranked_total ?? null;
   const lines = zoneLines(N, rules);
   // 각주는 정의만 — 숫자는 그날 N 으로 채운다(데일리 30편 · 20%, 공모전 179편 · 3.4%).
-  const notes = useMemo(() => [
-    { id: 'score', content: <>그날 {scoreLabel} 합계 중 이 태그 작품들의 몫. 순위는 이 값 순. 작품마다 태그가 여럿이라 다 더하면 100%를 넘습니다.</> },
-    { id: 'top', content: <>100위 안에 든 작품 수 · 비율(평균 {lines ? pct(lines.p0) : '100 ÷ 순위 작품 수'}). {MIN_WORKS}편 미만 태그는 비율을 내지 않습니다.</> },
-    { id: 'zone', content: lines ? <>대세: {lines.cut}편 이상, 비율 평균 이상 · 과포화: {lines.cut}편 이상, 평균 미만 · 숨은 강자: {MIN_WORKS}~{lines.cut - 1}편, 100위 안 {rules.gemMinTop}편 이상, 비율 {pct(lines.gemShare)} 이상 · 경계: 평균과 {Math.round(rules.edge * lines.p0 * 1000) / 10}%p 안(구역이 바뀌기 쉬움)</> : null },
-  ], [lines, scoreLabel, rules]);
+  // 각주 = 열 순서(인기 점수 · 작품 수 · 100위 안 · 구역)대로 그 값의 식. 숫자는 그날 N 으로 채운다(데일리 500편, 공모전 약 3,000편).
+  const notes = useMemo(() => {
+    const n = N ? `${formatInt(N)}편` : '순위 작품';
+    return [
+      { id: 'score', content: <>인기 점수 = 이 태그 작품들의 {scoreLabel} 합 ÷ {n} 전체의 {scoreLabel} 합. 순위는 이 값 순(작품마다 태그가 여럿이라 다 더하면 100% 초과).</> },
+      { id: 'count', content: <>작품 수 = {n} 중 이 태그를 단 작품 수.</> },
+      { id: 'top', content: <>100위 안 = 100위 안에 든 작품 수 · 비율(그 수 ÷ 작품 수, 평균 {lines ? pct(lines.p0) : '100 ÷ 순위 작품 수'}). {MIN_WORKS}편 미만은 비율 생략.</> },
+      { id: 'zone', content: lines ? <>구역 — 대세: 작품 {lines.cut}편 이상 · 비율 {pct(lines.p0)} 이상 / 과포화: 작품 {lines.cut}편 이상 · 비율 {pct(lines.p0)} 미만 / 숨은 강자: 작품 {MIN_WORKS}~{lines.cut - 1}편 · 100위 안 {rules.gemMinTop}편 이상 · 비율 {pct(lines.gemShare)} 이상 / 경계: 비율이 평균 ±{Math.round(rules.edge * lines.p0 * 1000) / 10}%p 안</> : null },
+    ];
+  }, [N, lines, scoreLabel, rules]);
 
   const zoned = useMemo(() => withZones(tags, rules), [tags, rules]);
   const counts = useMemo(() => zoneCounts(zoned), [zoned]);
@@ -101,11 +106,12 @@ export default function DailyTagBoard({
   const columns: RankColumn<Row>[] = [
     { key: 'rank', header: '순위', width: '48px', sortKey: 'Rank', render: t => <span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span> },
     { key: 'tag', header: '태그', width: 'minmax(0,1.4fr)', render: t => <span className="rank-title">{t.tag}</span> },
-    { key: 'zone', header: '구역', aside: <FootnoteRef id="zone" n={3} />, width: 'minmax(120px,1fr)', render: t => <ZoneName zone={t.zone} edge={t.edge} /> },
     // 순위가 인기 점수 순이라 순위순(기본)일 때도 점수를 굵게 둔다.
     { key: 'score', header: '인기 점수', aside: <FootnoteRef id="score" n={1} />, width: 'minmax(96px,1fr)', sortKey: 'score_share', render: t => strongIf(['score_share', 'Rank'], formatRatio(t.score_share)) },
-    { key: 'count', header: '작품 수', width: 'minmax(72px,1fr)', sortKey: 'count', render: t => strongIf(['count'], formatInt(t.count)) },
-    { key: 'top', header: '100위 안', aside: <FootnoteRef id="top" n={2} />, width: 'minmax(104px,1fr)', sortKey: 'top_share', render: t => strongIf(['top_share'], formatTop(t)) },
+    { key: 'count', header: '작품 수', aside: <FootnoteRef id="count" n={2} />, width: 'minmax(72px,1fr)', sortKey: 'count', render: t => strongIf(['count'], formatInt(t.count)) },
+    { key: 'top', header: '100위 안', aside: <FootnoteRef id="top" n={3} />, width: 'minmax(104px,1fr)', sortKey: 'top_share', render: t => strongIf(['top_share'], formatTop(t)) },
+    // 구역은 작품 수 · 100위 안으로 정해지는 값이라 그 뒤에 둔다.
+    { key: 'zone', header: '구역', aside: <FootnoteRef id="zone" n={4} />, width: 'minmax(120px,1fr)', render: t => <ZoneName zone={t.zone} edge={t.edge} /> },
   ];
 
   const mobileRow = (t: Row) => (
