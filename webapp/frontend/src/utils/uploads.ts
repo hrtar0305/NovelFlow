@@ -25,10 +25,12 @@ export function uploadDays(r: UploadsResponse): UploadDays {
 }
 
 /**
- * 아는 날 · 그중 올린 날. 연속 연재·연속 휴재는 세지 않는다(2026-10-05 사용자) — 칸으로 보이고, 연재 주기(주 3회 등)에 따라
- * 연속이 갈려 오히려 헷갈린다. 확정할 수 없는 날(?)·첫 회차 앞은 분모에서 뺀다.
+ * 기간 일수 · 올린 날 · 미확인 날 · 아는 날. 분모는 **기간 일수로 고정**한다(2026-10-18 사용자) — 작품마다 '29일 중'·'30일 중'으로
+ * 갈리면 견주기 어렵다. 올린 날은 실제 회차 목록에서 본 것이라 거짓 양성이 없고, 확정할 수 없는 날(?)은 '미확인 N일'로 따로 보여
+ * 왜곡을 드러낸다. 첫 회차 앞은 아직 없던 작품이라 미확인이 아니다. 연속 연재·휴재는 세지 않는다(2026-10-05).
  */
 export function uploadSummary(days: UploadDays) {
-  const known = Object.values(days).filter((v): v is number => typeof v === 'number');
-  return { known: known.length, uploaded: known.filter(v => v > 0).length };
+  const vals = Object.values(days);
+  const known = vals.filter((v): v is number => typeof v === 'number');
+  return { days: vals.length, uploaded: known.filter(v => v > 0).length, unknown: vals.filter(v => v === null).length, known: known.length };
 }

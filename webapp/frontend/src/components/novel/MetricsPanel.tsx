@@ -137,10 +137,10 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
   const dates = points.map(p => p.date);
   const loaded = typeof uploads === 'object';
   const upDays: UploadsState = loaded ? Object.fromEntries(dates.map(d => [d, uploads[d] ?? null])) as UploadDays : uploads ?? 'error';
-  // 요약은 '며칠 중 며칠' 만 — 연속 연재·휴재는 칸으로 보이고 연재 주기에 따라 갈려 헷갈린다(2026-10-05).
+  // 요약은 '기간 일수 중 올린 날 · 미확인' — 분모를 고정해 작품끼리 견주게 한다(2026-10-18). 연속 연재·휴재는 세지 않는다(2026-10-05).
   const up = uploadSummary(typeof upDays === 'object' ? upDays : {});
   const uploadTotal = uploads === 'loading' ? '불러오는 중' : uploads === 'error' ? '불러오지 못했습니다' : up.known > 0 ? (
-    <>{up.known}일 중 <b>{up.uploaded}일</b> 연재
+    <>{up.days}일 중 <b>{up.uploaded}일</b> 연재{up.unknown ? <span> · 미확인 {up.unknown}일</span> : null}
       {summary?.d.eps != null ? <> · 기간 <b>{signed(summary.d.eps)}화</b></> : null}
     </>
   ) : null;
