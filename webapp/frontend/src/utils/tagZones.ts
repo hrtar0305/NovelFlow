@@ -99,3 +99,16 @@ export const sharePct = (share: number, N: number | null | undefined): string =>
 export const formatTop = (t: { count: number; top100?: number | null; ranked_total?: number | null }): string =>
   (t.top100 != null && t.count > 0 ? `${t.top100}편 · ${sharePct(t.top100 / t.count, t.ranked_total)}` : DASH);
 
+
+/**
+ * 지형 지도 세로축(100위 안 비율). 위 끝은 평균 3배(구역선이 다 보이는 높이)와 '가장 높은 점보다 한 칸 위' 중 큰 쪽 — 평균 3배에
+ * 고정했더니 거기 딱 걸린 점(5편 중 3편 = 60%)이 테두리에 붙어 잘 안 보이고 누르기 어려웠고, 그보다 높은 점은 잘렸다(2026-10-18).
+ * 아래 끝도 0 보다 조금 내려 0% 점이 축선에 겹치지 않게 한다(눈금은 0 부터).
+ */
+export function shareAxis(p0: number, maxShare: number) {
+  const want = Math.max(p0 * 3, maxShare * 1.08);
+  const step = [0.01, 0.02, 0.05, 0.1, 0.2].find(st => want / st <= 7) ?? 0.2;
+  const n = Math.ceil(want / step - 1e-9);
+  const ticks = Array.from({ length: n + 1 }, (_, i) => Math.round(i * step * 1000) / 1000);
+  return { top: ticks[n], bottom: -step * 0.25, ticks };
+}

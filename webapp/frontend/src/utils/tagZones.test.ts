@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTEST_RULES, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
+import { CONTEST_RULES, shareAxis, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
 
 const t = (Rank: number, count: number, local_lift: number | null, rank_change: DailyTag['rank_change'] = 0, power_score = 10 - Rank): DailyTag =>
   ({ Rank, tag: `t${Rank}`, count, local_lift, rank_change, power_score });
@@ -81,3 +81,22 @@ describe('formatTop', () => {
   });
 });
 
+
+describe('shareAxis (지형 지도 세로축)', () => {
+  it('가장 높은 점이 위 끝에 붙지 않게 한 칸 여유를 둔다 — 평균 3배(60%)에 딱 걸린 점이 테두리에 붙어 누르기 어려웠다', () => {
+    const a = shareAxis(0.2, 0.6);
+    expect(a.top).toBeGreaterThan(0.6);
+    expect(a.ticks.at(-1)).toBe(a.top);
+  });
+  it('평균 3배보다 높은 점(100%)도 자르지 않는다', () => {
+    expect(shareAxis(0.2, 1).top).toBeGreaterThan(1);
+  });
+  it('점이 낮으면 평균 3배까지는 보인다(구역선 자리)', () => {
+    expect(shareAxis(0.2, 0.3).top).toBeGreaterThanOrEqual(0.6);
+    expect(shareAxis(0.034, 0.05).top).toBeGreaterThanOrEqual(0.102);
+  });
+  it('아래 끝도 0 보다 조금 아래 — 0% 점이 축선에 겹치지 않게', () => {
+    expect(shareAxis(0.2, 0.6).bottom).toBeLessThan(0);
+    expect(shareAxis(0.2, 0.6).ticks[0]).toBe(0);
+  });
+});

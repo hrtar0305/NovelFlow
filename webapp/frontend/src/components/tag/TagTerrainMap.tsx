@@ -5,14 +5,14 @@ import {
 } from 'recharts';
 import { formatRatio } from '../../utils/format';
 import { describeRankChange } from '../../utils/rankChange';
-import { DAILY_RULES, ZONE_LABEL, formatTop, zoneLines, type ZonedTag, type ZoneKey, type ZoneRules } from '../../utils/tagZones';
+import { DAILY_RULES, ZONE_LABEL, formatTop, shareAxis, zoneLines, type ZonedTag, type ZoneKey, type ZoneRules } from '../../utils/tagZones';
 
 /**
  * 태그 지형 지도 — 가로 작품 수(로그), 세로 100위 안 비율(DECISIONS 2026-10-06, 하루 판정).
  * 선 두 개(흔한 태그 기준 cut, 평균 비율 p0)로 칸이 넷 생기지만 구역은 셋이다 — 오른쪽 위 대세, 오른쪽 아래 과포화,
  * 왼쪽 위의 숨은 강자 영역(평균의 1.5배 이상)만 옅게 칠하고, 나머지는 이름 없는 회색 바탕(사용자 결정 A).
  * 원 크기는 없앴다 — 인기 점수가 가로축(작품 수)과 거의 같은 정보라 두 번 그리게 된다. 점 색이 곧 구역.
- * 세로 상한은 평균의 3배로 둔다(데일리 60%). 공모전은 평균이 3% 대라 고정 % 면 점이 바닥에 깔린다. 넘는 점은 ▲로 위 끝에.
+ * 세로 상한은 평균의 3배(데일리 60%)와 가장 높은 점보다 한 칸 위 중 큰 쪽(utils/tagZones shareAxis). 공모전은 평균이 3% 대라 고정 % 면 점이 바닥에 깔린다.
  */
 
 const ZONE_COLOR: Record<ZoneKey, string> = {
@@ -23,7 +23,7 @@ const ZONE_COLOR: Record<ZoneKey, string> = {
 const NONE_COLOR = 'var(--np-zone-none)';
 
 type MapTag = ZonedTag & { top100: number; ranked_total: number };
-type Plotted = MapTag & { share: number; sharePlotted: number; isClamped: boolean; held: boolean };
+type Plotted = MapTag & { share: number; held: boolean };
 type ShapeProps = { cx?: number; cy?: number; payload?: Plotted; 'data-recharts-item-index'?: number };
 
 interface Props {
@@ -66,7 +66,6 @@ const MapTip = ({ active, payload }: { active?: boolean; payload?: { payload: Pl
 
 export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, matches, onPick, onHover }: Props) {
   const lines = zoneLines(rows[0]?.ranked_total, rules);
-  const yMax = (lines?.p0 ?? 0.2) * 3;
 
   const countDomain = useMemo(() => {
     const counts = rows.map(d => d.count);
@@ -77,11 +76,14 @@ export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, match
   const data = useMemo<Plotted[]>(() => rows.map(t => {
     const share = t.count > 0 ? t.top100 / t.count : 0;
     return {
-      ...t, share, sharePlotted: Math.min(share, yMax), isClamped: share > yMax,
+      ...t, share,
       // 왼쪽 위(숨은 강자 영역)에 있지만 100위 안 작품이 모자라 구역을 붙이지 않은 점
       held: !!lines && !t.zone && t.count < lines.cut && share >= lines.gemShare - 1e-9,
     };
-  }), [rows, yMax, lines]);
+  }), [rows, lines]);
+  // 위 끝은 가장 높은 점보다 한 칸 위(평균 3배보다 낮지 않게), 아래 끝은 0 보다 조금 아래 — 끝에 붙은 점이 안 보이고 누르기 어려웠다.
+  const yAxis = useMemo(() => shareAxis(lines?.p0 ?? 0.2, Math.max(0, ...data.map(d => d.share))), [lines, data]);
+  const yMax = yAxis.top;
 
   // 이름표 우선순위: 구역마다 인기 점수 순으로 번갈아(대세 1위 · 숨은 강자 1위 · 과포화 1위 · 대세 2위 …) — 한 줄로 세우면
   // 점수가 작은 숨은 강자가 전부 밀렸다. 회색 점은 가리킬 때만.
@@ -110,9 +112,7 @@ export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, match
     const fade = matches && !matches.has(payload.tag) ? 0.12 : 1;
     return (
       <g opacity={fade}>
-        {payload.isClamped
-          ? <polygon points={`${cx},${cy - r} ${cx - r},${cy + r * 0.7} ${cx + r},${cy + r * 0.7}`} fillOpacity={payload.zone ? 0.85 : 0.6} {...common} />
-          : <circle cx={cx} cy={cy} r={r} fillOpacity={payload.zone ? 0.85 : 0.55} {...common} />}
+        <circle cx={cx} cy={cy} r={r} fillOpacity={payload.zone ? 0.85 : 0.55} {...common} />
       </g>
     );
   }, [active, matches, onPick, onHover]);
@@ -129,7 +129,7 @@ export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, match
     if (matches && !matches.has(payload.tag)) return <g />;
     if (!on && (labelPriority.get(payload.tag) ?? 999) >= 20) return <g />;
     const halfW = payload.tag.length * 6 + 4;
-    const candidates = payload.isClamped ? [cy + 18] : [cy - 9, cy + 18];
+    const candidates = [cy - 9, cy + 18];
     for (const y of candidates) {
       const box = { x1: cx - halfW, y1: y - 11, x2: cx + halfW, y2: y + 3 };
       const hit = boxes.current.some(b => box.x1 < b.x2 && b.x1 < box.x2 && box.y1 < b.y2 && b.y1 < box.y2);
@@ -147,8 +147,6 @@ export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, match
   });
   const axisTick = { fontSize: 11, fill: 'var(--np-text-secondary)' };
   // 눈금은 반듯한 값(1·2·5 단위) — 평균의 배수로 두면 공모전에서 1.7% · 3.4% · 6.7% 처럼 끊겼다. 평균은 가로선 이름표가 말한다.
-  const yStep = [0.01, 0.02, 0.05, 0.1, 0.2].find(st => yMax / st <= 7) ?? 0.2;
-  const yTicks = Array.from({ length: Math.floor(yMax / yStep + 1e-9) + 1 }, (_, i) => Math.round(i * yStep * 1000) / 1000);
   const pctTick = (v: number) => `${Math.round(v * 1000) / 10}%`;
 
   return (
@@ -172,7 +170,7 @@ export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, match
             stroke="var(--np-border)" tick={axisTick} tickLine={false} ticks={xTicks}>
             <Label value="작품 수" position="insideBottom" offset={-16} style={axisTick} />
           </XAxis>
-          <YAxis type="number" dataKey="sharePlotted" name="100위 안 비율" domain={[0, yMax]} ticks={yTicks}
+          <YAxis type="number" dataKey="share" name="100위 안 비율" domain={[yAxis.bottom, yMax]} ticks={yAxis.ticks}
             tickFormatter={pctTick} allowDataOverflow stroke="var(--np-border)" tick={axisTick} tickLine={false} width={44}>
             <Label value="↑ 100위 안 비율" position="insideTopLeft" offset={-20} style={axisTick} />
           </YAxis>
