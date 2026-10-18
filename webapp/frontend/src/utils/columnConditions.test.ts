@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { applyColumnConditions, contestColumns, describeCondition, type ColumnCondition } from './columnConditions';
+import { applyColumnConditions, contestColumns, describeCondition, opsFor, type ColumnCondition } from './columnConditions';
 import type { ContestNovel } from './contestNovels';
 
 const n = (id: string, over: Partial<ContestNovel>): ContestNovel =>
   ({ ID: id, Rank: 1, Tags: [], Date: '2026-10-17', view_change: 0, like_to_view_ratio: 0, View: 100, daily_rank: 1, ...over });
 const ids = (xs: ContestNovel[]) => xs.map(x => x.ID);
 
-describe('applyColumnConditions (공모전 열 조건)', () => {
+describe('applyColumnConditions (공모전 수치 조건)', () => {
   const rows = [
     n('big', { View: 285055, EarlyRetentionRate: 0.45 }),
     n('small', { View: 1407, EarlyRetentionRate: 0.45 }),
@@ -41,6 +41,12 @@ describe('applyColumnConditions (공모전 열 조건)', () => {
     expect(ids(applyColumnConditions(r, [{ key: 'view_change', op: 'gte', value: 1 }], true))).toEqual(['b']);
   });
 
+  it('순위 이내(≤) · 밖(>) — 경계 순위는 이내에 든다', () => {
+    const r = [n('a', { daily_rank: 999 }), n('b', { daily_rank: 1000 }), n('c', { daily_rank: 1001 })];
+    expect(ids(applyColumnConditions(r, [{ key: 'daily_rank', op: 'lte', value: 1000 }], true))).toEqual(['a', 'b']);
+    expect(ids(applyColumnConditions(r, [{ key: 'daily_rank', op: 'gt', value: 1000 }], true))).toEqual(['c']);
+  });
+
   it('변동의 NEW 는 가장 큰 상승으로 친다(정렬과 같다)', () => {
     const r = [n('new', { daily_rank_change: 'New' }), n('up', { daily_rank_change: 3 }), n('down', { daily_rank_change: -2 })];
     expect(ids(applyColumnConditions(r, [{ key: 'daily_rank_change', op: 'gte', value: 1 }], true))).toEqual(['new', 'up']);
@@ -52,9 +58,14 @@ describe('contestColumns / describeCondition', () => {
     expect(contestColumns(true).map(c => c.key)).toEqual(['daily_rank', 'daily_rank_change', 'view_change', 'View', 'like_to_view_ratio', 'EarlyRetentionRate', 'RecentRetentionRate']);
     expect(contestColumns(false).map(c => c.key)).toEqual(['Rank', 'rank_change', 'view_change', 'View', 'like_to_view_ratio']);
   });
-  it('표시: 누적 조회 ≥ 1,000회 · 초반 잔류 ≥ 30%', () => {
-    expect(describeCondition({ key: 'View', op: 'gte', value: 1000 })).toBe('누적 조회 ≥ 1,000회');
-    expect(describeCondition({ key: 'EarlyRetentionRate', op: 'gte', value: 30 })).toBe('초반 잔류 ≥ 30%');
-    expect(describeCondition({ key: 'daily_rank', op: 'lte', value: 300 })).toBe('일간 순위 ≤ 300위');
+  it('표시는 한국어 어순: 누적 조회 1,000회 이상 · 일간 순위 300위 이내', () => {
+    expect(describeCondition({ key: 'View', op: 'gte', value: 1000 })).toBe('누적 조회 1,000회 이상');
+    expect(describeCondition({ key: 'EarlyRetentionRate', op: 'lte', value: 30 })).toBe('초반 잔류 30% 이하');
+    expect(describeCondition({ key: 'daily_rank', op: 'lte', value: 300 })).toBe('일간 순위 300위 이내');
+    expect(describeCondition({ key: 'daily_rank', op: 'gt', value: 300 })).toBe('일간 순위 300위 밖');
+  });
+  it('순위 열은 이내 · 밖, 나머지는 이상 · 이하 — "1000위 이상"이 1001위 쪽으로 걸렸다', () => {
+    expect(opsFor('daily_rank').map(o => [o.op, o.label])).toEqual([['lte', '이내'], ['gt', '밖']]);
+    expect(opsFor('View').map(o => [o.op, o.label])).toEqual([['gte', '이상'], ['lte', '이하']]);
   });
 });

@@ -85,7 +85,7 @@ export default function ContestPage() {
   const [sort, setSort] = useState<ContestSort>(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT);
   const [career, setCareer] = useState<Career>('all');
   const [conds, setConds] = useState<ColumnCondition[]>([]);
-  // 2025 ↔ 2026 는 열이 달라(일간 순위 · 잔류율) 열 조건도 비운다.
+  // 2025 ↔ 2026 는 열이 달라(일간 순위 · 잔류율) 수치 조건도 비운다.
   useEffect(() => { setSort(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT); setCareer('all'); setWinnersOnly(false); setConds([]); }, [daily]);
   const [drawer, setDrawer] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -298,7 +298,7 @@ export default function ContestPage() {
         tagStats={stats} resultCount={sorted.length} error={result.error} onResetExtra={() => { setWinnersOnly(false); setCareer('all'); setConds([]); }}
         extra={(
           <>
-            <h3 className="filter-drawer__h">열 조건</h3>
+            <h3 className="filter-drawer__h">수치 조건</h3>
             <ColumnConditionEditor columns={contestColumns(daily)} value={conds} onChange={setConds} />
             {hasAwards || !daily ? (
               <>

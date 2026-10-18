@@ -229,7 +229,11 @@
 .filter-drawer__statuses { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }
 .col-conds { display: grid; gap: 0.5rem; margin-bottom: 1.1rem; }
 .col-conds__row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9375rem; }
-.col-conds__row select { padding: 0.3rem 0.4rem; border: 1px solid var(--np-border-strong); border-radius: var(--np-radius-sm); background: var(--np-canvas); color: var(--np-text-primary); font: inherit; }
+.col-conds__row select { padding: 0.3rem 0.6rem; border: 1px solid var(--np-border-strong); border-radius: var(--np-radius-sm); background: var(--np-canvas); color: var(--np-text-primary); font: inherit; }
+/* 기본 화살표는 상자 오른쪽 끝에 붙어 있었다 — 직접 그려 안쪽으로 들인다(두 테마 모두 읽히는 중간 회색). */
+.col-conds__row select { appearance: none; -webkit-appearance: none; padding-right: 1.9rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23878d98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.7rem center; }
 .col-conds__row input { width: 76px; border: 0; border-bottom: 1.5px solid var(--np-text-heading); background: none; color: inherit; padding: 3px 4px; text-align: right; font: inherit; }
 .col-conds__unit { min-width: 2em; color: var(--np-text-secondary); font-size: 0.875rem; }
 .col-conds__del { margin-left: auto; border: 0; background: none; color: var(--np-text-faint); font-size: 1.1rem; line-height: 1; padding: 0.2rem 0.35rem; }

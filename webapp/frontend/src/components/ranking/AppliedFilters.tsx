@@ -5,7 +5,7 @@ const MODE_LABEL = { 'include-and': '모두 포함', 'include-or': '하나라도
 
 type Extra = { key: string; label: ReactNode; onClear: () => void };
 
-/** extra: 페이지 고유 조건(예: 공모전 '수상작만', 열 조건 한 줄씩). 초기화하면 모두의 onClear 를 부른다. */
+/** extra: 페이지 고유 조건(예: 공모전 '수상작만', 수치 조건 한 줄씩). 초기화하면 모두의 onClear 를 부른다. */
 export default function AppliedFilters({ filter, onChange, extra = [] }: {
   filter: RankingFilter; onChange: (next: RankingFilter) => void;
   extra?: Extra[];
