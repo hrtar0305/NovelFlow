@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CONTEST_RULES, shareAxis, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneOf, type DailyTag } from './tagZones';
 
-const t = (Rank: number, count: number, local_lift: number | null, rank_change: DailyTag['rank_change'] = 0, power_score = 10 - Rank): DailyTag =>
-  ({ Rank, tag: `t${Rank}`, count, local_lift, rank_change, power_score });
+const t = (Rank: number, count: number, local_lift: number | null, power_score = 10 - Rank): DailyTag =>
+  ({ Rank, tag: `t${Rank}`, count, local_lift, power_score });
 
 describe('zoneOf (하루 판정, 데일리 N=500)', () => {
   const z = (count: number, top100: number) => zoneOf({ count, top100, ranked_total: 500 });
@@ -51,11 +51,7 @@ describe('withZones / zoneCounts', () => {
 });
 
 describe('sortTags', () => {
-  const rows = [t(1, 10, null, 3), t(2, 20, 1.5, 'New'), t(3, 30, 0.4, null), t(4, 30, 2.0, -5)];
-  it('변동 내림차순은 NEW → 상승 → 하락, 비교 불가는 끝', () => {
-    expect(sortTags(rows, { key: 'rank_change', direction: 'descending' }).map(r => r.Rank)).toEqual([2, 1, 4, 3]);
-    expect(sortTags(rows, { key: 'rank_change', direction: 'ascending' }).map(r => r.Rank)).toEqual([4, 1, 2, 3]);
-  });
+  const rows = [t(1, 10, null), t(2, 20, 1.5), t(3, 30, 0.4), t(4, 30, 2.0)];
   it('동점은 순위 순', () => {
     expect(sortTags(rows, { key: 'count', direction: 'descending' }).map(r => r.Rank)).toEqual([3, 4, 2, 1]);
   });

@@ -4,7 +4,6 @@ import {
   CartesianGrid, Label, ReferenceLine, ReferenceArea, Tooltip,
 } from 'recharts';
 import { formatRatio } from '../../utils/format';
-import { describeRankChange } from '../../utils/rankChange';
 import { DAILY_RULES, ZONE_LABEL, formatTop, shareAxis, zoneLines, type ZonedTag, type ZoneKey, type ZoneRules } from '../../utils/tagZones';
 
 /**
@@ -52,12 +51,10 @@ function logTicks(lo: number, hi: number): number[] {
 const MapTip = ({ active, payload }: { active?: boolean; payload?: { payload: Plotted }[] }) => {
   const d = active && payload?.[0]?.payload;
   if (!d) return null;
-  const chg = describeRankChange(d.rank_change);
   return (
     <div className="chart-tip">
       <b>{d.Rank}위 {d.tag}</b>
       {d.zone ? <span style={{ color: `var(--np-zone-${d.zone}-text)` }}>{ZONE_LABEL[d.zone]}{d.edge ? ' · 경계' : ''}</span> : null}
-      {chg.kind !== 'none' ? <span>전날 대비 {chg.label}</span> : null}
       <span>작품 {d.count}편 · 100위 안 {formatTop(d)} · 인기 점수 {formatRatio(d.score_share)}</span>
       {d.held ? <span>100위 안 {d.top100}편뿐이라 숨은 강자에서 뺌</span> : null}
     </div>

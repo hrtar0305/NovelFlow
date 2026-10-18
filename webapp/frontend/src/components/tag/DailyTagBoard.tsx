@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Search as SearchIcon } from 'react-bootstrap-icons';
-import ChangeMark from '../ui/ChangeMark';
 import Footnotes, { FootnoteRef } from '../ui/Footnotes';
 import { SkeletonBox, SkeletonRows, Stale } from '../ui/Loading';
 import RankTable, { type RankColumn } from '../ranking/RankTable';
@@ -97,20 +96,21 @@ export default function DailyTagBoard({
 
   const strongIf = (keys: TagSortKey[], v: ReactNode) => (keys.includes(sort.key) ? <b className="rank-strong">{v}</b> : v);
 
+  // 열이 적어 태그 열 하나가 남는 폭을 다 먹으면 이름 뒤가 휑했다 — 남는 폭을 열마다 나눠 갖는다. 숫자도 작품 표처럼 왼쪽 정렬:
+  // 오른쪽 정렬이면 머리글 끝의 정렬 표시(↕) 때문에 머리글과 값의 오른쪽 끝이 어긋나 보였다(사용자 2026-10-18).
   const columns: RankColumn<Row>[] = [
     { key: 'rank', header: '순위', width: '48px', sortKey: 'Rank', render: t => <span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span> },
-    { key: 'chg', header: '변동', width: '52px', sortKey: 'rank_change', render: t => <ChangeMark value={t.rank_change} /> },
-    { key: 'tag', header: '태그', width: 'minmax(0,1fr)', render: t => <span className="rank-title">{t.tag}</span> },
-    { key: 'zone', header: '구역', aside: <FootnoteRef id="zone" n={3} />, width: '132px', render: t => <ZoneName zone={t.zone} edge={t.edge} /> },
+    { key: 'tag', header: '태그', width: 'minmax(0,1.4fr)', render: t => <span className="rank-title">{t.tag}</span> },
+    { key: 'zone', header: '구역', aside: <FootnoteRef id="zone" n={3} />, width: 'minmax(120px,1fr)', render: t => <ZoneName zone={t.zone} edge={t.edge} /> },
     // 순위가 인기 점수 순이라 순위순(기본)일 때도 점수를 굵게 둔다.
-    { key: 'score', header: '인기 점수', aside: <FootnoteRef id="score" n={1} />, width: '104px', sortKey: 'score_share', align: 'right', render: t => strongIf(['score_share', 'Rank'], formatRatio(t.score_share)) },
-    { key: 'count', header: '작품 수', width: '80px', sortKey: 'count', align: 'right', render: t => strongIf(['count'], formatInt(t.count)) },
-    { key: 'top', header: '100위 안', aside: <FootnoteRef id="top" n={2} />, width: '112px', sortKey: 'top_share', align: 'right', render: t => strongIf(['top_share'], formatTop(t)) },
+    { key: 'score', header: '인기 점수', aside: <FootnoteRef id="score" n={1} />, width: 'minmax(96px,1fr)', sortKey: 'score_share', render: t => strongIf(['score_share', 'Rank'], formatRatio(t.score_share)) },
+    { key: 'count', header: '작품 수', width: 'minmax(72px,1fr)', sortKey: 'count', render: t => strongIf(['count'], formatInt(t.count)) },
+    { key: 'top', header: '100위 안', aside: <FootnoteRef id="top" n={2} />, width: 'minmax(104px,1fr)', sortKey: 'top_share', render: t => strongIf(['top_share'], formatTop(t)) },
   ];
 
   const mobileRow = (t: Row) => (
     <div className="rank-mrow rank-mrow--tag">
-      <div className="rank-mrow__rank"><span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span><ChangeMark value={t.rank_change} /></div>
+      <div className="rank-mrow__rank"><span className={`rank-num${t.Rank <= 3 ? ' is-top' : ''}`}>{t.Rank}</span></div>
       <div className="rank-mrow__main">
         <span className="rank-title">{t.tag}</span>
         <p>{t.zone ? <><ZoneName zone={t.zone} edge={t.edge} /> · </> : null}인기 <b>{formatRatio(t.score_share)}</b> · 작품 <b>{formatInt(t.count)}</b> · 100위 안 <b>{formatTop(t)}</b></p>

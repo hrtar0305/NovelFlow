@@ -1,5 +1,5 @@
 import { DASH } from './format';
-import { changeValue, finiteOrNull, nextSortOf, sortBy, type Sort } from './rankingQuery';
+import { finiteOrNull, nextSortOf, sortBy, type Sort } from './rankingQuery';
 
 /**
  * 태그 랭킹의 구역 판정과 정렬 — **그날 하루의 데이터로만** 판단한다(DECISIONS 2026-10-06, 흐름은 태그 트렌드 몫).
@@ -36,7 +36,6 @@ export interface DailyTag {
   power_score: number;
   local_lift?: number | null;
   count: number;
-  rank_change?: number | 'New' | null;
   /** 100위 안 작품 수 */
   top100?: number | null;
   /** 인기 점수 = 그날 전체 랭킹 점수(공모전은 조회 증가) 중 이 태그 작품들의 몫(0~1) */
@@ -78,16 +77,15 @@ export function zoneCounts(rows: { zone: ZoneKey | null }[]): Record<ZoneKey, nu
   return out;
 }
 
-export type TagSortKey = 'Rank' | 'rank_change' | 'count' | 'score_share' | 'top_share';
+export type TagSortKey = 'Rank' | 'count' | 'score_share' | 'top_share';
 export type TagSort = Sort<TagSortKey>;
 export const DEFAULT_TAG_SORT: TagSort = { key: 'Rank', direction: 'ascending' };
 
 /** 처음 누르면 '보고 싶은 쪽'이 위로 온다 — 순위는 1위부터, 나머지는 큰 값부터. */
 export const nextTagSort = (s: TagSort, key: TagSortKey): TagSort => nextSortOf(s, key, 'Rank');
 
-/** 정렬용 값. 변동의 NEW는 일간 작품 표와 같이 가장 큰 상승으로 친다(내림차순 = NEW → 상승 폭 순). */
+/** 정렬용 값 */
 const sortValue = (t: DailyTag, key: TagSortKey): number | null => {
-  if (key === 'rank_change') return changeValue(t.rank_change);
   if (key === 'top_share') return t.top100 != null && t.count >= MIN_WORKS ? t.top100 / t.count : null;
   return finiteOrNull(t[key]);
 };
