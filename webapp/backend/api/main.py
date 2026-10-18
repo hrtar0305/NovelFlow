@@ -1049,9 +1049,12 @@ _UPLOAD_CUTOFF = {
     'contest': lambda d: f'{(datetime.fromisoformat(d) + timedelta(days=1)).date().isoformat()}T03:00:00+09:00',
 }
 
-@app.get("/api/uploads/{novel_id}")
-def get_uploads(novel_id: str, start: str, end: str, response: Response, asof: Optional[str] = None, source: Optional[str] = None):
-    """연재 기록에서 날짜별 올린 화 수(null = 셀 수 없음). `asof`+`source`(daily|contest) 를 주면 그 날짜 수집 마감까지 본 회차만
+# 값은 경로로 받는다(쿼리 문자열 X) — CloudFront `/api/*` 는 관리형 CachingOptimized 라 쿼리 문자열을 버리고, 쿼리를 캐시 키에 넣으면
+# 임의의 `?x=` 로 캐시를 건너뛰어 원본 한도(API Gateway 월 1만 건)를 태울 수 있다(2026-10-18).
+@app.get("/api/uploads/{novel_id}/{start}/{end}")
+@app.get("/api/uploads/{novel_id}/{start}/{end}/{source}/{asof}")
+def get_uploads(novel_id: str, start: str, end: str, response: Response, source: Optional[str] = None, asof: Optional[str] = None):
+    """연재 기록에서 날짜별 올린 화 수(null = 셀 수 없음). `source`(daily|contest)+`asof` 를 주면 그 날짜 수집 마감까지 본 회차만
     센다(행 펼침 고정값). 회차 수 차이로 추정하지 않는다 — 삭제·재업로드·BONUS 도 실제 목록 그대로."""
     _reject_if_blocked(novel_id)
     s, e = _parse_date_range(start, end, NOVEL_TREND_MAX_DAYS)
@@ -1302,7 +1305,15 @@ def get_contest_showcase(year: int, response: Response):
         raise _server_error("DynamoDB query failed")
 
 
-@app.get("/api/contests/{year}/{date}", response_model=List[ContestNovelData])
+# 목록에 안 쓰는 필드는 빼고 보낸다 — 4,670편이라 원문 4.2MB(압축 700KB)였고, 잔류율 원재료 · 배지 · 연재 요일 · 소개 등은
+# 작품 상세(`/latest`)만 쓴다(2026-10-18, 공모전 페이지가 2초 넘게 걸린다는 지적).
+CONTEST_LIST_EXCLUDE = {'Synopsis', 'Alr', 'Fav', 'FirstEpView', 'FirstEpNum', 'Ep30View', 'Ep30Num', 'RecentBaseView',
+                        'RecentBaseNum', 'TargetLatestEpView', 'TargetLatestEpNum', 'is_new', 'is_adult', 'serial_days',
+                        'life_pick_rank', 'badges', 'age_rating', 'is_unavailable', 'values_date'}
+
+
+@app.get("/api/contests/{year}/{date}", response_model=List[ContestNovelData],
+         response_model_exclude={'__all__': CONTEST_LIST_EXCLUDE})
 def get_contest_data_by_date(year: int, date: str, response: Response):
     """
     지정된 연도의 특정 날짜 공모전 소설 데이터를 조회합니다.

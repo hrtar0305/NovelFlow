@@ -1,4 +1,5 @@
 import axios, { type AxiosResponse } from 'axios';
+import { trackPending } from '../utils/loadingSignal';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -44,7 +45,8 @@ const getCachedRequest = <T>(
 
 // 응답 모양은 호출부가 안다(r.data). 캐시는 URL 하나를 키로 AxiosResponse 단위로만 다룬다.
 const cache: Record<string, TimedCacheEntry<AxiosResponse>> = {};
-const get = (url: string, ttlMs = FIVE_MINUTES_MS) => getCachedRequest(cache, url, ttlMs, () => apiClient.get(url));
+// 실제로 나가는 요청만 센다(캐시 적중은 request 를 부르지 않는다) — 화면 위 진행 막대(TopProgress)의 재료.
+const get = (url: string, ttlMs = FIVE_MINUTES_MS) => getCachedRequest(cache, url, ttlMs, () => trackPending(apiClient.get(url)));
 
 export const getNovelRankingsByDate = (date: string) => get(`/api/ranks/novels/${date}`, ONE_DAY_MS);
 export const getTagRankingsByDate = (date: string) => get(`/api/ranks/tags/${date}`, ONE_DAY_MS);
@@ -61,10 +63,9 @@ export const getTagSeries = (startDate: string, endDate: string) => get(`/api/tr
  * 연재 기록 — 날짜별 올린 화 수. `asof` 를 주면 그날 수집 마감(데일리 D 22:00, 공모전 D+1 01:00 KST)까지 본 회차만
  * 센다(행 펼침의 고정값). 응답 모양은 `utils/uploads` 의 UploadsResponse.
  */
-export const getUploads = (novelId: string, start: string, end: string, asof?: { date: string; source: 'daily' | 'contest' }) => {
-  const q = new URLSearchParams({ start, end, ...(asof ? { asof: asof.date, source: asof.source } : {}) });
-  return get(`/api/uploads/${novelId}?${q}`);
-};
+export const getUploads = (novelId: string, start: string, end: string, asof?: { date: string; source: 'daily' | 'contest' }) =>
+  // 경로로 보낸다 — CloudFront 가 API 쿼리 문자열을 버린다(캐시 우회 방지, 2026-10-18).
+  get(`/api/uploads/${novelId}/${start}/${end}${asof ? `/${asof.source}/${asof.date}` : ''}`);
 
 export const getNovelTrend = (novelId: string, startDate: string, endDate: string) =>
   get(`/api/trends/novels/${novelId}/${startDate}/${endDate}`, ONE_DAY_MS);

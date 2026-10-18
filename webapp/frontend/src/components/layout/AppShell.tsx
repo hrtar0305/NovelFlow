@@ -2,6 +2,7 @@ import type { PropsWithChildren } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../Header';
 import ScrollTop from '../ui/ScrollTop';
+import TopProgress from '../ui/TopProgress';
 
 const REPO_URL = 'https://github.com/hrtar0305/NovelFlow';
 
@@ -9,6 +10,7 @@ function AppShell({ children }: PropsWithChildren) {
   return (
     <div className="app-shell">
       <Header />
+      <TopProgress />
       <main className="app-main">
         <div className="app-main-inner">{children}</div>
       </main>
