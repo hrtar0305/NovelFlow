@@ -124,7 +124,7 @@ aws cloudfront create-invalidation --distribution-id E1PP4QRS4HH998 --paths "/*"
 ## 재배포 체크리스트
 
 - [ ] **백엔드(`main.py`) 변경** → 백엔드 Lambda 재배포 (자동 배포 없음).
-- [ ] **프론트 변경** → 위 「웹」 절대로(build → assets sync --delete → index.html no-cache → invalidation).
+- [ ] **프론트 변경** → 위 「웹」 절차대로(build → assets sync --delete → index.html no-cache → invalidation).
 - [ ] **크롤러/파서 로직 변경** → Docker 재빌드 → ECR push → Lambda 이미지 갱신.
 - [ ] **적재 로직(`data_ingestion.py`·`tag_stats.py`) 변경** → zip 재생성(두 파일 모두) → Lambda 갱신.
 - [ ] 스코어링/집계 로직을 바꿨다면 과거 데이터와의 호환성 확인.
