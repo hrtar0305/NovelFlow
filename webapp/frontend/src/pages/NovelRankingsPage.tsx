@@ -9,6 +9,7 @@ import ChangeMark from '../components/ui/ChangeMark';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import NovelCover from '../components/NovelCover';
 import Showcase, { ShowcaseSkeleton, type ShowcaseItem } from '../components/ranking/Showcase';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { SkeletonRows, Stale } from '../components/ui/Loading';
 import FilterDrawer from '../components/ranking/FilterDrawer';
 import AppliedFilters from '../components/ranking/AppliedFilters';
@@ -40,6 +41,8 @@ export default function NovelRankingsPage() {
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<RankingNovel[]>([]);
   const [loading, setLoading] = useState(true);
+  // 폰에서는 쇼케이스를 그리지 않는다 — 표지 원본 10장(약 3.6MB)이 모바일 첫 화면 시간을 정했고, 폰에서는 표가 곧 목록이다(사용자 2026-10-19).
+  const mobile = useIsMobile();
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<RankingFilter>(() => {
     const tag = params.get('tag');
@@ -146,7 +149,7 @@ export default function NovelRankingsPage() {
         nav={<DateNav value={dateParam ?? null} availableDates={dates} onChange={d => navigate(`/novels/rankings/${d}`)} />}
         meta={`노벨피아 7일 조회순 상위 ${rows.length || 500}작품`} />
 
-      {error ? null : rows.length > 0 ? <Stale loading={loading}><Showcase top={showcase.top} movers={showcase.movers} /></Stale>
+      {error || mobile ? null : rows.length > 0 ? <Stale loading={loading}><Showcase top={showcase.top} movers={showcase.movers} /></Stale>
         : loading ? <ShowcaseSkeleton /> : null}
 
       {/* 급상승·신규 진입 탭은 두지 않는다 — 변동 열 내림차순이 곧 NEW → 상승 폭 순이다. */}

@@ -15,16 +15,16 @@ const hash = (s: string): number => {
   return h >>> 0;
 };
 
+/** 흐린 표지처럼 — 색조 하나, 바랜 채도, 표지마다 다른 밝기, 가운데가 조금 밝은 부드러운 번짐. 색조 여러 개를 섞었더니
+ *  흐린 표지가 아니라 색 얼룩처럼 보였다(사용자 2026-10-19). 실제 흐린 표지는 대개 회색 · 갈색 · 베이지 쪽으로 바랜다. */
 export function coverPlaceholder(seed: string): string {
   const h = hash(seed);
   const hue = h % 360;
-  const hue2 = (hue + 25 + ((h >>> 9) % 70)) % 360;   // 가까운 색 — 표지는 대개 한두 계열이다
-  const hue3 = (hue + 180 + ((h >>> 17) % 60)) % 360; // 작은 반대색 점 하나
-  const x1 = 20 + ((h >>> 3) % 40), y1 = 15 + ((h >>> 11) % 30);
-  const x2 = 50 + ((h >>> 5) % 40), y2 = 55 + ((h >>> 13) % 35);
+  const sat = 6 + ((h >>> 9) % 18);          // 6~23%
+  const light = 22 + ((h >>> 14) % 34);      // 22~55%
+  const x = 40 + ((h >>> 3) % 20), y = 35 + ((h >>> 20) % 20);
   return [
-    `radial-gradient(circle at ${x1}% ${y1}%, hsl(${hue2} 45% 62% / 0.9), transparent 55%)`,
-    `radial-gradient(circle at ${x2}% ${y2}%, hsl(${hue3} 40% 55% / 0.55), transparent 50%)`,
-    `linear-gradient(160deg, hsl(${hue} 38% 48%), hsl(${hue2} 34% 32%))`,
+    `radial-gradient(ellipse at ${x}% ${y}%, hsl(${hue} ${sat}% ${light + 10}%), transparent 70%)`,
+    `linear-gradient(180deg, hsl(${hue} ${sat}% ${light}%), hsl(${hue} ${sat}% ${Math.max(light - 8, 10)}%))`,
   ].join(', ');
 }

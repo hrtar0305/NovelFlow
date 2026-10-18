@@ -9,6 +9,7 @@ import TagLinks from '../components/ui/TagLinks';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import FilterDrawer from '../components/ranking/FilterDrawer';
 import Showcase, { ShowcaseSkeleton, type ShowcaseItem } from '../components/ranking/Showcase';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { SkeletonRows, Stale } from '../components/ui/Loading';
 import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankToolbar from '../components/ranking/RankToolbar';
@@ -97,6 +98,8 @@ export default function ContestPage() {
     setSort(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT); setCareer('all'); setWinnersOnly(false); setConds([]);
   }, [daily]);
   const [drawer, setDrawer] = useState(false);
+  // 폰에서는 쇼케이스(일간 상위 · 급상승, 2025 수상작)를 그리지 않는다 — 표지 원본이 모바일 첫 화면 시간을 정했다(사용자 2026-10-19).
+  const mobile = useIsMobile();
   const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -248,10 +251,10 @@ export default function ContestPage() {
         onDateChange={d => navigate(`/contests/${year}/${d}`)} onYearChange={y => navigate(`/contests/${y}`)}
         meta={rows.length ? `${cfg.schedule} · 참여 작품 ${formatInt(rows.length)}편` : cfg.schedule} />
 
-      {awardShowcase || error ? null : rows.length > 0 ? <Stale loading={loading}><Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} /></Stale>
+      {awardShowcase || error || mobile ? null : rows.length > 0 ? <Stale loading={loading}><Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} /></Stale>
         : loading && daily ? <ShowcaseSkeleton /> : null}
 
-      {showcaseItems.length > 0 ? (
+      {!mobile && showcaseItems.length > 0 ? (
         <section className="contest-award-showcase showcase-section" aria-label="수상작">
           <div className="contest-award-showcase__grid">
             {showcaseItems.map((n, i) => (
