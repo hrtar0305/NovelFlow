@@ -339,6 +339,7 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .text-toggle { display: flex; gap: 0.85rem; }
 .text-toggle button { padding: 0 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; font-size: 0.875rem; font-weight: 600; color: var(--np-text-secondary); }
 .text-toggle button.is-on { color: var(--np-text-heading); border-bottom-color: var(--np-accent); }
+.contest-pool { margin: 0.25rem 0 1rem; }
 
 /* ── 공모전 태그: 포지셔닝 맵 ── */
 .contest-map { padding: 1.5rem 0 2.5rem; border-top: 1px solid var(--np-border); }

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { isValid, parseISO } from 'date-fns';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 import { Search as SearchIcon } from 'react-bootstrap-icons';
-import { getContestAvailableDates, getContestDailyTagRankingsByDate, getContestTagRankingsByDate } from '../services/api';
+import { getContestAvailableDates, getContestDailyTagRankingsByDate, getContestEntryTagsByDate, getContestTagRankingsByDate } from '../services/api';
 import DailyTagBoard from '../components/tag/DailyTagBoard';
+import EntryTagBoard from '../components/tag/EntryTagBoard';
+import type { EntryTag } from '../utils/contestEntryTags';
 import type { DailyTag } from '../utils/tagZones';
 import ContestHeader from '../components/contest/ContestHeader';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
@@ -48,11 +50,16 @@ export default function ContestTagRankingsPage() {
   return contestConfig(year).headline === 'daily' ? <DailyContestTags key={year} /> : <CumulativeContestTags key={year} />;
 }
 
-/** 2026~: 일간 순위 기준 태그 점수. 일간 순위가 없는 날(수집 첫날)은 빈 상태. */
+/** 2026~: 기본은 일간 500위 안 작품(데일리 태그와 같은 판), '전체 참여작'은 참여작 수 · 500위 진입률 표(?pool=all, 2026-10-18).
+ *  일간 순위가 없는 날(수집 첫날)은 기본 보기가 빈 상태. */
 function DailyContestTags() {
   const { year = LATEST_CONTEST_YEAR, date: dateParam } = useParams<{ year: string; date?: string }>();
   const cfg = contestConfig(year);
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const all = params.get('pool') === 'all';
+  const [entry, setEntry] = useState<{ date: string; tags: EntryTag[] } | null>(null);
+  const [entryState, setEntryState] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null });
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [tags, setTags] = useState<DailyTag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +74,8 @@ function DailyContestTags() {
   useEffect(() => {
     if (dates.size === 0) return;
     if (!dateParam || !isValid(parseISO(dateParam)) || !dates.has(dateParam)) {
-      navigate(`/contests/${year}/tags/rankings/${[...dates].sort().at(-1)}`, { replace: true });
+      // 쿼리(?pool=all)는 그대로 들고 간다 — params 를 의존성에 넣으면 보기 전환 때마다 이 판을 다시 받는다.
+      navigate(`/contests/${year}/tags/rankings/${[...dates].sort().at(-1)}${window.location.search}`, { replace: true });
       return;
     }
     let cancelled = false;
@@ -85,13 +93,36 @@ function DailyContestTags() {
     return () => { cancelled = true; };
   }, [year, dateParam, dates, navigate]);
 
+  // 전체 참여작 보기는 고를 때만 받는다(그날 참여작 전부를 읽어 센다).
+  useEffect(() => {
+    if (!all || !dateParam || !dates.has(dateParam) || entry?.date === dateParam) return;
+    let cancelled = false;
+    setEntryState({ loading: true, error: null });
+    getContestEntryTagsByDate(parseInt(year, 10), dateParam)
+      .then(r => { if (!cancelled) { setEntry({ date: dateParam, tags: Array.isArray(r.data) ? r.data : [] }); setEntryState({ loading: false, error: null }); } })
+      .catch(() => { if (!cancelled) setEntryState({ loading: false, error: '태그 데이터를 불러오지 못했습니다.' }); });
+    return () => { cancelled = true; };
+  }, [all, year, dateParam, dates, entry?.date]);
+  const pickPool = (next: boolean) => setParams(p => { const q = new URLSearchParams(p); if (next) q.set('pool', 'all'); else q.delete('pool'); return q; }, { replace: true });
+  const entrants = entry?.tags[0]?.entrants;
+
   return (
     <div className="page-shell contest-tags-page">
       <ContestHeader year={year} date={dateParam ?? null} availableDates={dates} view="tags"
         onDateChange={d => navigate(`/contests/${year}/tags/rankings/${d}`)}
         onYearChange={y => navigate(`/contests/${y}/tags/rankings`)}
-        meta={`${cfg.schedule} · 일간 ${formatInt(tags[0]?.ranked_total ?? 500)}위 안 작품에 달린 태그`} />
-      <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
+        meta={all ? `${cfg.schedule} · 참여작${entrants ? ` ${formatInt(entrants)}편` : ''}에 달린 태그` : `${cfg.schedule} · 일간 ${formatInt(tags[0]?.ranked_total ?? 500)}위 안 작품에 달린 태그`} />
+      <div className="text-toggle contest-pool" role="radiogroup" aria-label="집계 대상">
+        {[false, true].map(v => (
+          <button key={String(v)} type="button" role="radio" aria-checked={all === v} className={all === v ? 'is-on' : undefined} onClick={() => pickPool(v)}>
+            {v ? '전체 참여작' : '일간 500위 안'}
+          </button>
+        ))}
+      </div>
+      {all ? (
+        <EntryTagBoard tags={entry?.tags ?? []} loading={entryState.loading} error={entryState.error}
+          worksHref={tag => `/contests/${year}/${dateParam}?tag=${encodeURIComponent(tag)}`} />
+      ) : <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
         scoreLabel="조회 증가" scoreNote="조회 증가는 직전 수집일 대비 조회수가 늘어난 양(일간 순위의 기준)."
         novelHref={id => `/contests/${year}/novels/${id}`}
         ariaLabel="공모전 태그 순위"
@@ -103,7 +134,7 @@ function DailyContestTags() {
             {/* 태그 수치와 같은 모집단(일간 500위 안)으로 연다 — 작품 목록에 수치 조건 '일간 순위 N위 이내'가 걸린다. */}
             <Link to={`/contests/${year}/${dateParam}?tag=${encodeURIComponent(t.tag)}&within=${t.ranked_total ?? 500}`} className="row-expand__go" onClick={e => e.stopPropagation()}>'{t.tag}' 작품 보기</Link>
           </div>
-        )} />
+        )} />}
     </div>
   );
 }

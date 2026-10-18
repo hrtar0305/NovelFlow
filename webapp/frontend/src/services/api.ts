@@ -87,5 +87,8 @@ export const getContestNovelTrend = (year: number, novelId: string, startDate: s
 /** 2026~ 공모전 태그 랭킹(일간 순위 기준, 데일리 태그와 같은 꼴). 일간 순위가 없는 날은 404. */
 export const getContestDailyTagRankingsByDate = (year: number, date: string) =>
   get(`/api/contests/${year}/ranks/daily-tags/${date}`, ONE_DAY_MS);
+/** 2026~ 공모전 태그 — 전체 참여작 기준(참여작 수 · 일간 500위 진입). */
+export const getContestEntryTagsByDate = (year: number, date: string) =>
+  get(`/api/contests/${year}/ranks/entry-tags/${date}`, ONE_DAY_MS);
 export const getContestTagRankingsByDate = (year: number, date: string) =>
   get(`/api/contests/${year}/ranks/tags/${date}`, ONE_DAY_MS);

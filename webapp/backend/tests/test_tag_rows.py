@@ -79,3 +79,17 @@ class ContestPoolRows(unittest.TestCase):
 
     def test_no_ranked_items(self):
         self.assertEqual(M._contest_pool_tag_rows([{'ID': '1', 'DailyRank': None, 'Tags': ['a', 'b']}], pool=500), [])
+
+
+class ContestEntryRows(unittest.TestCase):
+    """2026 공모전 '전체 참여작' 태그 — 참여작 수 · 참여 비율 · 일간 500위 진입(2026-10-18)."""
+    def test_counts_and_entry(self):
+        items = [
+            {'ID': '1', 'View': 900, 'DailyRank': 3, 'Tags': ['판타지', '하렘']},
+            {'ID': '2', 'View': 10, 'DailyRank': 800, 'Tags': ['판타지', '하렘']},
+            {'ID': '3', 'View': 5, 'DailyRank': None, 'Tags': ['판타지', '단독']},
+            {'ID': '4', 'View': -1, 'DailyRank': None, 'Tags': ['판타지']},   # 삭제된 작품 — 참여작 수 · 분모에서 뺀다
+        ]
+        rows = M._contest_entry_tag_rows(items, pool=500)
+        self.assertEqual([(r['tag'], r['count'], r['entered'], r['entrants']) for r in rows],
+                         [('판타지', 3, 1, 3), ('하렘', 2, 1, 3)])   # 참여작 순, '단독'(1편)은 뺀다

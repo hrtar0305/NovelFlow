@@ -1487,6 +1487,41 @@ def get_contest_tags_by_date(year: int, date: str, response: Response):
     except ClientError as e:
         raise _server_error("DynamoDB query failed")
 
+def _contest_entry_tag_rows(items: list[dict], pool: int = CONTEST_TAG_POOL) -> list[dict]:
+    """'전체 참여작' 태그 행 — 참여작 수(삭제 작품 제외) · 그날 일간 pool 위 안에 든 수. 참여작 순, 2편 미만 태그 제외.
+    구역 · 100위 안은 내지 않는다 — 전체로 세면 100위 안이 2% 라 작은 태그 대부분이 0편이었다(2026-10-18)."""
+    live = [it for it in items if (it.get('View') if it.get('View') is not None else 0) != -1]
+    counts: dict[str, int] = {}
+    entered: dict[str, int] = {}
+    for it in live:
+        rank = it.get('DailyRank')
+        for tag in set(it.get('Tags') or []):
+            counts[tag] = counts.get(tag, 0) + 1
+            if rank is not None and int(rank) <= pool:
+                entered[tag] = entered.get(tag, 0) + 1
+    rows = [{'tag': t, 'count': n, 'entered': entered.get(t, 0), 'entrants': len(live), 'pool': pool}
+            for t, n in counts.items() if n >= 2]
+    rows.sort(key=lambda r: (-r['count'], r['tag']))
+    return rows
+
+
+@app.get("/api/contests/{year}/ranks/entry-tags/{date}")
+def get_contest_entry_tags_by_date(year: int, date: str, response: Response):
+    """공모전 태그 — 전체 참여작 기준(참여작 수 · 참여 비율 · 일간 500위 진입률). 기본 보기(일간 500위 안)의 짝."""
+    tbl = _contest_table_for(year)
+    try:
+        items = _fetch_all_contest_items(date, '#i, #g, #a, #r, #w', {'#i': 'ID', '#g': 'Tags', '#a': 'IsAdult', '#r': 'DailyRank', '#w': 'View'}, tbl)
+        rows = _contest_entry_tag_rows(_apply_content_policy_all(items))
+        if not rows:
+            raise HTTPException(status_code=404, detail="No contest data for the given date.")
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=86400"
+        return rows
+    except HTTPException:
+        raise
+    except ClientError:
+        raise _server_error("DynamoDB query failed")
+
+
 @app.get("/api/contests/{year}/ranks/daily-tags/{date}", response_model=List[TagRankData])
 def get_contest_daily_tags_by_date(year: int, date: str, response: Response):
     """공모전 태그 랭킹 — **일간 500위 안 작품만**으로 데일리 태그 랭킹과 같은 하루 판정(2026-10-18, `_contest_pool_tag_rows`).
