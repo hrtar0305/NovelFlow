@@ -47,8 +47,8 @@ export default function DailyTagBoard({
   const [sort, setSort] = useState<TagSort>(DEFAULT_TAG_SORT);
   const [zone, setZone] = useState<Zone>('all');
   const [search, setSearch] = useState('');
-  // 지도에서 고른 태그는 이름이 정확히 같은 것만 — 검색어처럼 '포함'으로 걸면 '방송'을 고를 때 '인터넷방송'까지 나왔다(2026-10-18).
-  const [exact, setExact] = useState(false);
+  // 지도에서 고른 태그 — 표를 거르지 않고 전체 표에서 그 행으로 데려간다(2026-10-18).
+  const [focus, setFocus] = useState<{ key: string; seq: number } | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [openTag, setOpenTagState] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -73,9 +73,8 @@ export default function DailyTagBoard({
   const activeZone: Zone = hasZones ? zone : 'all';
   const q = search.trim().toLowerCase();
   const rows = useMemo(() => sortTags(
-    zoned.filter(t => (activeZone === 'all' || t.zone === activeZone)
-      && (!q || (exact ? t.tag.toLowerCase() === q : t.tag.toLowerCase().includes(q)))), sort,
-  ), [zoned, activeZone, q, exact, sort]);
+    zoned.filter(t => (activeZone === 'all' || t.zone === activeZone) && (!q || t.tag.toLowerCase().includes(q))), sort,
+  ), [zoned, activeZone, q, sort]);
   const mapRows = useMemo(() => zoned.filter((t): t is Row & { top100: number; ranked_total: number } =>
     t.count >= 5 && t.top100 != null && t.ranked_total != null), [zoned]);
   const matches = useMemo(() => (activeZone !== 'all' || q ? new Set(rows.map(r => r.tag)) : null), [rows, activeZone, q]);
@@ -87,18 +86,16 @@ export default function DailyTagBoard({
     const el = toolbarRef.current;
     if (el && el.getBoundingClientRect().top < 0) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72 });
   };
-  const applySearch = (v: string) => { setSearch(v); setExact(false); scrollToToolbar(); };
+  const applySearch = (v: string) => { setSearch(v); scrollToToolbar(); };
   const submitSearch = (e: FormEvent) => { e.preventDefault(); applySearch(searchInput.trim()); };
-  // 지도의 점을 누르면 표에서 그 태그를 찾는다(펼칠 수 있는 판이면 펼친다).
+  // 지도의 점을 누르면 표를 거르지 않고 그 행으로 데려간다(펼칠 수 있는 판이면 펼친다). 예전엔 태그 이름을 검색창에 넣어 걸렀는데,
+  // 검색창의 글자를 사용자가 친 것처럼 보여 다시 검색하면 '포함' 검색으로 다른 태그가 생겼다(2026-10-18). 지금 구역·검색이 그 태그를
+  // 가리고 있으면 그때만 풀어 준다.
   const pickFromMap = useCallback((tag: string) => {
-    setZone('all');
-    setSearch(tag);
-    setExact(true);
-    setSearchInput(tag);
+    if (!rows.some(r => r.tag === tag)) { setZone('all'); setSearch(''); setSearchInput(''); }
     if (renderExpanded) setOpenTag(tag);
-    const el = toolbarRef.current;
-    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72, behavior: 'smooth' });
-  }, [renderExpanded, setOpenTag]);
+    setFocus(f => ({ key: tag, seq: (f?.seq ?? 0) + 1 }));
+  }, [rows, renderExpanded, setOpenTag]);
 
   const strongIf = (keys: TagSortKey[], v: ReactNode) => (keys.includes(sort.key) ? <b className="rank-strong">{v}</b> : v);
 
@@ -179,7 +176,7 @@ export default function DailyTagBoard({
             } : {})}
             onRowHover={t => setHover(t?.tag ?? null)}
             // 수백 개를 다 펼치면 아래 각주가 1~3만 px 밑에 묻힌다 — 상위 50개만, 나머지는 '전체 보기'(사용자 2026-10-05).
-            collapseAfter={50} expandOnMobile
+            collapseAfter={50} expandOnMobile focus={focus}
             renderMobileRow={mobileRow}
             emptyText={tags.length === 0 ? emptyText : '조건에 맞는 태그가 없습니다.'} />
         )}
