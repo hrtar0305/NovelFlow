@@ -12,6 +12,10 @@ import { changeValue, finiteOrNull, nextSortOf, sortBy, type Sort } from './rank
  */
 export type ZoneKey = 'mainstream' | 'gem' | 'saturated';
 
+/** 이보다 작품이 적은 태그는 100위 안 비율을 내지 않는다(구역 없음 · 지도에 안 그림 · 비율 정렬 끝). 2편 중 2편(100%)처럼
+ *  작품 한두 편이 비율을 정해 '100위 안' 정렬 맨 위를 이런 태그가 차지했다(2026-10-17: 15위까지 중 14개가 5편 이하). */
+export const MIN_WORKS = 5;
+
 /** 필터 줄·칩의 읽기 순서 */
 export const ZONE_ORDER: ZoneKey[] = ['mainstream', 'gem', 'saturated'];
 
@@ -55,7 +59,7 @@ export function zoneOf(
   rules: ZoneRules = DAILY_RULES,
 ): { zone: ZoneKey | null; edge: boolean } {
   const lines = zoneLines(t.ranked_total, rules);
-  if (!lines || t.top100 == null || t.count < 5) return { zone: null, edge: false };
+  if (!lines || t.top100 == null || t.count < MIN_WORKS) return { zone: null, edge: false };
   const share = t.top100 / t.count;
   if (t.count >= lines.cut) {
     return { zone: share >= lines.p0 ? 'mainstream' : 'saturated', edge: Math.abs(share / lines.p0 - 1) <= rules.edge + 1e-9 };
@@ -84,7 +88,7 @@ export const nextTagSort = (s: TagSort, key: TagSortKey): TagSort => nextSortOf(
 /** 정렬용 값. 변동의 NEW는 일간 작품 표와 같이 가장 큰 상승으로 친다(내림차순 = NEW → 상승 폭 순). */
 const sortValue = (t: DailyTag, key: TagSortKey): number | null => {
   if (key === 'rank_change') return changeValue(t.rank_change);
-  if (key === 'top_share') return t.top100 != null && t.count > 0 ? t.top100 / t.count : null;
+  if (key === 'top_share') return t.top100 != null && t.count >= MIN_WORKS ? t.top100 / t.count : null;
   return finiteOrNull(t[key]);
 };
 
@@ -95,9 +99,11 @@ export const sortTags = <T extends DailyTag>(rows: T[], sort: TagSort): T[] => s
 export const sharePct = (share: number, N: number | null | undefined): string =>
   (N && 100 / N < 0.1 ? `${(share * 100).toFixed(1)}%` : `${Math.round(share * 100)}%`);
 
-/** 100위 안 'N편 · x%' */
+/** 100위 안 'N편 · x%'. 작품 5편 미만은 편수만. */
 export const formatTop = (t: { count: number; top100?: number | null; ranked_total?: number | null }): string =>
-  (t.top100 != null && t.count > 0 ? `${t.top100}편 · ${sharePct(t.top100 / t.count, t.ranked_total)}` : DASH);
+  (t.top100 == null || t.count <= 0 ? DASH
+    : t.count < MIN_WORKS ? `${t.top100}편`
+    : `${t.top100}편 · ${sharePct(t.top100 / t.count, t.ranked_total)}`);
 
 
 /**

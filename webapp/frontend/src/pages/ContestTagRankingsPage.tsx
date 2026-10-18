@@ -90,7 +90,7 @@ function DailyContestTags() {
       <ContestHeader year={year} date={dateParam ?? null} availableDates={dates} view="tags"
         onDateChange={d => navigate(`/contests/${year}/tags/rankings/${d}`)}
         onYearChange={y => navigate(`/contests/${y}/tags/rankings`)}
-        meta={`${cfg.schedule} · 일간 순위 작품에 달린 태그 · 인기 점수(조회 증가 점유율) 순`} />
+        meta={`${cfg.schedule} · 일간 순위 작품에 달린 태그`} />
       <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
         scoreLabel="조회 증가" rules={CONTEST_RULES}
         ariaLabel="공모전 태그 순위"

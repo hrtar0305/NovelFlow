@@ -76,7 +76,7 @@ export default function TagRankingsPage() {
           { to: `/tags/rankings${dateParam ? `/${dateParam}` : ''}`, label: '오늘', on: true },
           { to: '/tags/trends', label: '기간 트렌드', on: false },
         ]} />}
-        meta={`일간 랭킹 ${tags[0]?.ranked_total ? `${tags[0].ranked_total}편` : '작품'}에 달린 태그 · 인기 점수(랭킹 점수 점유율) 순`} />
+        meta={`일간 랭킹 ${tags[0]?.ranked_total ? `${tags[0].ranked_total}편` : '작품'}에 달린 태그`} />
 
       <DailyTagBoard tags={tags} loading={loading} error={error} resetKey={dateParam}
         scoreLabel="랭킹 점수"

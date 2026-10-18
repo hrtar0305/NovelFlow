@@ -59,7 +59,7 @@ const MapTip = ({ active, payload }: { active?: boolean; payload?: { payload: Pl
       {d.zone ? <span style={{ color: `var(--np-zone-${d.zone}-text)` }}>{ZONE_LABEL[d.zone]}{d.edge ? ' · 경계' : ''}</span> : null}
       {chg.kind !== 'none' ? <span>전날 대비 {chg.label}</span> : null}
       <span>작품 {d.count}편 · 100위 안 {formatTop(d)} · 인기 점수 {formatRatio(d.score_share)}</span>
-      {d.held ? <span>100위 안 {d.top100}편 — 판단 보류</span> : null}
+      {d.held ? <span>100위 안 {d.top100}편뿐이라 숨은 강자에서 뺌</span> : null}
     </div>
   );
 };

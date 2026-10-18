@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import Sparkline from '../ui/Sparkline';
 import { formatDateKo, formatInt } from '../../utils/format';
 import type { TagSeriesResponse } from '../../utils/tagTrends';
+import { formatTop } from '../../utils/tagZones';
 
 
 interface Props {
@@ -34,7 +35,7 @@ export default function TagRowExpand({ tag, date, series, novelsHref }: Props) {
         {first >= 0 && first !== last ? <>{formatDateKo(series.dates[first])} <b>{row.rank[first]}위</b> → </> : null}
         {formatDateKo(series.dates[last])} <b>{row.rank[last]}위</b>
         {' · '}작품 <b>{formatInt(row.count[last])}편</b>
-        {row.top?.[last] != null && row.count[last] ? <>{' · '}100위 안 <b>{row.top[last]}편 · {Math.round((row.top[last]! / row.count[last]!) * 100)}%</b></> : null}
+        {row.top?.[last] != null && row.count[last] ? <>{' · '}100위 안 <b>{formatTop({ count: row.count[last]!, top100: row.top[last] })}</b></> : null}
         {days < series.dates.length ? <> · {series.dates.length}일 중 {days}일 집계</> : null}
       </p>
       {go}

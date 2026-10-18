@@ -63,6 +63,10 @@ describe('sortTags', () => {
     const r2 = [{ ...t(1, 10, null), top100: 1 }, { ...t(2, 10, null), top100: 5 }, { ...t(3, 10, null), top100: null }];
     expect(sortTags(r2, { key: 'top_share', direction: 'descending' }).map(r => r.Rank)).toEqual([2, 1, 3]);
   });
+  it('작품 5편 미만은 비율이 없는 것으로 쳐 끝에 둔다 — 2편 중 2편(100%)이 맨 위를 차지했다', () => {
+    const r3 = [{ ...t(1, 300, null), top100: 70 }, { ...t(2, 2, null), top100: 2 }, { ...t(3, 8, null), top100: 4 }];
+    expect(sortTags(r3, { key: 'top_share', direction: 'descending' }).map(r => r.Rank)).toEqual([3, 1, 2]);
+  });
 });
 
 describe('nextTagSort', () => {
@@ -78,6 +82,7 @@ describe('formatTop', () => {
     expect(formatTop({ count: 150, top100: 37, ranked_total: 500 })).toBe('37편 · 25%');
     expect(formatTop({ count: 381, top100: 13, ranked_total: 2981 })).toBe('13편 · 3.4%');
     expect(formatTop({ count: 10, top100: null, ranked_total: 500 })).toBe('–');
+    expect(formatTop({ count: 3, top100: 2, ranked_total: 500 })).toBe('2편');   // 5편 미만은 편수만
   });
 });
 

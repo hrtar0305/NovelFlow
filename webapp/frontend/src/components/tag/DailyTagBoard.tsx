@@ -7,7 +7,7 @@ import RankTable, { type RankColumn } from '../ranking/RankTable';
 import TagTerrainMap from './TagTerrainMap';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import {
-  DAILY_RULES, DEFAULT_TAG_SORT, ZONE_LABEL, ZONE_ORDER, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneLines,
+  DAILY_RULES, DEFAULT_TAG_SORT, MIN_WORKS, ZONE_LABEL, ZONE_ORDER, formatTop, nextTagSort, sortTags, withZones, zoneCounts, zoneLines,
   type DailyTag, type TagSort, type TagSortKey, type ZonedTag, type ZoneKey, type ZoneRules,
 } from '../../utils/tagZones';
 import { formatInt, formatRatio } from '../../utils/format';
@@ -19,6 +19,7 @@ import { formatInt, formatRatio } from '../../utils/format';
  */
 
 type Zone = 'all' | ZoneKey;
+const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 type Row = ZonedTag<DailyTag>;
 
 const ZoneName = ({ zone, edge }: { zone: ZoneKey | null; edge?: boolean }) => (zone
@@ -59,11 +60,12 @@ export default function DailyTagBoard({
 
   const N = tags[0]?.ranked_total ?? null;
   const lines = zoneLines(N, rules);
+  // 각주는 정의만 — 숫자는 그날 N 으로 채운다(데일리 30편 · 20%, 공모전 179편 · 3.4%).
   const notes = useMemo(() => [
-    { id: 'score', content: <>인기 점수 = 오늘 순위 작품{N ? ` ${formatInt(N)}편` : ''}이 받은 {scoreLabel} 가운데 이 태그가 달린 작품들이 차지하는 몫. 한 작품에 태그가 여럿이라 태그끼리 더하면 100%를 넘습니다. 표의 순위가 이 값 순입니다.</> },
-    { id: 'top', content: <>100위 안 = 이 태그 작품 가운데 100위 안에 든 작품 수와 그 비율. 평균은 {lines ? `${Math.round(lines.p0 * 1000) / 10}%` : '100 ÷ 순위 작품 수'}입니다.</> },
-    { id: 'zone', content: <>구역 — 대세: {lines ? `${lines.cut}편` : '6%'} 이상 쓰이면서 100위 안 비율이 평균 이상 · 과포화: 많이 쓰이지만 평균 미만 · 숨은 강자: 적게 쓰이지만 100위 안에 {rules.gemMinTop}편 이상, 평균의 {rules.gemMult}배 이상. 경계는 비율이 평균의 ±{Math.round(rules.edge * 100)}% 안이라 하루 사이 바뀔 수 있는 태그. 뜨고 식는 태그는 태그 트렌드(기간)에서 봅니다.</> },
-  ], [N, lines, scoreLabel, rules]);
+    { id: 'score', content: <>그날 {scoreLabel} 합계 중 이 태그 작품들의 몫. 순위는 이 값 순. 작품마다 태그가 여럿이라 다 더하면 100%를 넘습니다.</> },
+    { id: 'top', content: <>100위 안에 든 작품 수 · 비율(평균 {lines ? pct(lines.p0) : '100 ÷ 순위 작품 수'}). {MIN_WORKS}편 미만 태그는 비율을 내지 않습니다.</> },
+    { id: 'zone', content: lines ? <>대세: {lines.cut}편 이상, 비율 평균 이상 · 과포화: {lines.cut}편 이상, 평균 미만 · 숨은 강자: {MIN_WORKS}~{lines.cut - 1}편, 100위 안 {rules.gemMinTop}편 이상, 비율 {pct(lines.gemShare)} 이상 · 경계: 평균과 {Math.round(rules.edge * lines.p0 * 1000) / 10}%p 안(구역이 바뀌기 쉬움)</> : null },
+  ], [lines, scoreLabel, rules]);
 
   const zoned = useMemo(() => withZones(tags, rules), [tags, rules]);
   const counts = useMemo(() => zoneCounts(zoned), [zoned]);
@@ -74,7 +76,7 @@ export default function DailyTagBoard({
     zoned.filter(t => (activeZone === 'all' || t.zone === activeZone) && (!q || t.tag.toLowerCase().includes(q))), sort,
   ), [zoned, activeZone, q, sort]);
   const mapRows = useMemo(() => zoned.filter((t): t is Row & { top100: number; ranked_total: number } =>
-    t.count >= 5 && t.top100 != null && t.ranked_total != null), [zoned]);
+    t.count >= MIN_WORKS && t.top100 != null && t.ranked_total != null), [zoned]);
   const matches = useMemo(() => (activeZone !== 'all' || q ? new Set(rows.map(r => r.tag)) : null), [rows, activeZone, q]);
   // 칩의 대표 태그: 구역마다 인기 점수 상위 3개
   const leaders = useMemo(() => Object.fromEntries(ZONE_ORDER.map(z => [z,
@@ -120,21 +122,17 @@ export default function DailyTagBoard({
   // 날짜를 바꾸는 동안 이전 날짜의 칩·지도·표를 흐리게 둔다(Stale). 처음 들어와 값이 없을 때만 빈 틀(2026-10-18).
   const ready = !error && tags.length > 0;
   const firstLoad = loading && !error && tags.length === 0;
-  const mapNote = <p className="tag-map__note">작품 5편 미만 태그는 그리지 않습니다 · 뜨고 식는 태그는 태그 트렌드(기간)에서 봅니다</p>;
   const map = ready && hasZones && mapRows.length > 0 ? (
     <Stale loading={loading}><section className="tag-map" aria-label="태그 지형 지도">
       {mobile && !mapOpen ? (
         <button type="button" className="link-button tag-map__open" onClick={() => setMapOpen(true)}>지형 지도 보기</button>
       ) : (
-        <>
-          <TagTerrainMap rows={mapRows} rules={rules} active={openTag} matches={matches} onPick={pickFromMap} />
-          {mapNote}
-        </>
+        <TagTerrainMap rows={mapRows} rules={rules} active={openTag} matches={matches} onPick={pickFromMap} />
       )}
     </section></Stale>
   ) : firstLoad ? (
     <section className="tag-map" aria-hidden="true">
-      {mobile ? <button type="button" className="link-button tag-map__open" disabled>지형 지도 보기</button> : <><SkeletonBox className="tag-map__chart" />{mapNote}</>}
+      {mobile ? <button type="button" className="link-button tag-map__open" disabled>지형 지도 보기</button> : <SkeletonBox className="tag-map__chart" />}
     </section>
   ) : null;
 
