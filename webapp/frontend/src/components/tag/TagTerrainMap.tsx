@@ -29,12 +29,12 @@ type ShapeProps = { cx?: number; cy?: number; payload?: Plotted; 'data-recharts-
 interface Props {
   rows: MapTag[];
   rules?: ZoneRules;
-  /** 표에서 마우스를 올린 태그·펼친 태그 */
+  /** 펼친 태그 — 지도 강조는 이것만 따른다. 마우스를 올린 표 행까지 따르면, 행을 눌러 닫은 뒤에도 마우스가 그 행에 있거나
+   *  휠로 스크롤해 '떠났다'는 신호가 안 오면 강조가 남았다(2026-10-18). 점에 마우스를 올리면 설명창만 뜬다. */
   active: string | null;
   /** 검색·구역 필터 중이면 맞는 태그만 진하게 */
   matches: Set<string> | null;
   onPick: (tag: string) => void;
-  onHover: (tag: string | null) => void;
 }
 
 /** 1·2·5 × 10^k 눈금(도메인 안) — 공모전은 작품 수가 2,000 을 넘어 고정 눈금이 200 에서 끊겼다. */
@@ -64,7 +64,7 @@ const MapTip = ({ active, payload }: { active?: boolean; payload?: { payload: Pl
   );
 };
 
-export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, matches, onPick, onHover }: Props) {
+export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, matches, onPick }: Props) {
   const lines = zoneLines(rows[0]?.ranked_total, rules);
 
   const countDomain = useMemo(() => {
@@ -106,8 +106,6 @@ export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, match
       strokeWidth: on ? 2.2 : 1,
       style: { cursor: 'pointer' },
       onClick: () => onPick(payload.tag),
-      onMouseEnter: () => onHover(payload.tag),
-      onMouseLeave: () => onHover(null),
     };
     const fade = matches && !matches.has(payload.tag) ? 0.12 : 1;
     return (
@@ -115,7 +113,7 @@ export default function TagTerrainMap({ rows, rules = DAILY_RULES, active, match
         <circle cx={cx} cy={cy} r={r} fillOpacity={payload.zone ? 0.85 : 0.55} {...common} />
       </g>
     );
-  }, [active, matches, onPick, onHover]);
+  }, [active, matches, onPick]);
 
   // 이름표는 점과 다른 층(두 번째 Scatter)에 — 한 층이면 뒤에 그린 점이 앞 이름표를 덮는다. 실제 좌표로 우선순위 순으로 훑으며
   // 이미 놓인 이름표와 겹치지 않을 때만 붙인다(▲ 도 예외 없이 — 공모전 위쪽에서 여럿이 겹쳐 읽을 수 없었다). 렌더 패스마다 초기화.

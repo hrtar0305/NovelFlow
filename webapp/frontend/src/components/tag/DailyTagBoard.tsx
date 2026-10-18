@@ -49,7 +49,6 @@ export default function DailyTagBoard({
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [openTag, setOpenTagState] = useState<string | null>(null);
-  const [hover, setHover] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const mobile = useIsMobile();
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -124,7 +123,7 @@ export default function DailyTagBoard({
         <button type="button" className="link-button tag-map__open" onClick={() => setMapOpen(true)}>지형 지도 보기</button>
       ) : (
         <>
-          <TagTerrainMap rows={mapRows} rules={rules} active={hover ?? openTag} matches={matches} onPick={pickFromMap} onHover={setHover} />
+          <TagTerrainMap rows={mapRows} rules={rules} active={openTag} matches={matches} onPick={pickFromMap} />
           <p className="tag-map__note">작품 5편 미만 태그는 그리지 않습니다 · 뜨고 식는 태그는 태그 트렌드(기간)에서 봅니다</p>
         </>
       )}
@@ -170,7 +169,6 @@ export default function DailyTagBoard({
               onToggleRow: (t: Row) => setOpenTag(openTag === t.tag ? null : t.tag),
               renderExpanded,
             } : {})}
-            onRowHover={t => setHover(t?.tag ?? null)}
             // 수백 개를 다 펼치면 아래 각주가 1~3만 px 밑에 묻힌다 — 상위 50개만, 나머지는 '전체 보기'(사용자 2026-10-05).
             collapseAfter={50} expandOnMobile
             renderMobileRow={mobileRow}
