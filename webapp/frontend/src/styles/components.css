@@ -320,3 +320,25 @@
   outline-offset: 2px;
   border-radius: var(--np-radius-sm);
 }
+
+/* 맨 위로(components/ui/ScrollTop). 헤더(z 100)·메뉴보다 아래. */
+.scroll-top {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--np-border);
+  border-radius: 50%;
+  background: var(--np-surface);
+  color: var(--np-text-secondary);
+  box-shadow: var(--np-shadow-md);
+  transition: color var(--np-transition);
+}
+.scroll-top:hover { color: var(--np-text-heading); }
+.scroll-top:focus-visible { outline: 2px solid var(--np-focus-ring); outline-offset: 2px; }
+@media (min-width: 768px) { .scroll-top { right: 24px; bottom: 24px; } }

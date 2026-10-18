@@ -4,7 +4,7 @@
  *  먼 거리는 부드럽게 굴리지 않고 바로 옮긴다. 공모전 표(4,670행 · 문서 39만 px)에서 부드러운 스크롤이 1.9만 px 쯤에서
  *  멈췄다 — 굴러가는 동안 가상 목록이 행을 새로 재며 문서 높이가 바뀌자 브라우저가 스크롤을 끊었다(2026-10-18). 바로 옮긴 뒤에도
  *  그 자리 행이 재어지며 목표가 밀릴 수 있어 다음 프레임에 한 번 더 맞춘다. */
-const SMOOTH_MAX_SCREENS = 3;
+export const SMOOTH_MAX_SCREENS = 3;
 
 export function jumpTo(id: string) {
   return (e: { preventDefault: () => void }) => {

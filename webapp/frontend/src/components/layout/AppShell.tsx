@@ -1,6 +1,7 @@
 import type { PropsWithChildren } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../Header';
+import ScrollTop from '../ui/ScrollTop';
 
 const REPO_URL = 'https://github.com/hrtar0305/NovelFlow';
 
@@ -25,6 +26,7 @@ function AppShell({ children }: PropsWithChildren) {
           <p>© 2024–{new Date().getFullYear()} NovelFlow</p>
         </div>
       </footer>
+      <ScrollTop />
     </div>
   );
 }
