@@ -86,17 +86,45 @@ aws lambda update-function-code --function-name np-trend-crawler-consolidate-dat
   --zip-file fileb:///tmp/consolidate.zip
 ```
 
-## 프론트엔드
+## 웹 (백엔드 · 프론트) — web-v2.0.0 부터
+
+main 에 합친 뒤 태그(`web-vX.Y.Z`)를 걸고, 백엔드 → 프론트 순서로 올린다(새 백엔드가 먼저 있어야 새 화면이 부르는 API 가 있다).
+
+**백엔드** — Lambda `np-trend-webapp-api`(zip, Python 3.13, arm64, 핸들러 `api.main.handler`). Docker 없이 arm64 휠로 묶는다:
 
 ```bash
-cd webapp/frontend
-npm run build          # dist/ 생성 → S3 업로드 → CloudFront 캐시 무효화
+B=/tmp/backend-build && rm -rf $B && mkdir -p $B/asset/api
+pip install -r webapp/backend/requirements.lambda.txt -t $B/asset/package \
+  --platform manylinux2014_aarch64 --implementation cp --python-version 3.13 --only-binary=:all:
+cp webapp/backend/api/*.py $B/asset/api/          # api/ 아래 모듈 전부(main 이 analysis_report · episode_history 를 import)
+(cd $B/asset && zip -qr ../deployment_package.zip . -x "*/__pycache__/*")
+aws lambda update-function-code --function-name np-trend-webapp-api --zip-file fileb://$B/deployment_package.zip
+aws lambda update-function-configuration --function-name np-trend-webapp-api --description "web-vX.Y.Z"
 ```
+
+API Gateway(REST `33jdh3age1`, 스테이지 `prod`)는 API 키를 요구하고 CloudFront 가 원본 헤더 `x-api-key` 로 붙인다 — 직접 부르면 403.
+사용량 계획 `Webapp-Usage-Plan`(초당 10 · 순간 20 · **월 1만 건**)은 비용 상한으로 일부러 둔 값이다(넘으면 그달 API 가 429 — 추세를 보고 조정).
+
+**프론트** — S3 `np-trend-frontend-assets` + CloudFront `E1PP4QRS4HH998`:
+
+```bash
+cd webapp/frontend && npm run build
+aws s3 sync dist/assets s3://np-trend-frontend-assets/assets --delete --cache-control "public, max-age=31536000, immutable"
+aws s3 cp dist/index.html s3://np-trend-frontend-assets/index.html --cache-control "no-cache" --content-type text/html
+aws cloudfront create-invalidation --distribution-id E1PP4QRS4HH998 --paths "/*"
+```
+
+**CloudFront 설정(2026-10-18)**
+- 정액 요금제 **Free**(초과 요금 없음, 월 요청 100만 · 전송 100GB, 계속 넘으면 성능 조정 — 늘면 Pro $15). 구독은 web ACL 을 배포에 **먼저 붙인 뒤**
+  `pricing-plan-manager create-subscription`(최신 boto3, CLI 2.27 에는 없음)으로 했다. Free · Pro 는 직접 만든 캐시 정책 · 원본 요청 정책을 받지 않는다 —
+  `/api/*` 는 관리형 CachingOptimized(쿼리 문자열을 버림)라 API 값은 **경로로** 받는다.
+- WAF web ACL `novelflow-web-plan`(us-east-1): IP당 5분 1,000건 차단(모든 경로 — `/api/` 만 고르는 조건은 Free 에 없다).
+- 기본 문서 `index.html`(첫 화면이 오류 응답 경로로 나가던 것을 고침), 403/404 → `/index.html` 200(SPA).
 
 ## 재배포 체크리스트
 
 - [ ] **백엔드(`main.py`) 변경** → 백엔드 Lambda 재배포 (자동 배포 없음).
-- [ ] **프론트 변경** → `npm run build` → S3 업로드 → CloudFront invalidation.
+- [ ] **프론트 변경** → 위 「웹」 절대로(build → assets sync --delete → index.html no-cache → invalidation).
 - [ ] **크롤러/파서 로직 변경** → Docker 재빌드 → ECR push → Lambda 이미지 갱신.
 - [ ] **적재 로직(`data_ingestion.py`·`tag_stats.py`) 변경** → zip 재생성(두 파일 모두) → Lambda 갱신.
 - [ ] 스코어링/집계 로직을 바꿨다면 과거 데이터와의 호환성 확인.
@@ -245,6 +273,22 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 
 `novelflow-alarm-state` 규칙은 알람 ARN 목록을 패턴으로 가진다 — `put-rule` 은 패턴을 통째로 바꾸므로, 알람을 더할 때는 목록 전체를 다시 적는다
 (`contests/2026/deploy.sh` 의 `collector_alarm` 이 그 목록을 가진다). 데일리 성인작 0편 경고는 알람이 아니라 consolidate 가 알림 Lambda 를 직접 부른다.
+
+## 사용 한도 감시 (`novelflow-usage-watch`, 2026-10-18)
+
+정해진 한도가 있는 것들을 매일 09:30 KST 에 재 Discord 로 알린다(`utils/usage_watch.py`, 스케줄러 `novelflow-usage-watch`).
+한도의 50% · 80% · 100% 또는 월말 전망이 한도를 넘으면 그날 알리고, 월요일엔 조용해도 요약을 보낸다. 수동 실행: `{"force": true}`.
+
+| 무엇 | 한도 | 넘으면 |
+|---|---|---|
+| API Gateway 사용량 계획 | 월 1만 건 | 그달 API 429(사이트 데이터 멈춤) |
+| CloudFront Free 요금제 | 월 요청 100만 · 전송 100GB | 요금 없음, 계속 넘으면 성능 조정 |
+| Algolia 무료 요금제 | 검색 요청 월 1만 · 레코드 5만(2026-08 축소) | 검색이 멈출 수 있음 |
+| AWS 프리 티어(전망 80%+) | 항목별 | 소액 청구 — 참고로만 싣고 이것만으로 알리지 않음(Step Functions 는 매달 넘음) |
+
+Algolia 는 사용량 조회 권한(usage ACL) 키가 SSM `/NovelFlow/ALGOLIA_USAGE_API_KEY`(SecureString)에 있어야 잰다 — 색인 갱신 Lambda 의
+`ALGOLIA_ADMIN_API_KEY` 는 이름과 달리 쓰기 키라 그 권한도, 키를 만들 권한도 없다. Algolia 대시보드에서 usage 만 가진 키를 만들어 넣는다.
+예산: `NP-Trend-Monthly-Cost`($5) — 전망 80%, 실제 80% · 100% · 400%($20) 이메일.
 
 ## 공모전 수집 종료 (1년 원칙, 결정 2026-10-12)
 
