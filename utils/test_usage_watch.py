@@ -23,14 +23,17 @@ class Judge(unittest.TestCase):
         # 프리 티어(넘으면 소액 청구될 뿐 멈추지 않음)는 그것만으로 알리지 않는다 — Step Functions 는 이미 매달 넘는다
         self.assertIsNone(U.level_of(U.Meter('sfn', 4000, 4000, '', projected=6889, soft=True)))
 
-    def test_report_picks_worst_level_and_skips_quiet_days(self):
+    def test_daily_report_always_sent_and_takes_worst_level(self):
         quiet = [U.Meter('a', 10, 100, '건', projected=20)]
-        self.assertIsNone(U.build_notice(quiet, date(2026, 10, 18), weekly=False))
-        self.assertEqual(U.build_notice(quiet, date(2026, 10, 19), weekly=True)['level'], 'ok')   # 월요일 요약은 조용해도 보낸다
+        self.assertEqual(U.build_notice(quiet, date(2026, 10, 18))['level'], 'ok')   # 매일 보낸다 — 조용한 날은 초록
         loud = quiet + [U.Meter('b', 90, 100, '건', projected=150)]
-        n = U.build_notice(loud, date(2026, 10, 18), weekly=False)
+        n = U.build_notice(loud, date(2026, 10, 18))
         self.assertEqual(n['level'], 'warn')
         self.assertTrue(any('b' in line for line in n['lines']))
+
+
+    def test_money_format(self):
+        self.assertEqual(U._fmt(1.072, '$'), '$1.07')
 
 
 if __name__ == '__main__':

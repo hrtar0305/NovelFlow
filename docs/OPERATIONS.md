@@ -276,8 +276,9 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 
 ## 사용 한도 감시 (`novelflow-usage-watch`, 2026-10-18)
 
-정해진 한도가 있는 것들을 매일 09:30 KST 에 재 Discord 로 알린다(`utils/usage_watch.py`, 스케줄러 `novelflow-usage-watch`).
-한도의 50% · 80% · 100% 또는 월말 전망이 한도를 넘으면 그날 알리고, 월요일엔 조용해도 요약을 보낸다. 수동 실행: `{"force": true}`.
+매일 09:30 KST 에 이번 달 AWS 지출(예산 계산값 · 월말 예상)과 정해진 한도들의 사용량을 Discord 로 보낸다(`utils/usage_watch.py`,
+스케줄러 `novelflow-usage-watch`). 한도의 50% · 80% · 100% 나 월말 전망이 한도를 넘으면 카드 색이 바뀐다(100% 는 멘션).
+감시 자체가 비용을 만들지 않게 무료 호출만 쓴다 — Cost Explorer(요청당 $0.01) 대신 Budgets, GetMetricData 대신 GetMetricStatistics.
 
 | 무엇 | 한도 | 넘으면 |
 |---|---|---|

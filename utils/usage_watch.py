@@ -1,4 +1,5 @@
-"""정해진 사용 한도가 있는 것들을 하루 한 번 재고, 한도의 50% 를 넘거나 월말 전망이 한도를 넘으면 Discord 로 알린다(2026-10-18).
+"""매일 한 번 이번 달 AWS 지출과 정해진 사용 한도들을 재 Discord 로 보낸다(2026-10-18). 한도의 50% · 80% · 100% 나 월말 전망이
+한도를 넘으면 카드 색과 맨 윗줄로 알린다(100% 는 멘션).
 
 익명 사용자에게 사이트를 열면 비용 상한 장치(한도)가 곧 '사이트가 멈추는 스위치'가 된다 — 한도에 닿기 전에 알아야 조정할 수 있다.
   * API Gateway 사용량 계획(월 1만 건 — 비용 상한으로 일부러 둔 값, 넘으면 그달 API 가 429)
@@ -8,7 +9,10 @@
   * AWS 프리 티어 항목 중 월말 전망이 한도의 80% 를 넘는 것(Step Functions 상태 전이 등) — 참고로만 싣는다. 넘어도 서비스는
     멈추지 않고 소액이 청구될 뿐이라(Step Functions 는 이미 매달 넘는다) 그것만으로 알림을 보내지 않는다.
 
-알림은 문제가 있는 날에만 보낸다. 월요일에는 조용해도 한 번 요약을 보낸다(감시가 살아 있다는 신호).
+  * 이번 달 AWS 지출 · 월말 예상 — 예산 `BUDGET_NAME` 의 계산값(AWS Budgets, 하루 몇 번 갱신)
+
+**감시가 비용을 만들지 않게** 무료 호출만 쓴다: Cost Explorer(요청당 $0.01) 대신 Budgets, CloudWatch GetMetricData(지표당 과금) 대신
+GetMetricStatistics(무료 할당 100만 건 안), 나머지(API Gateway 조회 · 프리 티어 · SSM 표준 파라미터 · Algolia Usage API · Lambda 하루 1회)도 무료다.
 """
 import calendar
 import json
@@ -28,6 +32,8 @@ ALGOLIA_USAGE_KEY_PARAM = os.environ.get('ALGOLIA_USAGE_KEY_PARAM', '/NovelFlow/
 ALGOLIA_SEARCH_LIMIT = int(os.environ.get('ALGOLIA_SEARCH_LIMIT', '10000'))
 ALGOLIA_RECORD_LIMIT = int(os.environ.get('ALGOLIA_RECORD_LIMIT', '50000'))
 FREE_TIER_WARN = 0.8
+BUDGET_NAME = os.environ.get('BUDGET_NAME', 'NP-Trend-Monthly-Cost')
+ACCOUNT_ID = os.environ.get('ACCOUNT_ID', '012178037152')
 
 
 @dataclass
@@ -62,25 +68,26 @@ def level_of(m: Meter) -> str | None:
 
 
 def _fmt(v: float, unit: str) -> str:
+    if unit == '$':
+        return f'${v:,.2f}'
     if unit == 'GB':
         return f'{v / 10**9:,.1f}GB'
     return f'{v:,.0f}{unit}'
 
 
-def build_notice(meters: list[Meter], today: date, weekly: bool) -> dict | None:
+def build_notice(meters: list[Meter], today: date) -> dict:
+    """매일 보내는 카드. 줄 순서는 재는 순서(지출 → API → CDN → 검색 → 프리 티어) 그대로 — 날마다 같은 자리에서 읽게."""
     rank = {'fail': 3, 'warn': 2, 'info': 1, None: 0}
     levels = [level_of(m) for m in meters]
-    worst = max(levels, key=lambda lv: rank[lv])
-    if worst is None and not weekly:
-        return None
+    worst = max(levels, key=lambda lv: rank[lv], default=None)
     lines = []
-    for m, lv in sorted(zip(meters, levels), key=lambda x: -rank[x[1]]):
+    for m, lv in zip(meters, levels):
         mark = {'fail': '🔴', 'warn': '🟠', 'info': '🔵', None: '⚪'}[lv]
         proj = f' · 월말 전망 {_fmt(m.projected, m.unit)}({m.projected / m.limit:.0%})' if m.projected is not None and m.limit else ''
         lines.append(f'{mark} **{m.name}** {_fmt(m.used, m.unit)} / {_fmt(m.limit, m.unit)} ({m.used / m.limit:.0%}){proj}'
                      + (f' — {m.note}' if m.note else ''))
     title = {'fail': '사용 한도에 닿았습니다', 'warn': '사용 한도에 가까워지고 있습니다', 'info': '사용량이 한도의 절반을 넘었습니다',
-             None: '주간 사용량 요약 — 모두 여유 있음'}[worst]
+             None: '오늘의 사용량 — 모두 여유 있음'}[worst]
     return {'level': worst or 'ok', 'pipeline': '사용 한도 감시', 'date': today.isoformat(), 'title': title, 'lines': lines,
             'action': '추세를 보고 한도(API Gateway 사용량 계획 · CloudFront 요금제 · Algolia 요금제)를 조정하세요.' if rank[worst] >= 2 else ''}
 
@@ -106,11 +113,14 @@ def cloudfront(today: date) -> list[Meter]:
     cw = boto3.client('cloudwatch', region_name='us-east-1')
     start = datetime.combine(_month_start(today), datetime.min.time(), tzinfo=timezone.utc)
     end = datetime.now(timezone.utc)
-    q = lambda i, metric: {'Id': i, 'MetricStat': {'Metric': {'Namespace': 'AWS/CloudFront', 'MetricName': metric,
-        'Dimensions': [{'Name': 'DistributionId', 'Value': CF_DISTRIBUTION_ID}, {'Name': 'Region', 'Value': 'Global'}]},
-        'Period': 86400, 'Stat': 'Sum'}}
-    r = cw.get_metric_data(MetricDataQueries=[q('req', 'Requests'), q('bytes', 'BytesDownloaded')], StartTime=start, EndTime=end)
-    total = {x['Id']: sum(x['Values']) for x in r['MetricDataResults']}
+
+    def month_sum(metric: str) -> float:   # GetMetricStatistics — 무료 할당 안(GetMetricData 는 지표당 과금)
+        r = cw.get_metric_statistics(Namespace='AWS/CloudFront', MetricName=metric, StartTime=start, EndTime=end, Period=86400,
+                                     Statistics=['Sum'], Dimensions=[{'Name': 'DistributionId', 'Value': CF_DISTRIBUTION_ID},
+                                                                     {'Name': 'Region', 'Value': 'Global'}])
+        return sum(p['Sum'] for p in r['Datapoints'])
+
+    total = {'req': month_sum('Requests'), 'bytes': month_sum('BytesDownloaded')}
     return [Meter('CloudFront 요청(Free 요금제)', total.get('req', 0), CF_PLAN_REQUESTS, '건', project(total.get('req', 0), today), '넘어도 요금 없음 · 계속 넘으면 성능 조정'),
             Meter('CloudFront 전송(Free 요금제)', total.get('bytes', 0), CF_PLAN_BYTES, 'GB', project(total.get('bytes', 0), today))]
 
@@ -127,7 +137,9 @@ def algolia(today: date) -> list[Meter]:
     def stat(name: str) -> list:
         url = (f'https://usage.algolia.com/1/usage/{name}?granularity=daily'
                f'&startDate={_month_start(today).isoformat()}T00:00:00Z&endDate={today.isoformat()}T23:59:59Z')
-        req = urllib.request.Request(url, headers={'X-Algolia-Application-Id': ALGOLIA_APP_ID, 'X-Algolia-API-Key': key})
+        # User-Agent 를 붙인다 — 파이썬 기본값(Python-urllib)은 403 으로 막혔다.
+        req = urllib.request.Request(url, headers={'X-Algolia-Application-Id': ALGOLIA_APP_ID, 'X-Algolia-API-Key': key,
+                                                   'User-Agent': 'novelflow-usage-watch/1'})
         with urllib.request.urlopen(req, timeout=20) as resp:
             return json.loads(resp.read()).get(name, [])
 
@@ -138,6 +150,17 @@ def algolia(today: date) -> list[Meter]:
     if records:
         out.append(Meter('Algolia 레코드', records[-1], ALGOLIA_RECORD_LIMIT, '개'))
     return out
+
+
+def spend(today: date) -> list[Meter]:
+    """이번 달 실제 지출과 월말 예상 — 예산의 계산값(무료 조회). 예산 금액을 한도로 둔다."""
+    import boto3
+    b = boto3.client('budgets', region_name='us-east-1').describe_budget(AccountId=ACCOUNT_ID, BudgetName=BUDGET_NAME)['Budget']
+    calc = b.get('CalculatedSpend', {})
+    actual = float(calc.get('ActualSpend', {}).get('Amount', 0))
+    forecast = calc.get('ForecastedSpend', {}).get('Amount')
+    return [Meter('AWS 이번 달 지출', actual, float(b['BudgetLimit']['Amount']), '$',
+                  float(forecast) if forecast is not None else None, '예산 대비 · 월말 예상은 AWS 계산')]
 
 
 def free_tier() -> list[Meter]:
@@ -160,17 +183,17 @@ def handler(event, context):
     import boto3
     today = datetime.now(KST).date()
     meters, errors = [], []
-    for name, fn in (('API Gateway', lambda: api_gateway(today)), ('CloudFront', lambda: cloudfront(today)),
+    for name, fn in (('지출', lambda: spend(today)), ('API Gateway', lambda: api_gateway(today)), ('CloudFront', lambda: cloudfront(today)),
                      ('Algolia', lambda: algolia(today)), ('프리 티어', free_tier)):
         try:
             meters += fn()
         except Exception as e:   # 하나를 못 재도 나머지는 알린다
             errors.append(f'{name}: {type(e).__name__}: {str(e)[:160]}')
-    notice = build_notice(meters, today, weekly=today.weekday() == 0 or bool((event or {}).get('force')))
+    notice = build_notice(meters, today)
     if errors:
-        notice = notice or {'level': 'warn', 'pipeline': '사용 한도 감시', 'date': today.isoformat(), 'title': '일부 사용량을 재지 못했습니다', 'lines': []}
+        if notice['level'] == 'ok':
+            notice.update(level='warn', title='일부 사용량을 재지 못했습니다')
         notice['lines'] = notice['lines'] + [f'⚠️ {e}' for e in errors]
-    if notice:
-        boto3.client('lambda').invoke(FunctionName=NOTIFY_FUNCTION, InvocationType='Event',
-                                      Payload=json.dumps({'notice': notice, 'mention': notice['level'] == 'fail'}).encode())
-    return {'meters': [m.__dict__ for m in meters], 'errors': errors, 'notified': bool(notice)}
+    boto3.client('lambda').invoke(FunctionName=NOTIFY_FUNCTION, InvocationType='Event',
+                                  Payload=json.dumps({'notice': notice, 'mention': notice['level'] == 'fail'}).encode())
+    return {'meters': [m.__dict__ for m in meters], 'errors': errors, 'level': notice['level']}
