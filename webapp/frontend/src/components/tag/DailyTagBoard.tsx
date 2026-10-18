@@ -47,8 +47,6 @@ export default function DailyTagBoard({
   const [sort, setSort] = useState<TagSort>(DEFAULT_TAG_SORT);
   const [zone, setZone] = useState<Zone>('all');
   const [search, setSearch] = useState('');
-  // 지도에서 고른 태그 — 표를 거르지 않고 전체 표에서 그 행으로 데려간다(2026-10-18).
-  const [focus, setFocus] = useState<{ key: string; seq: number } | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [openTag, setOpenTagState] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -88,14 +86,12 @@ export default function DailyTagBoard({
   };
   const applySearch = (v: string) => { setSearch(v); scrollToToolbar(); };
   const submitSearch = (e: FormEvent) => { e.preventDefault(); applySearch(searchInput.trim()); };
-  // 지도의 점을 누르면 표를 거르지 않고 그 행으로 데려간다(펼칠 수 있는 판이면 펼친다). 예전엔 태그 이름을 검색창에 넣어 걸렀는데,
-  // 검색창의 글자를 사용자가 친 것처럼 보여 다시 검색하면 '포함' 검색으로 다른 태그가 생겼다(2026-10-18). 지금 구역·검색이 그 태그를
-  // 가리고 있으면 그때만 풀어 준다.
+  // 지도의 점 = 그 태그의 펼침 열기/닫기. 표와 같은 상태(openTag)를 쓰므로 어느 쪽에서 열고 닫아도 함께 움직인다. 표로 끌고 가거나 표를
+  // 거르지 않는다(사용자 2026-10-18) — 예전엔 검색창에 이름을 넣어 걸렀고, 그다음엔 그 행으로 스크롤했는데 스크롤 중에 지도의 '가리킴'이
+  // 풀리지 않아 펼침을 닫아도 점이 강조된 채 남았다.
   const pickFromMap = useCallback((tag: string) => {
-    if (!rows.some(r => r.tag === tag)) { setZone('all'); setSearch(''); setSearchInput(''); }
-    if (renderExpanded) setOpenTag(tag);
-    setFocus(f => ({ key: tag, seq: (f?.seq ?? 0) + 1 }));
-  }, [rows, renderExpanded, setOpenTag]);
+    if (renderExpanded) setOpenTag(openTag === tag ? null : tag);
+  }, [renderExpanded, openTag, setOpenTag]);
 
   const strongIf = (keys: TagSortKey[], v: ReactNode) => (keys.includes(sort.key) ? <b className="rank-strong">{v}</b> : v);
 
@@ -176,7 +172,7 @@ export default function DailyTagBoard({
             } : {})}
             onRowHover={t => setHover(t?.tag ?? null)}
             // 수백 개를 다 펼치면 아래 각주가 1~3만 px 밑에 묻힌다 — 상위 50개만, 나머지는 '전체 보기'(사용자 2026-10-05).
-            collapseAfter={50} expandOnMobile focus={focus}
+            collapseAfter={50} expandOnMobile
             renderMobileRow={mobileRow}
             emptyText={tags.length === 0 ? emptyText : '조건에 맞는 태그가 없습니다.'} />
         )}

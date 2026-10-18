@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useMediaQuery } from '../../hooks/useIsMobile';
 
@@ -39,14 +39,12 @@ interface RankTableProps<T> {
   collapseAfter?: number;
   /** 좁은 화면에서도 행을 눌러 펼친다(태그 표 — 모바일 행에 링크가 없어 펼침이 유일한 길이다). 작품 표는 제목 링크가 있어 끈다. */
   expandOnMobile?: boolean;
-  /** 이 행으로 데려간다(접힌 아래쪽이면 펼친 뒤 가운데로 스크롤). `seq` 가 바뀔 때마다 — 같은 행을 다시 골라도 간다. */
-  focus?: { key: string; seq: number } | null;
 }
 
 const ariaSort = (on: boolean, dir?: 'ascending' | 'descending') => (on ? dir : 'none') as 'ascending' | 'descending' | 'none';
 
 export default function RankTable<T>(props: RankTableProps<T>) {
-  const { rows: allRows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, expandFrom, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768, onRowHover, collapseAfter, expandOnMobile, focus } = props;
+  const { rows: allRows, rowKey, columns, sort, onSort, expandedKey, onToggleRow, renderExpanded, expandFrom, renderMobileRow, emptyText, rowHeight = 60, ariaLabel, compactBelow = 768, onRowHover, collapseAfter, expandOnMobile } = props;
   const [showAll, setShowAll] = useState(false);
   const collapsed = collapseAfter != null && !showAll && allRows.length > collapseAfter;
   const rows = collapsed ? allRows.slice(0, collapseAfter) : allRows;
@@ -73,16 +71,6 @@ export default function RankTable<T>(props: RankTableProps<T>) {
     overscan: 8,
     scrollMargin,
   });
-  // 고른 행으로 데려가기 — 접힌 아래쪽이면 먼저 펼치고(다음 그리기에서 다시 와서) 가운데로 스크롤한다.
-  const handledFocus = useRef(0);
-  useEffect(() => {
-    if (!focus || focus.seq === handledFocus.current) return;
-    const i = allRows.findIndex(r => rowKey(r) === focus.key);
-    if (i < 0) return;
-    if (i >= rows.length) { setShowAll(true); return; }
-    handledFocus.current = focus.seq;
-    virtualizer.scrollToIndex(i, { align: 'center' });
-  }, [focus, allRows, rows.length, rowKey, virtualizer]);
   const template = columns.map(c => c.width).join(' ');
   const expandCol = expandFrom ? columns.findIndex(c => c.key === expandFrom) + 1 : 0;
 
