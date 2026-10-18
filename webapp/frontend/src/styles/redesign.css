@@ -172,7 +172,9 @@
 .detail-head__unit { margin-left: 0.08em; font-size: 0.46em; font-weight: 800; letter-spacing: 0; position: relative; top: -0.08em; }
 .detail-head__now .change-mark { font-size: 1.0625rem; font-weight: 700; }
 .detail-head .inline-nums { margin: 0 0 0.35rem; }
-.detail-head__basis { white-space: nowrap; margin-left: 0.4rem; font-size: 0.8125rem; font-weight: 500; color: var(--np-text-faint); }
+.detail-head__basis { white-space: nowrap; margin-left: 0.3rem; font-size: 0.75rem; font-weight: 500; color: var(--np-text-faint); }
+/* 공모전 상세는 수치가 한 줄(조회 · 추천 · 선호 · 추천비 · 잔류 둘 + 근거)이라 구분 간격을 좁혀 데스크톱에서 한 줄에 들게 한다(사용자 2026-10-18 — 1400px 에서 4px 넘쳐 최신 잔류가 다음 줄로 갔다). */
+.detail-head .inline-nums__item + .inline-nums__item::before { margin: 0 0.625rem; }
 .detail-intro { grid-column: 1 / -1; padding: 1.1rem 1.35rem; border-radius: var(--np-radius-sm); background: var(--np-surface-alt); }
 .detail-head__synopsis { max-width: 780px; }
 .detail-head__synopsis p { margin: 0; white-space: pre-line; font-size: 0.9375rem; line-height: 1.8; color: var(--np-text-primary); }
