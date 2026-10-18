@@ -15,6 +15,8 @@ import RankToolbar from '../components/ranking/RankToolbar';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import NovelRowExpand from '../components/ranking/NovelRowExpand';
 import AwardText from '../components/contest/AwardText';
+import ColumnConditionEditor from '../components/ranking/ColumnConditionEditor';
+import { applyColumnConditions, contestColumns, describeCondition, type ColumnCondition } from '../utils/columnConditions';
 import { EMPTY_FILTER, activeFilterCount, applyRankingFilter, tagCounts, toggleTag, type RankingFilter } from '../utils/rankingQuery';
 import {
   AWARD_ORDER, awardTier, CONTEST_DAILY_SORT, CONTEST_DEFAULT_SORT, isDeletedContestNovel, nextContestSort, sortContestNovels,
@@ -82,7 +84,9 @@ export default function ContestPage() {
   const [winnersOnly, setWinnersOnly] = useState(false);
   const [sort, setSort] = useState<ContestSort>(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT);
   const [career, setCareer] = useState<Career>('all');
-  useEffect(() => { setSort(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT); setCareer('all'); setWinnersOnly(false); }, [daily]);
+  const [conds, setConds] = useState<ColumnCondition[]>([]);
+  // 2025 ↔ 2026 는 열이 달라(일간 순위 · 잔류율) 열 조건도 비운다.
+  useEffect(() => { setSort(daily ? CONTEST_DAILY_SORT : CONTEST_DEFAULT_SORT); setCareer('all'); setWinnersOnly(false); setConds([]); }, [daily]);
   const [drawer, setDrawer] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -124,12 +128,14 @@ export default function ContestPage() {
   const deferredFilter = useDeferredValue(filter);
   const deferredWinners = useDeferredValue(winnersOnly);
   const deferredCareer = useDeferredValue(career);
+  const deferredConds = useDeferredValue(conds);
   const result = useMemo(() => {
     // 수상작만 = 수상 값이 있는 작품(본선 포함) — 개편 전 '수상작만 보기'와 같은 기준.
     let base = deferredWinners ? rows.filter(n => !!n.award) : rows;
     if (deferredCareer !== 'all') base = base.filter(n => n.is_veteran === (deferredCareer === 'veteran'));
+    base = applyColumnConditions(base, deferredConds, daily);
     return applyRankingFilter(base, deferredFilter);
-  }, [rows, deferredFilter, deferredWinners, deferredCareer]);
+  }, [rows, deferredFilter, deferredWinners, deferredCareer, deferredConds, daily]);
   const hasAwards = useMemo(() => rows.some(n => !!n.award), [rows]);
   const careerCount = useMemo(() => ({
     veteran: rows.filter(n => n.is_veteran === true).length, rookie: rows.filter(n => n.is_veteran === false).length,
@@ -138,7 +144,7 @@ export default function ContestPage() {
   const stats = useMemo(() => tagCounts(rows), [rows]);
   const hit = useMemo(() => new Set(filter.rule ? [] : filter.tags), [filter]);
   const onTag = useCallback((t: string) => setFilter(toggleTag(filter, t)), [filter]);
-  const isPending = deferredFilter !== filter || deferredWinners !== winnersOnly || deferredCareer !== career;
+  const isPending = deferredFilter !== filter || deferredWinners !== winnersOnly || deferredCareer !== career || deferredConds !== conds;
 
   // 쇼케이스 — 날짜 선택 바로 아래라 고른 날짜를 따른다(사용자 검토 2026-10-03, 일간 랭킹과 같은 규칙).
   // · 수상작이 있으면 시상대 배치: 2025 는 API(운영자 지정 순서), 2026 수상 발표 뒤에는 그날 표의 수상작.
@@ -158,7 +164,7 @@ export default function ContestPage() {
     };
   }, [rows, awardShowcase, year]);
 
-  const count = activeFilterCount(filter) + (winnersOnly ? 1 : 0) + (career !== 'all' ? 1 : 0);
+  const count = activeFilterCount(filter) + (winnersOnly ? 1 : 0) + (career !== 'all' ? 1 : 0) + conds.filter(c => c.value != null).length;
 
   const strongIf = (keys: ContestSortKey[], v: ReactNode) => (keys.includes(sort.key) ? <b className="rank-strong">{v}</b> : v);
   const dash = '–';
@@ -262,8 +268,11 @@ export default function ContestPage() {
       ) : null}
 
       <RankToolbar filter={filter} onChange={setFilter} count={count} shown={sorted.length} total={rows.length} onOpenFilter={() => setDrawer(true)} />
-      <AppliedFilters filter={filter} onChange={setFilter} extra={winnersOnly ? { label: <><b>수상작만</b></>, onClear: () => setWinnersOnly(false) }
-        : career !== 'all' ? { label: <><b>{career === 'veteran' ? '기성 작가' : '신인 작가'}</b></>, onClear: () => setCareer('all') } : null} />
+      <AppliedFilters filter={filter} onChange={setFilter} extra={[
+        ...(winnersOnly ? [{ key: 'winners', label: <b>수상작만</b>, onClear: () => setWinnersOnly(false) }] : []),
+        ...(career !== 'all' ? [{ key: 'career', label: <b>{career === 'veteran' ? '기성 작가' : '신인 작가'}</b>, onClear: () => setCareer('all') }] : []),
+        ...conds.flatMap((c, i) => (c.value == null ? [] : [{ key: `cond-${i}`, label: <b>{describeCondition(c)}</b>, onClear: () => setConds(cs => cs.filter((_, j) => j !== i)) }])),
+      ]} />
 
       <div className={isPending ? 'is-pending' : undefined}>
         {error ? <p className="empty-line">{error}</p>
@@ -286,9 +295,11 @@ export default function ContestPage() {
       {!error && rows.length > 0 ? <Footnotes notes={daily ? DAILY_NOTES : NOTES} /> : null}
 
       <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={setFilter}
-        tagStats={stats} resultCount={sorted.length} error={result.error} onResetExtra={() => { setWinnersOnly(false); setCareer('all'); }}
+        tagStats={stats} resultCount={sorted.length} error={result.error} onResetExtra={() => { setWinnersOnly(false); setCareer('all'); setConds([]); }}
         extra={(
           <>
+            <h3 className="filter-drawer__h">열 조건</h3>
+            <ColumnConditionEditor columns={contestColumns(daily)} value={conds} onChange={setConds} />
             {hasAwards || !daily ? (
               <>
                 <h3 className="filter-drawer__h">수상</h3>

@@ -227,6 +227,14 @@
 /* 밑줄 입력칸의 초점: 사각 윤곽 대신 밑줄 색으로(키보드 초점이 보이게, 모든 밑줄 입력칸 공통). */
 .toolbar-search:focus { outline: none; box-shadow: none; border-bottom-color: var(--np-accent); }
 .filter-drawer__statuses { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }
+.col-conds { display: grid; gap: 0.5rem; margin-bottom: 1.1rem; }
+.col-conds__row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9375rem; }
+.col-conds__row select { padding: 0.3rem 0.4rem; border: 1px solid var(--np-border-strong); border-radius: var(--np-radius-sm); background: var(--np-canvas); color: var(--np-text-primary); font: inherit; }
+.col-conds__row input { width: 76px; border: 0; border-bottom: 1.5px solid var(--np-text-heading); background: none; color: inherit; padding: 3px 4px; text-align: right; font: inherit; }
+.col-conds__unit { min-width: 2em; color: var(--np-text-secondary); font-size: 0.875rem; }
+.col-conds__del { margin-left: auto; border: 0; background: none; color: var(--np-text-faint); font-size: 1.1rem; line-height: 1; padding: 0.2rem 0.35rem; }
+.col-conds__del:hover { color: var(--np-text-heading); }
+.col-conds__add { justify-self: start; font-size: 0.875rem; }
 .filter-drawer__statuses button { display: inline-flex; align-items: baseline; gap: 0.3rem; padding: 0.2rem 0; border: 0; background: none; color: var(--np-text-primary); font-size: 0.9375rem; }
 .filter-drawer__statuses button i { font-style: normal; font-size: 0.8125rem; color: var(--np-text-faint); }
 .filter-drawer__statuses button.is-on { font-weight: 700; color: var(--np-text-heading); }

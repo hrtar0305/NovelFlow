@@ -3,12 +3,14 @@ import { activeFilterCount, resetFilter, toggleStatus, toggleTag, type RankingFi
 
 const MODE_LABEL = { 'include-and': '모두 포함', 'include-or': '하나라도 포함', exclude: '제외' } as const;
 
-/** extra: 페이지 고유 조건(예: 공모전 '수상작만'). 초기화하면 onClear도 부른다. */
-export default function AppliedFilters({ filter, onChange, extra }: {
+type Extra = { key: string; label: ReactNode; onClear: () => void };
+
+/** extra: 페이지 고유 조건(예: 공모전 '수상작만', 열 조건 한 줄씩). 초기화하면 모두의 onClear 를 부른다. */
+export default function AppliedFilters({ filter, onChange, extra = [] }: {
   filter: RankingFilter; onChange: (next: RankingFilter) => void;
-  extra?: { label: ReactNode; onClear: () => void } | null;
+  extra?: Extra[];
 }) {
-  if (activeFilterCount(filter) === 0 && !extra) return null;
+  if (activeFilterCount(filter) === 0 && extra.length === 0) return null;
   const eps = filter.minEps !== null || filter.maxEps !== null
     ? `${filter.minEps ?? 1}–${filter.maxEps ?? ''}화` : null;
   return (
@@ -30,15 +32,15 @@ export default function AppliedFilters({ filter, onChange, extra }: {
               <button type="button" aria-label={`${st} 해제`} onClick={() => onChange(toggleStatus(filter, st))}>×</button></span>
           ))}</span>
       ) : null}
-      {extra ? (
-        <span className="applied-filters__part">{extra.label}
-          <button type="button" aria-label="조건 해제" onClick={extra.onClear}>×</button></span>
-      ) : null}
+      {extra.map(x => (
+        <span key={x.key} className="applied-filters__part">{x.label}
+          <button type="button" aria-label="조건 해제" onClick={x.onClear}>×</button></span>
+      ))}
       {eps ? (
         <span className="applied-filters__part">회차 <b>{eps}</b>
           <button type="button" aria-label="회차 조건 해제" onClick={() => onChange({ ...filter, minEps: null, maxEps: null })}>×</button></span>
       ) : null}
-      <button type="button" className="applied-filters__reset" onClick={() => { onChange(resetFilter(filter)); extra?.onClear(); }}>초기화</button>
+      <button type="button" className="applied-filters__reset" onClick={() => { onChange(resetFilter(filter)); extra.forEach(x => x.onClear()); }}>초기화</button>
     </div>
   );
 }
