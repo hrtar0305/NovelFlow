@@ -8,7 +8,8 @@ import ChangeMark from '../components/ui/ChangeMark';
 import TagLinks from '../components/ui/TagLinks';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import FilterDrawer from '../components/ranking/FilterDrawer';
-import Showcase, { type ShowcaseItem } from '../components/ranking/Showcase';
+import Showcase, { ShowcaseSkeleton, type ShowcaseItem } from '../components/ranking/Showcase';
+import { SkeletonRows, Stale } from '../components/ui/Loading';
 import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankToolbar from '../components/ranking/RankToolbar';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
@@ -233,7 +234,8 @@ export default function ContestPage() {
         onDateChange={d => navigate(`/contests/${year}/${d}`)} onYearChange={y => navigate(`/contests/${y}`)}
         meta={rows.length ? `${cfg.schedule} · 참여 작품 ${formatInt(rows.length)}편` : cfg.schedule} />
 
-      {!awardShowcase && !loading && !error ? <Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} /> : null}
+      {awardShowcase || error ? null : rows.length > 0 ? <Stale loading={loading}><Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} /></Stale>
+        : loading && daily ? <ShowcaseSkeleton /> : null}
 
       {showcaseItems.length > 0 ? (
         <section className="contest-award-showcase showcase-section" aria-label="수상작">
@@ -265,9 +267,9 @@ export default function ContestPage() {
 
       <div className={isPending ? 'is-pending' : undefined}>
         {error ? <p className="empty-line">{error}</p>
-          : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
+          : loading && rows.length === 0 ? <SkeletonRows />
           : (
-            <RankTable ariaLabel="공모전 작품 순위" /* 2026 은 열이 12개라 992~1100px 에서 제목 칸이 114px 까지 준다 — 그 폭부터 모바일 행 */ compactBelow={daily ? 1100 : 992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
+            <Stale loading={loading}><RankTable ariaLabel="공모전 작품 순위" /* 2026 은 열이 12개라 992~1100px 에서 제목 칸이 114px 까지 준다 — 그 폭부터 모바일 행 */ compactBelow={daily ? 1100 : 992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
               sort={sort} onSort={k => setSort(s => nextContestSort(s, k as ContestSortKey))}
               // 2025 는 행 펼침이 없다 — 연재 기록을 넣지 않아 펼침에 보일 것이 순위선·소개뿐이다(2026-10-05 사용자).
               {...(year !== '2025' ? {
@@ -277,11 +279,11 @@ export default function ContestPage() {
                 renderExpanded: (n: ContestNovel) => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} contest={{ year, daily }} />,
               } : {})}
               renderMobileRow={mobileRow}
-              emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 공모전 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
+              emptyText={result.error ?? (rows.length === 0 ? '이 날짜의 공모전 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} /></Stale>
           )}
       </div>
 
-      {!error && !loading && rows.length > 0 ? <Footnotes notes={daily ? DAILY_NOTES : NOTES} /> : null}
+      {!error && rows.length > 0 ? <Footnotes notes={daily ? DAILY_NOTES : NOTES} /> : null}
 
       <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={setFilter}
         tagStats={stats} resultCount={sorted.length} error={result.error} onResetExtra={() => { setWinnersOnly(false); setCareer('all'); }}

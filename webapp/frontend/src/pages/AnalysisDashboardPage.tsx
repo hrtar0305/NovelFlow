@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getAnalysisReport } from '../services/api';
+import { SkeletonBox, Stale } from '../components/ui/Loading';
 import PageTitle from '../components/ui/PageTitle';
 import type { AnalysisReport } from './analysis/types';
 import {
@@ -47,10 +48,10 @@ export default function AnalysisDashboardPage() {
   }, [days, retry]);
 
   // 빠진 날이 있을 때만 적는다 — '수집일 N일 전체'를 굳이 밝히면 뭔가 빼는 게 있나 하고 읽힌다.
-  // 바꾸는 동안 이전 기간의 날짜를 남기지 않는다.
-  const meta = report && !loading
-    ? `${formatDateDot(report.start)} ~ ${formatDateDot(report.end)}${report.dates_missing > 0 ? ` · 수집이 없는 ${report.dates_missing}일 제외` : ''}`
-    : undefined;
+  // 기간을 바꾸는 동안 이전 기간의 날짜를 흐리게 둔다 — 지우면 제목 줄이 한 줄 줄었다 늘며 아래가 밀린다(2026-10-18).
+  const meta = report
+    ? <span className={loading ? 'is-stale-text' : undefined}>{formatDateDot(report.start)} ~ {formatDateDot(report.end)}{report.dates_missing > 0 ? ` · 수집이 없는 ${report.dates_missing}일 제외` : ''}</span>
+    : '\u00a0'; // 처음 받는 동안에도 줄을 비워 두어 아래가 밀리지 않게
 
   return (
     <div className="page-shell analysis-page">
@@ -65,9 +66,12 @@ export default function AnalysisDashboardPage() {
         meta={meta} />
 
       {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => setRetry(n => n + 1)}>다시 시도</button></p>
-        : loading || !report ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
-        : (
-          <>
+        : !report ? (
+          <div aria-busy="true">{Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="an-sec"><SkeletonBox style={{ height: 22, width: 240, maxWidth: '60%' }} /><SkeletonBox style={{ height: 260, marginTop: 14 }} /></div>
+          ))}</div>
+        ) : (
+          <Stale loading={loading}>
             {/* 요약은 하루 세 번(7/30/90일) 미리 만들어 `AISUMMARY#<days>`에 둔다. 없으면 자리를 숨긴다. */}
             {report.ai_summary ? (
               <section className="an-summary" aria-label="기간 요약">
@@ -82,7 +86,7 @@ export default function AnalysisDashboardPage() {
             <RetentionSection report={report} />
             <DiagnoseSection report={report} />
             <TagSection report={report} />
-          </>
+          </Stale>
         )}
     </div>
   );

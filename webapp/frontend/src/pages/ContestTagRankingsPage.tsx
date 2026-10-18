@@ -9,6 +9,7 @@ import { CONTEST_RULES, type DailyTag } from '../utils/tagZones';
 import ContestHeader from '../components/contest/ContestHeader';
 import RankTable, { type RankColumn } from '../components/ranking/RankTable';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
+import { SkeletonRows, Stale } from '../components/ui/Loading';
 import { buildContestTagRows, type ContestTag, type ContestTagRow, type ContestTagSort, type ContestTagSortKey } from '../utils/contestTags';
 import { formatInt } from '../utils/format';
 import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
@@ -229,15 +230,15 @@ function CumulativeContestTags() {
       </div>
 
       {error ? <p className="empty-line">{error}</p>
-        : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
+        : loading && tags.length === 0 ? <SkeletonRows />
         : (
-          <RankTable ariaLabel="공모전 태그 순위" rows={rows} rowKey={r => r.tag} columns={columns} rowHeight={48} collapseAfter={50}
+          <Stale loading={loading}><RankTable ariaLabel="공모전 태그 순위" rows={rows} rowKey={r => r.tag} columns={columns} rowHeight={48} collapseAfter={50}
             sort={sort} onSort={onSort} renderMobileRow={mobileRow} onRowHover={r => setHover(r?.tag ?? null)}
-            emptyText={tags.length === 0 ? '이 날짜의 태그 랭킹이 없습니다.' : '검색된 태그가 없습니다.'} />
+            emptyText={tags.length === 0 ? '이 날짜의 태그 랭킹이 없습니다.' : '검색된 태그가 없습니다.'} /></Stale>
         )}
 
-      {!loading && !error && tags.length > 0 ? (
-        <>
+      {!error && tags.length > 0 ? (
+        <Stale loading={loading}>
           <Footnotes notes={NOTES} />
           <section className="contest-map">
             <div className="contest-map__head">
@@ -285,7 +286,7 @@ function CumulativeContestTags() {
               </ResponsiveContainer>
             </div>
           </section>
-        </>
+        </Stale>
       ) : null}
     </div>
   );

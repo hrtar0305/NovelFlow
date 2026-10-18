@@ -81,3 +81,24 @@ export default function Showcase({ top, movers }: ShowcaseProps) {
     </div>
   );
 }
+
+/** 쇼케이스 자리의 빈 틀 — 처음 들어와 값이 없을 때. 같은 격자(고정 높이)를 써서 값이 와도 아래가 밀리지 않는다. */
+export function ShowcaseSkeleton() {
+  const cards = (kind: 'rank' | 'mover') => Array.from({ length: COUNT }, (_, i) => (
+    <div key={i} className={`media-rank-card media-rank-card--poster media-rank-card--split media-rank-card--${kind}-${i + 1} skeleton-box`} />
+  ));
+  return (
+    <div className="showcase-section" aria-busy="true">
+      <div className="ranking-showcase-split">
+        <section className="ranking-showcase-group ranking-showcase-group--top">
+          <div className="ranking-showcase-group__header"><h2 className="ranking-showcase-group__title">상위 5작품</h2></div>
+          <div className="ranking-showcase-top-grid">{cards('rank')}</div>
+        </section>
+        <section className="ranking-showcase-group ranking-showcase-group--rising">
+          <div className="ranking-showcase-group__header"><h2 className="ranking-showcase-group__title">급상승 5작품</h2></div>
+          <div className="ranking-showcase-rising-grid">{cards('mover')}</div>
+        </section>
+      </div>
+    </div>
+  );
+}

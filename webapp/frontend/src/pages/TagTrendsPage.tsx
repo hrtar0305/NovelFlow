@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { differenceInCalendarDays, format, parseISO, subDays } from 'date-fns';
 import { getAvailableDates, getTagSeries } from '../services/api';
+import { SkeletonRows, Stale } from '../components/ui/Loading';
 import PageTitle from '../components/ui/PageTitle';
 import ViewSwitch from '../components/ui/ViewSwitch';
 import InlineNums from '../components/ui/InlineNums';
@@ -209,25 +210,26 @@ export default function TagTrendsPage() {
         <p className="period-warn">이 기간 중 수집 범위가 300편 → 500편으로 바뀌어(2025-07-21) 작품 수와 순위는 그대로 견줄 수 없습니다. 인기 점수(점유율)는 비율이라 비교적 견줄 만합니다.</p>
       ) : null}
 
-      {churn && !loading ? (
-        <InlineNums items={[
-          { label: '평균 순위 이동', value: `${churn.footrule.toFixed(1)}계단` },
-          { label: <>순서 일치도<FootnoteRef id="tau" n={2} /></>, value: churn.tau != null ? churn.tau.toFixed(2) : '–' },
-          { label: <>태그({MIN_WORKS}편 이상)</>, value: `${formatInt(churn.startTags)} → ${formatInt(churn.endTags)}개` },
-          { label: '양쪽에 다 있음', value: `${formatInt(churn.common)}개` },
-        ]} />
+      {/* 처음 받는 동안에도 같은 줄을 값만 '–'로 둔다 — 줄 수가 폭마다 달라 빈 틀로는 높이를 맞출 수 없다. */}
+      {churn || loading ? (
+        <Stale loading={loading}><InlineNums items={[
+          { label: '평균 순위 이동', value: churn ? `${churn.footrule.toFixed(1)}계단` : '–' },
+          { label: <>순서 일치도<FootnoteRef id="tau" n={2} /></>, value: churn?.tau != null ? churn.tau.toFixed(2) : '–' },
+          { label: <>태그({MIN_WORKS}편 이상)</>, value: churn ? `${formatInt(churn.startTags)} → ${formatInt(churn.endTags)}개` : '–' },
+          { label: '양쪽에 다 있음', value: churn ? `${formatInt(churn.common)}개` : '–' },
+        ]} /></Stale>
       ) : null}
 
       <TabBar<Tab> ariaLabel="목록" value={tab} onChange={t => { setTab(t); setOpenTag(null); }}
         items={(Object.keys(TAB_LABEL) as Tab[]).map(k => ({ key: k, label: TAB_LABEL[k], count: series ? lists[k].length : undefined }))} />
 
       {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => setRetry(n => n + 1)}>다시 시도</button></p>
-        : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
+        : loading && !series ? <SkeletonRows />
         : tooLong ? <p className="empty-line">기간은 첫날과 마지막 날이 {MAX_SPAN_DAYS}일 이내로 떨어지게 골라 주세요.</p>
         : tooShort ? <p className="empty-line">기간 안에 수집일이 2일 이상 있어야 견줄 수 있습니다.</p>
-        : table()}
+        : <Stale loading={loading}>{table()}</Stale>}
 
-      {!error && !loading && series ? <Footnotes notes={NOTES} /> : null}
+      {!error && series ? <Footnotes notes={NOTES} /> : null}
     </div>
   );
 }

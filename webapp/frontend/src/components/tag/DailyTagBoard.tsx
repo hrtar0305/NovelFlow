@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { Search as SearchIcon } from 'react-bootstrap-icons';
 import ChangeMark from '../ui/ChangeMark';
 import Footnotes, { FootnoteRef } from '../ui/Footnotes';
+import { SkeletonBox, SkeletonRows, Stale } from '../ui/Loading';
 import RankTable, { type RankColumn } from '../ranking/RankTable';
 import TagTerrainMap from './TagTerrainMap';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -116,24 +117,31 @@ export default function DailyTagBoard({
   );
 
   const filtered = activeZone !== 'all' || q !== '';
-  const ready = !error && !loading && tags.length > 0;
+  // 날짜를 바꾸는 동안 이전 날짜의 칩·지도·표를 흐리게 둔다(Stale). 처음 들어와 값이 없을 때만 빈 틀(2026-10-18).
+  const ready = !error && tags.length > 0;
+  const firstLoad = loading && !error && tags.length === 0;
+  const mapNote = <p className="tag-map__note">작품 5편 미만 태그는 그리지 않습니다 · 뜨고 식는 태그는 태그 트렌드(기간)에서 봅니다</p>;
   const map = ready && hasZones && mapRows.length > 0 ? (
-    <section className="tag-map" aria-label="태그 지형 지도">
+    <Stale loading={loading}><section className="tag-map" aria-label="태그 지형 지도">
       {mobile && !mapOpen ? (
         <button type="button" className="link-button tag-map__open" onClick={() => setMapOpen(true)}>지형 지도 보기</button>
       ) : (
         <>
           <TagTerrainMap rows={mapRows} rules={rules} active={openTag} matches={matches} onPick={pickFromMap} />
-          <p className="tag-map__note">작품 5편 미만 태그는 그리지 않습니다 · 뜨고 식는 태그는 태그 트렌드(기간)에서 봅니다</p>
+          {mapNote}
         </>
       )}
+    </section></Stale>
+  ) : firstLoad ? (
+    <section className="tag-map" aria-hidden="true">
+      {mobile ? <button type="button" className="link-button tag-map__open" disabled>지형 지도 보기</button> : <><SkeletonBox className="tag-map__chart" />{mapNote}</>}
     </section>
   ) : null;
 
   return (
     <>
       {ready && hasZones ? (
-        <div className="zone-chips" role="radiogroup" aria-label="구역">
+        <Stale loading={loading}><div className="zone-chips" role="radiogroup" aria-label="구역">
           <button type="button" role="radio" aria-checked={zone === 'all'} className={`zone-chip${zone === 'all' ? ' is-on' : ''}`} onClick={() => setZone('all')}>
             <span className="zone-chip__name">전체</span> <span className="zone-chip__n">{formatInt(tags.length)}</span>
           </button>
@@ -143,7 +151,9 @@ export default function DailyTagBoard({
               {leaders[z].length ? <span className="zone-chip__lead">{leaders[z].join(' · ')}</span> : null}
             </button>
           ))}
-        </div>
+        </div></Stale>
+      ) : firstLoad ? (
+        <div className="zone-chips">{[96, 280, 280, 280].map((w, i) => <SkeletonBox key={i} className="zone-chip" style={{ width: w, maxWidth: '100%', height: 61 }} />)}</div>
       ) : null}
       {map}
 
@@ -160,9 +170,9 @@ export default function DailyTagBoard({
       </div>
 
       {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => window.location.reload()}>다시 시도</button></p>
-        : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
+        : firstLoad ? <SkeletonRows />
         : (
-          <RankTable ariaLabel={ariaLabel} rows={rows} rowKey={t => t.tag} columns={columns} rowHeight={52}
+          <Stale loading={loading}><RankTable ariaLabel={ariaLabel} rows={rows} rowKey={t => t.tag} columns={columns} rowHeight={52}
             sort={sort} onSort={k => setSort(s => nextTagSort(s, k as TagSortKey))}
             {...(renderExpanded ? {
               expandedKey: openTag,
@@ -172,7 +182,7 @@ export default function DailyTagBoard({
             // 수백 개를 다 펼치면 아래 각주가 1~3만 px 밑에 묻힌다 — 상위 50개만, 나머지는 '전체 보기'(사용자 2026-10-05).
             collapseAfter={50} expandOnMobile
             renderMobileRow={mobileRow}
-            emptyText={tags.length === 0 ? emptyText : '조건에 맞는 태그가 없습니다.'} />
+            emptyText={tags.length === 0 ? emptyText : '조건에 맞는 태그가 없습니다.'} /></Stale>
         )}
 
       {ready ? <Footnotes notes={notes} /> : null}

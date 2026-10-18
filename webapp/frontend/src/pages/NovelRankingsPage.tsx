@@ -8,7 +8,8 @@ import TagLinks from '../components/ui/TagLinks';
 import ChangeMark from '../components/ui/ChangeMark';
 import Footnotes, { FootnoteRef } from '../components/ui/Footnotes';
 import NovelCover from '../components/NovelCover';
-import Showcase, { type ShowcaseItem } from '../components/ranking/Showcase';
+import Showcase, { ShowcaseSkeleton, type ShowcaseItem } from '../components/ranking/Showcase';
+import { SkeletonRows, Stale } from '../components/ui/Loading';
 import FilterDrawer from '../components/ranking/FilterDrawer';
 import AppliedFilters from '../components/ranking/AppliedFilters';
 import RankToolbar from '../components/ranking/RankToolbar';
@@ -145,7 +146,8 @@ export default function NovelRankingsPage() {
         nav={<DateNav value={dateParam ?? null} availableDates={dates} onChange={d => navigate(`/novels/rankings/${d}`)} />}
         meta={`노벨피아 7일 조회순 상위 ${rows.length || 500}작품`} />
 
-      {!loading && !error ? <Showcase top={showcase.top} movers={showcase.movers} /> : null}
+      {error ? null : rows.length > 0 ? <Stale loading={loading}><Showcase top={showcase.top} movers={showcase.movers} /></Stale>
+        : loading ? <ShowcaseSkeleton /> : null}
 
       {/* 급상승·신규 진입 탭은 두지 않는다 — 변동 열 내림차순이 곧 NEW → 상승 폭 순이다. */}
       <RankToolbar filter={filter} onChange={setFilter} count={activeFilterCount(filter)} shown={sorted.length} total={rows.length} onOpenFilter={() => setDrawer(true)} />
@@ -153,21 +155,21 @@ export default function NovelRankingsPage() {
 
       <div className={isPending ? 'is-pending' : undefined}>
         {error ? <p className="empty-line">{error} <button type="button" className="link-button" onClick={() => window.location.reload()}>다시 시도</button></p>
-          : loading ? <div className="rank-skeleton" aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} />)}</div>
+          : loading && rows.length === 0 ? <SkeletonRows />
           : (
-            <RankTable ariaLabel="일간 랭킹" compactBelow={992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
+            <Stale loading={loading}><RankTable ariaLabel="일간 랭킹" compactBelow={992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
               sort={sort} onSort={k => setSort(s => nextSort(s, k as SortKey))}
               expandedKey={openId}
               onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}
               expandFrom="title"
               renderExpanded={n => <NovelRowExpand novelId={n.ID} date={dateParam!} availableDates={dates} synopsis={n.Synopsis} />}
               renderMobileRow={mobileRow}
-              emptyText={result.error ?? (statusBlocked ? SERIAL_STATUS_NOTICE : rows.length === 0 ? '이 날짜의 랭킹 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} />
+              emptyText={result.error ?? (statusBlocked ? SERIAL_STATUS_NOTICE : rows.length === 0 ? '이 날짜의 랭킹 데이터가 없습니다.' : '조건에 맞는 작품이 없습니다.')} /></Stale>
           )}
       </div>
 
 
-      {!error && !loading && rows.length > 0 ? <Footnotes notes={NOTES} /> : null}
+      {!error && rows.length > 0 ? <Footnotes notes={NOTES} /> : null}
 
       <FilterDrawer open={drawer} onClose={() => setDrawer(false)} filter={filter} onChange={setFilter}
         tagStats={stats} resultCount={sorted.length} error={result.error}
