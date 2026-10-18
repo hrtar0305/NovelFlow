@@ -137,12 +137,11 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
   const dates = points.map(p => p.date);
   const loaded = typeof uploads === 'object';
   const upDays: UploadsState = loaded ? Object.fromEntries(dates.map(d => [d, uploads[d] ?? null])) as UploadDays : uploads ?? 'error';
-  // 요약은 '기간 일수 중 올린 날 · 미확인' — 분모를 고정해 작품끼리 견주게 한다(2026-10-18). 연속 연재·휴재는 세지 않는다(2026-10-05).
+  // 요약은 '기간 일수 중 올린 날 · 올린 화 수 · 미확인' — 분모를 고정해 작품끼리 견주게 한다(2026-10-18). 화 수도 연재 기록에서 센다:
+  // 21시 스냅샷의 총 회차 차이(전날 21시 → 마지막 날 21시)는 21시 뒤에 올리는 작가에서 하루씩 밀려 칸 합계와 어긋났다(453091: 칸 7 · 차이 +8).
   const up = uploadSummary(typeof upDays === 'object' ? upDays : {});
   const uploadTotal = uploads === 'loading' ? '불러오는 중' : uploads === 'error' ? '불러오지 못했습니다' : up.known > 0 ? (
-    <>{up.days}일 중 <b>{up.uploaded}일</b> 연재{up.unknown ? <span> · 미확인 {up.unknown}일</span> : null}
-      {summary?.d.eps != null ? <> · 기간 <b>{signed(summary.d.eps)}화</b></> : null}
-    </>
+    <>{up.days}일 중 <b>{up.uploaded}일</b> · <b>{up.episodes}화</b> 연재{up.unknown ? <span> · 미확인 {up.unknown}일</span> : null}</>
   ) : null;
   // 점수의 '마지막 날'은 마지막 기록일 — summary.last 는 수치가 있는 마지막 기록이라 자리표시 날(순위·점수만 정상)이면 앞날이다.
   const lastScore = points.filter(p => p.rec).at(-1)?.score ?? null;

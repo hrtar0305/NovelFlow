@@ -17,10 +17,10 @@ describe('uploadDays', () => {
 describe('uploadSummary', () => {
   it('분모는 기간 일수로 고정 — 올린 날은 확정(거짓 양성 없음), 모름(?)은 미확인으로 따로 센다', () => {
     expect(uploadSummary({ '2026-09-30': 'before', '2026-10-01': 1, '2026-10-02': 0, '2026-10-03': 2, '2026-10-04': null, '2026-10-05': null }))
-      .toEqual({ days: 6, uploaded: 2, unknown: 2, known: 3 });
+      .toEqual({ days: 6, uploaded: 2, episodes: 3, unknown: 2, known: 3 });
   });
   it('첫 회차 앞은 미확인이 아니다(아직 없던 작품)', () => {
-    expect(uploadSummary({ '2026-10-01': 'before', '2026-10-02': 'before', '2026-10-03': 1 })).toEqual({ days: 3, uploaded: 1, unknown: 0, known: 1 });
-    expect(uploadSummary({})).toEqual({ days: 0, uploaded: 0, unknown: 0, known: 0 });
+    expect(uploadSummary({ '2026-10-01': 'before', '2026-10-02': 'before', '2026-10-03': 1 })).toEqual({ days: 3, uploaded: 1, episodes: 1, unknown: 0, known: 1 });
+    expect(uploadSummary({})).toEqual({ days: 0, uploaded: 0, episodes: 0, unknown: 0, known: 0 });
   });
 });
