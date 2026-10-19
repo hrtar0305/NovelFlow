@@ -161,6 +161,8 @@ export default function NovelRankingsPage() {
           : loading && rows.length === 0 ? <SkeletonRows />
           : (
             <Stale loading={loading}><RankTable ariaLabel="일간 랭킹" compactBelow={992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
+              // 폰에서는 100위까지만 펼친다(공모전과 같게, 나머지는 '전체 보기' — 사용자 2026-10-19).
+              collapseAfter={mobile ? 100 : undefined}
               sort={sort} onSort={k => setSort(s => nextSort(s, k as SortKey))}
               expandedKey={openId}
               onToggleRow={n => setOpenId(id => (id === n.ID ? null : n.ID))}
