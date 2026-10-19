@@ -5,6 +5,7 @@ import { formatDateKo, formatInt, formatMan, formatRatio } from '../../utils/for
 import { rankTicks, signed, summarizeMetrics, type MetricPoint } from '../../utils/metricSeries';
 import { uploadSummary, type UploadDays, type UploadsState } from '../../utils/uploads';
 import { linePath } from '../../utils/sparkline';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 /**
  * 작품 상세 '지표' 영역(2026-09-30 개편). 사용자가 고른 기간 동안 한 작품의 지표를 따라가는 곳이다.
@@ -51,6 +52,7 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
   // 기간이 줄어든 응답이 오면 hover가 새 points 밖을 가리킬 수 있다 — effect로 지우면 그 전 렌더에서 이미 터지므로 렌더 중에 거른다.
   const hv = hover != null && hover < n ? hover : null;
   const mobile = width > 0 && width < 640;
+  const phone = useIsMobile();   // 화면 폭(뷰포트) 기준 — 위 mobile 은 그래프 폭 기준이라 처음 그릴 때 0 이다
   const PL = mobile ? 44 : 60;
   const PR = 12;
   const PW = Math.max(1, width - PL - PR);
@@ -271,6 +273,8 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
       </div>
       {points.some(p => p.span > 1) ? <p className="mx-cap">점선 막대는 직전 기록이 하루 전이 아니라 여러 날치 증가량이라, 하루 평균 높이로 그렸습니다.</p> : null}
 
+      {/* 날짜별 표는 폰에서 뺀다 — 열이 9~10개라 가로로 밀어야 했고, 위 그래프가 같은 흐름을 보여 준다(모바일은 PC 의 일부만, 사용자 2026-10-19). */}
+      {phone ? null : <>
       <div className="mx-table-wrap">
         <table className="mx-table">
           <thead>
@@ -306,6 +310,7 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
           {allRows ? '접기' : `${recent.length - TABLE_FOLD}일 더 보기`}
         </button>
       ) : null}
+      </>}
     </div>
   );
 }

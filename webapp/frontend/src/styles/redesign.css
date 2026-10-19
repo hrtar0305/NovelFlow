@@ -420,9 +420,10 @@ html { scrollbar-color: var(--np-border-strong) var(--np-canvas); }
 .period-pick > button.is-on { color: var(--np-text-heading); }
 .tag-trends-page .inline-nums { margin: 0.25rem 0 0; }
 .rank-mrow--plain { grid-template-columns: minmax(0, 1fr); }
-/* 탭이 여섯 개라 좁은 화면에서는 가로로 밀어 본다(줄바꿈하면 밑줄 기준선이 두 줄로 갈린다). */
+/* 좁은 화면에서는 간격 · 글자를 줄여 한 줄에 다 넣는다(2026-10-19 — 가로로 밀어 보던 것이 모바일답지 않았다). 그래도 넘치는 탭 줄만 밀린다. */
 @media (max-width: 767.98px) {
-  .tab-bar__tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .tab-bar__tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; gap: 0.8rem; }
+  .tab-bar__tab { font-size: 0.875rem; }
   .tab-bar__tabs::-webkit-scrollbar { display: none; }
 }
 

@@ -52,7 +52,6 @@ export default function DailyTagBoard({
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [openTag, setOpenTagState] = useState<string | null>(null);
-  const [mapOpen, setMapOpen] = useState(false);
   const mobile = useIsMobile();
   const toolbarRef = useRef<HTMLDivElement>(null);
 
@@ -136,18 +135,13 @@ export default function DailyTagBoard({
   // 날짜를 바꾸는 동안 이전 날짜의 칩·지도·표를 흐리게 둔다(Stale). 처음 들어와 값이 없을 때만 빈 틀(2026-10-18).
   const ready = !error && tags.length > 0;
   const firstLoad = loading && !error && tags.length === 0;
-  const map = ready && hasZones && mapRows.length > 0 ? (
+  // 폰에서는 지도를 두지 않는다 — 360px 폭에서는 점과 이름이 겹쳐 읽히지 않고, 구역 칩이 요약을 맡는다(모바일은 PC 의 일부만, 사용자 2026-10-19).
+  const map = mobile ? null : ready && hasZones && mapRows.length > 0 ? (
     <Stale loading={loading}><section className="tag-map" aria-label="태그 지형 지도">
-      {mobile && !mapOpen ? (
-        <button type="button" className="link-button tag-map__open" onClick={() => setMapOpen(true)}>지형 지도 보기</button>
-      ) : (
-        <TagTerrainMap rows={mapRows} active={openTag} matches={matches} onPick={pickFromMap} />
-      )}
+      <TagTerrainMap rows={mapRows} active={openTag} matches={matches} onPick={pickFromMap} />
     </section></Stale>
   ) : firstLoad ? (
-    <section className="tag-map" aria-hidden="true">
-      {mobile ? <button type="button" className="link-button tag-map__open" disabled>지형 지도 보기</button> : <SkeletonBox className="tag-map__chart" />}
-    </section>
+    <section className="tag-map" aria-hidden="true"><SkeletonBox className="tag-map__chart" /></section>
   ) : null;
 
   return (

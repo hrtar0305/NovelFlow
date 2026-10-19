@@ -290,6 +290,8 @@ export default function ContestPage() {
           : loading && rows.length === 0 ? <SkeletonRows />
           : (
             <Stale loading={loading}><RankTable ariaLabel="공모전 작품 순위" /* 2026 은 열이 12개라 992~1100px 에서 제목 칸이 114px 까지 준다 — 그 폭부터 모바일 행 */ compactBelow={daily ? 1100 : 992} rowHeight={84} rows={sorted} rowKey={n => n.ID} columns={columns}
+              // 폰에서는 100위까지만 펼쳐 둔다 — 4,700편을 다 그리면 화면 높이가 53만 px 였다(나머지는 '전체 보기').
+              collapseAfter={mobile ? 100 : undefined}
               sort={sort} onSort={k => setSort(s => nextContestSort(s, k as ContestSortKey))}
               // 2025 는 행 펼침이 없다 — 연재 기록을 넣지 않아 펼침에 보일 것이 순위선·소개뿐이다(2026-10-05 사용자).
               {...(year !== '2025' ? {
