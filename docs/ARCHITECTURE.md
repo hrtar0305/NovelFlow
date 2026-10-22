@@ -20,7 +20,7 @@ EventBridge (매일 오후 9시 KST)
         ├─▶ SQS 큐 Purge (SDK 통합) → Wait 65초   ← purge 완료 전 메시지는 지워질 수 있다
         ├─▶ Lambda: get_ranking_list (crawler/app.py)
         │     ├ Parameter Store에서 로그인 정보 조회
-        │     ├ Playwright로 노벨피아 로그인 + 성인 모드 ON
+        │     ├ Playwright로 노벨피아 로그인 + 연령 제한 작품 표시 ON
         │     ├ 쿠키를 requests 세션에 주입 → 상위 500개 랭킹 크롤링
         │     └ 소설 목록(ID, 순위, 점수) + 쿠키 버전 반환(쿠키 본체는 SSM SecureString /NP-Trend/AUTH_COOKIES)
         │
@@ -36,7 +36,7 @@ EventBridge (매일 오후 9시 KST)
         └─▶ Lambda: consolidate_data (crawler/consolidate_data.py)
               ├ SQS에서 500개 메시지 수집 + 수량 검증
               ├ 품질 게이트: 남은 Placeholder 2% 초과·누적 조회수 감소 10건 초과면 커밋 중단,
-              │  1건이라도 있으면 Discord 경고 (성인작 0편도 경고 — 로그인 풀림 신호)
+              │  1건이라도 있으면 Discord 경고 (연령 제한 작품 0편도 경고 — 로그인 풀림 신호)
               ├ 원본을 항목에서 분리 (NDJSON·DynamoDB 로 새어 나가면 안 된다)
               ├ EarlyRetentionRate / RecentRetentionRate 계산
               ├ NDJSON 생성 → S3 업로드  ── (원자적 커밋)
@@ -129,7 +129,7 @@ EventBridge Scheduler (매일 00:00 KST)             ← 11:30·23:30 에는 수
 
 - **원본 재계산(`reprocess`)**: 받기는 끝났는데 적재가 실패한 날은 자정에 저장한 원본 묶음을 다시 해석해 적재합니다(노벨피아에 다시 요청하지 않으므로 마감 없음).
 - **그림자 실행(`dry_run`)**: 같은 흐름을 쓰기 없이 돌려 운영 행과 필드·값을 견줍니다. 배포 전 검증에 씁니다.
-- **기성/신인**: 수집기가 작가의 다른 작품 목록을 원문 그대로 받아 두고(이 요청만 로그인 세션 — 익명은 19금 작품을 뺀다), 판정은 백엔드가 합니다(웹 개편과 함께 배포).
+- **기성/신인**: 수집기가 작가의 다른 작품 목록을 원문 그대로 받아 두고(이 요청만 로그인 세션 — 익명은 연령 제한 작품을 뺀다), 판정은 백엔드가 합니다(웹 개편과 함께 배포).
 
 ## 2-c. 연재 기록 (`NovelFlowEpisodeHistory`)
 
@@ -212,7 +212,7 @@ EventBridge Scheduler (매일 00:00 KST)             ← 11:30·23:30 에는 수
 ### `NovelRanks` 의 특수 항목
 
 소설 스냅샷과 태그 통계 외에 `RSNAP#<date>`(분석 리포트용 압축 스냅샷 — 날짜당 랭킹 340KB 를 16KB 병렬 배열로),
-`ADULT_BLOCKLIST`(과거 전 기간 성인작 목록), `RUN_LOCK#<date>`(날짜 잠금)가 같은 테이블에 있습니다. 전체 스캔·날짜 조회 때 걸러야 합니다.
+`ADULT_BLOCKLIST`(과거 전 기간 연령 제한 작품 목록), `RUN_LOCK#<date>`(날짜 잠금)가 같은 테이블에 있습니다. 전체 스캔·날짜 조회 때 걸러야 합니다.
 
 ---
 
