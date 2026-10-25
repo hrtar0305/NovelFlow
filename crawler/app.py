@@ -693,6 +693,17 @@ class PageUnusable(Exception):
     """노벨피아가 준 페이지로 항목을 만들 수 없다(경고창 등). 다시 받아 볼 일이다."""
 
 
+class NotNovelPage(Exception):
+    """제목 칸조차 없는 응답 — 빈 본문·오류 화면·앞에서 잘린 쪽(제목은 약 76KB 지점). 작품 페이지라면 늘 있으므로 작품 탓일 수 없다."""
+
+
+class UnusableResponse(requests.exceptions.RequestException):
+    """같은 호출 안에서 다시 받아도 작품 페이지가 아니었다 — **상태 코드와 무관하게 받기 실패로 올린다**(사용자 결정 2026-10-26).
+    2026-10-25 노벨피아 장애 때 200 에 본문 0바이트가 수백 편 왔다. 받기 실패면 Step Functions 가 5·10·20·40·80초 뒤 다시 받고,
+    끝내 안 되면 RetryFailed placeholder 다. 제목은 있는데 다른 칸이 없는 쪽은 그대로 placeholder — 그 작품만의 화면 차이일 수 있어
+    매번 실패하면 Express 5분을 넘겨 하루를 통째로 잃는다."""
+
+
 # 쓸 수 없는 페이지·빠진 값은 **같은 호출 안에서** 다시 받는다(사용자 결정 2026-10-08). 실측: 6번의 파싱 실패가 전부
 # 31KB 에서 잘린 200 응답이었고 다음 날엔 멀쩡했다 — 다시 받았으면 살았을 값이다. 2·5초를 쉬는 이유: 잘림이 몰린 구간이
 # 0.3초(2026-08-24)~5.6초(2025 공모전 07-12)였다. 대기 합 7초라 계통 장애(500편 전부 실패)여도 동시 20에서 약 3분 안이다.
@@ -850,6 +861,8 @@ def _collect_detail(session, novel_info, raw_pages, execution_id):
 
     if soup.select_one(Config.Selectors.ALERT_MODAL):
         raise PageUnusable("Inaccessible")
+    if soup.select_one(Config.Selectors.TITLE) is None:
+        raise NotNovelPage(f"no title (status {response.status_code}, {len(response.text or '')} chars)")
     title_el, author_el, synopsis_el, counter_line_a, info_count2 = _get_required_detail_elements(
         soup, response, execution_id, novel_id
     )
@@ -937,6 +950,8 @@ def parse_novel_details(event, context):
                     if not last:
                         _retry_later(raw_pages, tried, attempt, execution_id, novel_id, reason)
                         continue
+                    if isinstance(e, NotNovelPage):
+                        raise UnusableResponse(f"still not a novel page after {attempt} attempts: {e}") from e
                     _log(logging.ERROR, execution_id, f"Page still unusable after {attempt} attempts: {reason}. Creating placeholder.",
                          novel_id=novel_id, exc_info=not isinstance(e, PageUnusable))
                     item_to_send = _create_placeholder_item(novel_info, reason=reason)

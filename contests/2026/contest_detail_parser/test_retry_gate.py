@@ -4,6 +4,7 @@ from unittest import mock
 os.environ.setdefault('AWS_DEFAULT_REGION', 'ap-northeast-2')
 os.environ.setdefault('DYNAMODB_TABLE_NAME', 't')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import requests
 import parser as P
 import consolidate_contest_data as C
 
@@ -22,14 +23,19 @@ class BatchRetry(unittest.TestCase):
     def run_batch(self, outcomes):
         """outcomes[id] = 차례로 낼 (item, ok)."""
         seq = {k: iter(v) for k, v in outcomes.items()}
-        with mock.patch.object(P, '_parse_one', side_effect=lambda s, nid, d, e: (lambda r: (r[0], [{'kind': 'detail', 'n': nid}], r[1]))(next(seq[nid]))), \
+        def parse_one(s, nid, d, e):
+            r = next(seq[nid])
+            if isinstance(r, Exception):
+                raise r
+            return r[0], [{'kind': 'detail', 'n': nid}], r[1]
+        with mock.patch.object(P, '_parse_one', side_effect=parse_one), \
              mock.patch.object(P.time, 'sleep') as sleep, mock.patch.object(P, '_upload_raw_batch', return_value=True) as up:
             out = P.parse_dmap_batch({'Items': list(outcomes), 'BatchInput': {'date': DATE}}, None)
         self.raw = up.call_args.args[1]
         return {i['ID']: i['Title'] for i in out['items']}, out, sleep
 
-    def test_truncated_page_recovers_at_batch_end(self):
-        titles, out, sleep = self.run_batch({'1': [(holder('1', 'ParsingFailed: AttributeError'), False), (real('1'), True)],
+    def test_transient_alert_recovers_at_batch_end(self):
+        titles, out, sleep = self.run_batch({'1': [(holder('1', 'Inaccessible'), False), (real('1'), True)],
                                             '2': [(real('2'), True)]})
         self.assertEqual(titles, {'1': 't1', '2': 't2'})
         self.assertEqual(out['failed'], [])
@@ -46,6 +52,70 @@ class BatchRetry(unittest.TestCase):
         partial = {**real('1'), 'RetentionFetchError': ['parse']}
         titles, out, _ = self.run_batch({'1': [(partial, True), (real('1'), True)]})
         self.assertNotIn('RetentionFetchError', out['items'][0])
+
+
+    def test_unusable_response_is_retried_like_a_network_error(self):
+        bad = P.UnusableResponse('empty page')
+        titles, out, sleep = self.run_batch({'1': [bad, bad, (real('1'), True)]})
+        self.assertEqual(titles, {'1': 't1'})
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [2, 4])
+
+    def test_unusable_to_the_end_goes_to_reconcile_not_placeholder(self):
+        # 2026-10-25: 장애 중 묶음 안 재시도(약 1분)가 모두 빈 페이지 → 예전엔 ParsingFailed 로 굳었다. 이제 '받지 못함'으로 넘겨
+        # reconcile 라운드(30초·2분·5분 뒤)가 다시 받는다.
+        bad = P.UnusableResponse('empty page')
+        titles, out, _ = self.run_batch({'1': [bad] * P.Config.MAX_INTERNAL_RETRIES})
+        self.assertEqual(titles, {})
+        self.assertEqual([f['id'] for f in out['failed']], ['1'])
+        self.assertIn('UnusableResponse', out['failed'][0]['error'])
+
+
+class _Resp:
+    def __init__(self, text, status=200):
+        self.text, self.status_code = text, status
+
+    def raise_for_status(self):
+        pass
+
+
+class _Session:
+    def __init__(self, text):
+        self.text = text
+
+    def get(self, url, **_kw):
+        return _Resp(self.text)
+
+
+class Unusable(unittest.TestCase):
+    def test_empty_200_is_a_fetch_failure(self):
+        # 노벨피아 장애(2026-10-25): 상태 200 에 본문 0바이트. 상태 코드와 무관하게 받기 실패다.
+        with self.assertRaises(requests.exceptions.RequestException):
+            P._parse_one(_Session(''), '1', DATE, 'e')
+
+    def test_alert_page_is_an_answer(self):
+        # 경고창(삭제·비공개)은 제대로 된 응답이다 — 받기 실패가 아니라 Inaccessible.
+        html = '<div id="alert_modal"><div class="modal-body"><p>잘못된 접근입니다.</p></div></div>'
+        item, _, ok = P._parse_one(_Session(html), '1', DATE, 'e')
+        self.assertFalse(ok)
+        self.assertEqual(item['Title'], 'N/A (Inaccessible)')
+
+
+class Rounds(unittest.TestCase):
+    def reconcile(self, rnd):
+        store = {f'runs/{DATE}/e/expected.json': ['1', '2'],
+                 f'runs/{DATE}/e/collected.json': {'items': [real('1')], 'errors': {}, 'raw_failed': 0, 'children_failed': 0}}
+        with mock.patch.object(C, '_run_prefix', return_value=f'runs/{DATE}/e'), \
+             mock.patch.object(C, '_get_json', side_effect=lambda k, d=None: store.get(k, d)), \
+             mock.patch.object(C, '_put_json'), \
+             mock.patch.object(C, '_dmap_rows', return_value=([], [{'id': '2', 'error': 'UnusableResponse: empty'}], 0, 0)):
+            return C.reconcile_dmap({'execution_id': 'e', 'date': DATE, 'round': rnd, 'manifest': {}})
+
+    def test_third_round_waits_five_minutes(self):
+        # 장애가 몇 분 이어져도 온전한 하루를 모으도록(사용자 결정 2026-10-26) 세 번째 라운드를 5분 뒤에 둔다.
+        out = self.reconcile(2)
+        self.assertTrue(out['retry'])
+        self.assertEqual(out['wait_seconds'], 300)
+        self.assertFalse(self.reconcile(3)['retry'])
 
 
 class Budget(unittest.TestCase):

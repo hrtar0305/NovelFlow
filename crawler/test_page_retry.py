@@ -43,6 +43,18 @@ class PageRetry(unittest.TestCase):
         self.assertEqual([p['kind'] for p in sent[app.raw_store.RAW_FIELD]], ['detail_failed', 'detail'])
         sleep.assert_called_once_with(2)
 
+    def test_no_novel_page_to_the_end_is_a_fetch_failure(self):
+        # 2026-10-25 노벨피아 장애: 200 에 본문 0바이트. 세 번 다 그렇면 placeholder 로 굳히지 않고 받기 실패로 올려
+        # Step Functions 가 5·10·20·40·80초 뒤 다시 받게 한다(상태 코드와 무관 — 사용자 결정 2026-10-26).
+        with self.assertRaises(app.requests.exceptions.RequestException):
+            run(*[app.NotNovelPage('no title')] * app.PAGE_ATTEMPTS)
+
+    def test_empty_body_is_not_a_novel_page(self):
+        resp = mock.Mock(status_code=200, text='')
+        session = mock.Mock(get=mock.Mock(return_value=resp))
+        with self.assertRaises(app.NotNovelPage):
+            app._collect_detail(session, EVENT['novel'], [], 't')
+
     def test_placeholder_only_after_all_attempts_keeps_reason(self):
         out, sent, sleep = run(*[app.PageUnusable('Inaccessible')] * app.PAGE_ATTEMPTS)
         self.assertEqual(out['status'], 'PLACEHOLDER_CREATED')

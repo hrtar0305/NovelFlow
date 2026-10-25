@@ -127,6 +127,12 @@ def _upload_raw_batch(execution_id, raw_batch, crawl_date, context, prefix=None)
         return False
 
 
+class UnusableResponse(requests.exceptions.RequestException):
+    """작품 페이지로 읽히지도, 경고창(삭제·비공개)이 뜨지도 않은 응답 — 빈 본문·잘린 페이지·오류 화면. **상태 코드와 무관하게
+    받기 실패로 본다**(사용자 결정 2026-10-26). 2026-10-25 노벨피아 장애 때 200 에 본문 0바이트가 약 700편 왔고, 묶음 안 재시도
+    (약 1분)를 넘긴 12편이 ParsingFailed 로 굳었다(그중 일간 41위). 네트워크 오류와 같은 길(묶음 안 3번 → reconcile 라운드)로 보낸다."""
+
+
 class ReplayMissing(Exception):
     """원본 재계산 중 저장된 원본에 없는 요청 — 그때 받지 않았거나(옛 묶음의 회차 조회수 응답) 형식이 다르다.
 
@@ -259,7 +265,8 @@ def _parse_one(session, novel_id, crawl_date, execution_id, crawled_at=None):
     """한 편 → (item, pages, ok). 받기는 `session` 이 맡는다 — 실시간 수집이면 `requests.Session`(노벨피아),
     원본 재계산이면 `ReplaySession`(그날 자정에 저장한 원본). 해석은 `_parse_detail`·`_attach_retention` 하나라 두 경로가 같다.
 
-    네트워크 오류는 올려서 호출부가 재시도하게 하고, 파싱 오류는 placeholder. `crawled_at` 을 주지 않으면 상세를 받은 시각(UTC).
+    네트워크 오류와 쓸 수 없는 응답(`UnusableResponse`)은 올려서 호출부가 재시도하게 하고, 경고창은 Inaccessible placeholder.
+    `crawled_at` 을 주지 않으면 상세를 받은 시각(UTC).
     """
     pages = []
     novel_url = Config.NOVEL_URL_TEMPLATE.format(novel_id)
@@ -268,6 +275,8 @@ def _parse_one(session, novel_id, crawl_date, execution_id, crawled_at=None):
     pages.append({"kind": "detail", "url": novel_url, "method": "GET",
                   "status": response.status_code, "html": response.text})
     item, ok = _parse_detail(response.text, novel_id, crawl_date, execution_id, crawled_at or _now_iso())
+    if not ok and item["Title"].startswith("N/A (ParsingFailed"):
+        raise UnusableResponse(f"unusable page (status {response.status_code}, {len(response.text)} chars)")
     if ok:
         _attach_retention(item, session, novel_id, crawl_date, pages, execution_id)
     return item, pages, ok
@@ -406,7 +415,7 @@ def parse_dmap_batch(event, context):
     if retry and over_budget():
         cut += retry   # 라운드를 시작하지도 못했다
     if cut:
-        # 시간 예산 때문에 다시 받지 못한 것만 '받지 못함'으로 돌려 reconcile 라운드(30초·120초 뒤)가 다시 받게 한다.
+        # 시간 예산 때문에 다시 받지 못한 것만 '받지 못함'으로 돌려 reconcile 라운드(30초·2분·5분 뒤)가 다시 받게 한다.
         # 끝까지 다시 받고도 같은 것은 그 결과(placeholder)로 확정한다.
         for novel_id in cut:
             failed.append({"id": novel_id, "error": f"TimeBudget (unusable: {fallback.pop(novel_id).get('Title')})"})

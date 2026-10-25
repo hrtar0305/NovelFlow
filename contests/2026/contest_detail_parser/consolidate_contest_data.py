@@ -334,8 +334,8 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
 #                                                └→ consolidate(남은 결손은 placeholder + 실패 장부, 너무 많으면 쓰지 않고 실패)
 # 작업 파일은 STATE_BUCKET 의 runs/{date}/{execution}/ 에 둔다 — 대조 결과를 상태 머신 페이로드(256KB)에 싣지 않는다.
 
-RETRY_ROUNDS = int(os.environ.get('DMAP_RETRY_ROUNDS', '2'))
-RETRY_WAITS = [30, 120]                      # 라운드별 대기(초) — 노벨피아의 순간 장애를 넘길 시간
+RETRY_ROUNDS = int(os.environ.get('DMAP_RETRY_ROUNDS', '3'))
+RETRY_WAITS = [30, 120, 300]                 # 라운드별 대기(초) — 노벨피아 장애를 넘길 시간. 셋째(5분)는 몇 분 이어지는 장애용(2026-10-26)
 # 품질 기준(2026-10-08 전 기간 실측으로 다시 정함 — 예전 5% 는 실측 없이 둔 값). 파서가 쓸 수 없는 결과를 다시 받고 reconcile 이 빠진 것을
 # 다시 받은 뒤에도 남은 것: 받지 못함(FetchFailed) + 읽지 못함(ParsingFailed). 운영 7일 20,771쪽에서 0건, 데일리 651일 정상일 최대 0.8%,
 # 가장 작은 계통 장애 63%(데일리 04-29 DOM) → 2% 를 넘으면 쓰지 않는다(정상 최대의 2.5배, 장애의 1/30). 예전엔 FetchFailed 만 세서
