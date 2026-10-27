@@ -249,6 +249,7 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
           <i>|</i>추천 <b>{signed(summary.d.like)}</b>
           <i>|</i>선호 <b>{signed(summary.d.fav)}</b>
           <i>|</i>회차 <b>{signed(summary.d.eps)}</b>
+          <i>|</i>알람 <b>{signed(summary.d.alr)}</b>
           {summary.ratio != null ? <><i>|</i>기간 추천비 <b>{formatRatio(summary.ratio, 1)}</b></> : null}
         </p>
       ) : null}
@@ -297,7 +298,7 @@ export default function MetricsPanel({ points, kind, uploads }: Props) {
                     <td>{formatInt(p.like)}{small(p, p.d?.like)}</td>
                     <td>{formatInt(p.fav)}{small(p, p.d?.fav)}</td>
                     <td>{formatInt(p.eps)}{small(p, p.d?.eps)}</td>
-                    <td>{formatInt(p.alr)}</td>
+                    <td>{formatInt(p.alr)}{small(p, p.d?.alr)}</td>
                   </>
                 )}
               </tr>

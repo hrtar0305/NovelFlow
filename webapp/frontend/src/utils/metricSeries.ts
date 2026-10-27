@@ -24,7 +24,7 @@ export interface MetricRow {
   Baseline?: boolean;
 }
 
-export type Delta = { view: number | null; like: number | null; fav: number | null; eps: number | null };
+export type Delta = { view: number | null; like: number | null; fav: number | null; eps: number | null; alr: number | null };
 
 export interface MetricPoint {
   date: string;
@@ -78,7 +78,7 @@ export function buildMetricPoints(rows: MetricRow[], compare: Compare, windowSta
     };
     if (hasVal && prevRec) {
       p.span = dayNo(p.date) - dayNo(prevRec.date);
-      p.d = { view: sub(p.view, prevRec.view), like: sub(p.like, prevRec.like), fav: sub(p.fav, prevRec.fav), eps: sub(p.eps, prevRec.eps) };
+      p.d = { view: sub(p.view, prevRec.view), like: sub(p.like, prevRec.like), fav: sub(p.fav, prevRec.fav), eps: sub(p.eps, prevRec.eps), alr: sub(p.alr, prevRec.alr) };
     }
     if (rec && p.rank != null && i > 0) {
       const before = out[i - 1];
@@ -125,7 +125,7 @@ export function summarizeMetrics(points: MetricPoint[]): MetricSummary | null {
   const base = (k: keyof Delta, v: number | null) => (v != null ? v - (first.d?.[k] ?? 0) : null);
   const d: Delta = {
     view: sub(last.view, base('view', first.view)), like: sub(last.like, base('like', first.like)),
-    fav: sub(last.fav, base('fav', first.fav)), eps: sub(last.eps, base('eps', first.eps)),
+    fav: sub(last.fav, base('fav', first.fav)), eps: sub(last.eps, base('eps', first.eps)), alr: sub(last.alr, base('alr', first.alr)),
   };
   return { first, last, rankFirst: ranked[0] ?? null, rankLast: ranked[ranked.length - 1] ?? null, best, days: recs.length, total: points.length, d, ratio: d.view && d.view > 0 && d.like != null ? d.like / d.view : null };
 }

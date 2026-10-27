@@ -12,6 +12,11 @@ describe('buildMetricPoints', () => {
   it('증가량은 직전 기록 대비, 첫 기록은 null', () => {
     expect(pts[0].d).toBeNull();
     expect(pts[1].d).toMatchObject({ view: 500, eps: 1 });
+  });
+  it('알람도 증가량을 센다(표의 회차 옆 칸 — 2026-10-28 사용자 지적)', () => {
+    const p = buildMetricPoints([rec('2026-09-01', 50, 1000), rec('2026-09-02', 40, 1500, { Alr: 8 })], 'calendar');
+    expect(p[1].d).toMatchObject({ alr: 3 });
+    expect(summarizeMetrics(p)!.d).toMatchObject({ alr: 3 });
     expect(pts[1].span).toBe(1);
   });
   it('순위권 밖을 건너뛴 증가량은 여러 날치(span)', () => {
