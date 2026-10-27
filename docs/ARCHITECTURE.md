@@ -112,7 +112,7 @@ Lambda: parser (SQS Task 큐 트리거, batch 80, Reserved Concurrency 40)
 ## 2-b. 2026 공모전 파이프라인 (`contests/2026/`)
 
 2025와 같은 SQS 구조로 시작했다가 2026-10-02 자정분부터 **Distributed Map** 판으로 돕니다. 하루의 값은 자정 값이라,
-00:00에 시작해 마감(D+1 01:00) 안에서만 받고 실패하면 한 번 자동 재실행합니다. 배포는 `bash contests/2026/deploy.sh`.
+00:00에 시작해 마감(D+1 00:30) 안에서만 받고 실패하면 한 번 자동 재실행합니다. 배포는 `bash contests/2026/deploy.sh`.
 
 ```
 EventBridge Scheduler (매일 00:00 KST)             ← 11:30·23:30 에는 수집기만 '준비 실행'

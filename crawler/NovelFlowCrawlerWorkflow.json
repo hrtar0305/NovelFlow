@@ -1,5 +1,5 @@
 {
-  "Comment": "Crawl Novelpia daily rankings, parse details in parallel, and handle errors. 하루의 값은 제시간 값이다(사용자 결정 2026-10-04): 실행이 단계별 재시도를 다 쓰고도 실패하면 60초 뒤 purge 부터 한 번 더 한다(CrawlAttempt 자동 재시도, 날짜 잠금은 그 앞에서 한 번만). 어느 시도든 기록 날짜(실행 시작의 KST 날짜) 22:00 KST 이후에는 받지 않는다(LateRunRefused, 재시도 없음). 재시도로 복구하면 Discord 에 멘션 없이 알린다. 시험: {\"test_mode\": true} 는 마감·잠금·purge 없이 랭킹 목록만 받아 보고 끝난다(쓰기 없음). 여기에 \"fail_first_attempt\": true 를 더하면 첫 시도를 일부러 실패시켜 자동 재시도 경로를 태운다.",
+  "Comment": "Crawl Novelpia daily rankings, parse details in parallel, and handle errors. 하루의 값은 제시간 값이다(사용자 결정 2026-10-04): 실행이 단계별 재시도를 다 쓰고도 실패하면 60초 뒤 purge 부터 한 번 더 한다(CrawlAttempt 자동 재시도, 날짜 잠금은 그 앞에서 한 번만). 어느 시도든 기록 날짜(실행 시작의 KST 날짜) 21:15 KST 이후에는 받지 않는다(2026-10-27 22:00 → 21:15)(LateRunRefused, 재시도 없음). 재시도로 복구하면 Discord 에 멘션 없이 알린다. 시험: {\"test_mode\": true} 는 마감·잠금·purge 없이 랭킹 목록만 받아 보고 끝난다(쓰기 없음). 여기에 \"fail_first_attempt\": true 를 더하면 첫 시도를 일부러 실패시켜 자동 재시도 경로를 태운다.",
   "StartAt": "ResolveRunDate",
   "States": {
     "ResolveRunDate": {
@@ -98,7 +98,7 @@
               "같은 날짜의 실행이 이미 날짜 잠금을 잡아서 이 실행은 아무것도 하지 않고 끝냈습니다.",
               "예약이 두 번 전달됐거나, 입력 없이 손으로 돌린 실행이 먼저 잠금을 잡은 경우입니다. 잠금은 풀리지 않으므로, 잠금을 잡은 실행은 아직 도는 중일 수도, 이미 끝났거나 실패했을 수도 있습니다."
             ],
-            "action": "{% '잠금을 잡은 실행이 성공했는지 확인하세요 — 잠금 항목 NovelRanks 테이블 ID=RUN_LOCK#' & $runDate & ', Date=LOCK. 그 실행이 실패했고 아직 22:00 전이면 입력에서 `scheduled` 를 빼고 수동 실행해 다시 받을 수 있습니다(잠금을 잡지 않습니다).' %}",
+            "action": "{% '잠금을 잡은 실행이 성공했는지 확인하세요 — 잠금 항목 NovelRanks 테이블 ID=RUN_LOCK#' & $runDate & ', Date=LOCK. 그 실행이 실패했고 아직 21:15 전이면 입력에서 `scheduled` 를 빼고 수동 실행해 다시 받을 수 있습니다(잠금을 잡지 않습니다).' %}",
             "run": "{% $states.context.Execution.Name %}"
           },
           "mention": false
@@ -140,7 +140,7 @@
             "AttemptGate": {
               "Type": "Choice",
               "QueryLanguage": "JSONata",
-              "Comment": "시도의 시작(StartAttempt 가 찍은 $attemptStartedMs)에서 본다. 하루의 값은 제시간 값이다(사용자 결정 2026-10-04): 기록 날짜(= 실행 시작의 KST 날짜, GetRanking 의 today 와 같다) 22:00 KST 를 넘긴 시도는 purge 도 받기도 하지 않고 LateRunRefused 로 끝난다(다시 하지 않음). test_mode 는 마감이 없고, purge·대기 없이 GetRanking 만 부른다(큐를 건드리지 않게). 시험 훅: test_mode 와 fail_first_attempt 를 함께 주면 첫 시도를 여기서 실패시켜 자동 재시도 경로를 태운다.",
+              "Comment": "시도의 시작(StartAttempt 가 찍은 $attemptStartedMs)에서 본다. 하루의 값은 제시간 값이다(사용자 결정 2026-10-04): 기록 날짜(= 실행 시작의 KST 날짜, GetRanking 의 today 와 같다) 21:15 KST 를 넘긴 시도는 purge 도 받기도 하지 않고 LateRunRefused 로 끝난다(다시 하지 않음). test_mode 는 마감이 없고, purge·대기 없이 GetRanking 만 부른다(큐를 건드리지 않게). 시험 훅: test_mode 와 fail_first_attempt 를 함께 주면 첫 시도를 여기서 실패시켜 자동 재시도 경로를 태운다.",
               "Choices": [
                 {
                   "Condition": "{% $states.input.test_mode = true and $states.input.fail_first_attempt = true and $attempt = 1 %}",
@@ -151,7 +151,7 @@
                   "Next": "GetRanking"
                 },
                 {
-                  "Condition": "{% $attemptStartedMs > $toMillis($runDate & 'T22:00:00.000+09:00') %}",
+                  "Condition": "{% $attemptStartedMs > $toMillis($runDate & 'T21:15:00.000+09:00') %}",
                   "Next": "RefuseLateRun"
                 }
               ],
@@ -192,7 +192,7 @@
             "StampFetchTime": {
               "Type": "Pass",
               "QueryLanguage": "JSONata",
-              "Comment": "받기 직전 시각. purge 재시도·65초 대기 사이에 22:00 을 넘길 수 있어 받기 직전에 한 번 더 본다.",
+              "Comment": "받기 직전 시각. purge 재시도·65초 대기 사이에 21:15 를 넘길 수 있어 받기 직전에 한 번 더 본다.",
               "Assign": {
                 "fetchAtMs": "{% $millis() %}"
               },
@@ -202,10 +202,10 @@
             "FetchWindowOpen?": {
               "Type": "Choice",
               "QueryLanguage": "JSONata",
-              "Comment": "받기 시작이 기록 날짜 22:00 KST 를 넘기면 받지 않는다(AttemptGate 와 같은 마감).",
+              "Comment": "받기 시작이 기록 날짜 21:15 KST 를 넘기면 받지 않는다(AttemptGate 와 같은 마감).",
               "Choices": [
                 {
-                  "Condition": "{% $fetchAtMs > $toMillis($runDate & 'T22:00:00.000+09:00') %}",
+                  "Condition": "{% $fetchAtMs > $toMillis($runDate & 'T21:15:00.000+09:00') %}",
                   "Next": "RefuseLateRun"
                 }
               ],
@@ -216,7 +216,7 @@
               "QueryLanguage": "JSONata",
               "Comment": "늦은 받기 거절. 재시도하지 않는다(RetryOnce? 가 이 오류를 거른다).",
               "Error": "LateRunRefused",
-              "Cause": "{% '데일리 ' & $runDate & ' 수집 거절: 이 시도는 ' & $fromMillis($millis(), '[H01]:[m01]', '+0900') & ' KST 에 받기를 시작하려 했습니다. 하루의 값은 제시간 값이어야 해서 기록 날짜 22:00 KST 이후에는 노벨피아에서 받지도 쓰지도 않습니다(사용자 결정 2026-10-04). 그날은 비워 둡니다.' & ($attempt > 1 ? ' 앞선 시도의 실패: ' & $firstError.Error & ' — ' & $substring($string($firstError.Cause), 0, 1500) : '') %}"
+              "Cause": "{% '데일리 ' & $runDate & ' 수집 거절: 이 시도는 ' & $fromMillis($millis(), '[H01]:[m01]', '+0900') & ' KST 에 받기를 시작하려 했습니다. 하루의 값은 제시간 값이어야 해서 기록 날짜 21:15 KST 이후에는 노벨피아에서 받지도 쓰지도 않습니다(사용자 결정 2026-10-04 · 2026-10-27). 그날은 비워 둡니다.' & ($attempt > 1 ? ' 앞선 시도의 실패: ' & $firstError.Error & ' — ' & $substring($string($firstError.Cause), 0, 1500) : '') %}"
             },
             "GetRanking": {
               "Type": "Task",

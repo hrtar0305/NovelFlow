@@ -97,7 +97,7 @@ code() {
   # 파일을 둘이 쓰므로 재시도를 끈다 — 실패한 준비 실행은 다음 날 다시 돈다(자정 수집은 무관).
   aws lambda put-function-event-invoke-config --region $R --function-name $F_COLLECTOR --maximum-retry-attempts 0 >/dev/null
   # 날짜 함수(ResolveDate·StartAttempt)는 환경 변수가 필요 없다 — 수집기 재호출 마감(DISCOVERY_RECALL_MINUTES=12)·받기 마감
-  # (REFETCH_GRACE_MINUTES=60, 자정 + 1시간)은 코드 기본값이고, 시도 표지를 쓸 상태 버킷은 상태 머신이 넘긴다(S3 권한은 Lambda 역할).
+  # (REFETCH_GRACE_MINUTES=30, 자정 + 30분)은 코드 기본값이고, 시도 표지를 쓸 상태 버킷은 상태 머신이 넘긴다(S3 권한은 Lambda 역할).
   upsert_zip $F_FANOUT "$BUILD/fanout.zip" app.get_id_list_from_s3 120 256 '{"Variables":{}}'
 
   # 파서 Lambda 는 원본 재계산(reprocess)도 맡는다 — action=reprocess_index·BatchInput.reprocess 로 갈린다(같은 이미지·같은 해석 코드).
@@ -195,12 +195,12 @@ schedule() {
       \"arn:aws:states:$R:$ACC:stateMachine:NpTrendContestDataPipelineMainWorkflow\",\"$SM_ARN\"]},
       {\"Effect\":\"Allow\",\"Action\":[\"lambda:InvokeFunction\"],\"Resource\":[\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\"]}]}" >/dev/null
 
-  # 시작 요청이 실패해도 1시간 안에서만 다시 보낸다 — 그보다 늦은 시작은 자정 값이 아니다(실행도 거절하지만 애초에 보내지 않는다).
+  # 시작 요청이 실패해도 30분 안에서만 다시 보낸다(받기 마감과 같다) — 그보다 늦은 시작은 자정 값이 아니다(실행도 거절하지만 애초에 보내지 않는다).
   # 종료일은 걸지 않는다 — 공모전 일정이 정해지면 사람이 끈다(OPERATIONS 「공모전 수집 종료」, 결정 2026-10-12).
   echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → $SM_NAME)"
   ARGS=(--region $R --name $SCHED_NAME --schedule-expression "cron(0 0 * * ? *)" --schedule-expression-timezone Asia/Seoul
         --flexible-time-window Mode=OFF
-        --target "Arn=$SM_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME,RetryPolicy={MaximumEventAgeInSeconds=3600,MaximumRetryAttempts=185}")
+        --target "Arn=$SM_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME,RetryPolicy={MaximumEventAgeInSeconds=1800,MaximumRetryAttempts=185}")
   if exists aws scheduler get-schedule --region $R --name $SCHED_NAME; then aws scheduler update-schedule "${ARGS[@]}" >/dev/null
   else aws scheduler create-schedule "${ARGS[@]}" >/dev/null; fi
 

@@ -247,7 +247,7 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
 
 - 데일리 랭킹 파이프라인: 매일 21:00 — 스케줄 입력 `{"target_novel_count": 500, "scheduled": true}`. `scheduled` 가 있는 실행만
   `RUN_LOCK#<KST 날짜>`(NovelRanks, Date=`LOCK`)를 잡아 중복 전달을 건너뛴다. **손으로 다시 돌릴 때는 `scheduled` 를 빼면 된다**(잠금 없음).
-  실패하면 상태 머신이 60초 뒤 purge 부터 **한 번 자동 재실행**한다(복구하면 멘션 없는 알림). **22:00 KST 이후 시작하는 시도는
+  실패하면 상태 머신이 60초 뒤 purge 부터 **한 번 자동 재실행**한다(복구하면 멘션 없는 알림). **21:15 KST 이후 시작하는 시도는
   `LateRunRefused` 로 거절**된다 — 그 뒤엔 그날을 다시 받을 수 없다(결정 2026-10-04). 시험은 `{"test_mode": true}`(목록만 받고 쓰기·purge·잠금 없음),
   재시도 경로 시험은 여기에 `"fail_first_attempt": true`.
   로그인 쿠키는 get-ranking 이 SSM SecureString `/NP-Trend/AUTH_COOKIES` 에 쓰고 버전만 넘긴다 — 크롤러 이미지와 두 상태 머신
@@ -259,7 +259,7 @@ purge 는 Lambda 가 아니라 **상태 머신 첫 단계**(`aws-sdk:sqs:purgeQu
   - **수집은 공모전 일정에 맞춰 사람이 끝낸다**(약 1년 가정) — 스케줄에 종료일을 걸지 않는다. 끝낼 때는 아래 「공모전 수집 종료」.
   - SQS 판은 2026-10-04 삭제했다(DMap 판만 남음).
   - **하루의 값은 자정 값이다(결정 2026-10-04).** 실패하면 60초 뒤 한 번 자동 재실행한다. 노벨피아에서 다시 받는 시도는
-    D+1 00:00 + 60분 안(자정 5분 전 이후)에 시작해야 하고, 벗어나면 `LateRefetchRefused` 로 거절된다. 수동 `{"target_date": "YYYY-MM-DD"}` 도 같다.
+    D+1 00:00 + 30분 안(자정 5분 전 이후)에 시작해야 하고, 벗어나면 `LateRefetchRefused` 로 거절된다. 수동 `{"target_date": "YYYY-MM-DD"}` 도 같다.
   - 첫 시도의 실패 상태(오류·어디까지 했나)는 상태 버킷 `runs/{date}/{실행 이름}/attempt-errors/` 에 남고 적재·실패 알림에 요약된다.
   - **받기는 끝났는데 적재가 실패한 날**: 원본 재계산 `{"reprocess": true, "target_date": "YYYY-MM-DD"}`(마감 없음). 먼저 `"dry_run": true` 로
     운영 행과 견준다. 원본에 없는 작품이 자정 기대 목록의 2%를 넘으면 `ReprocessIncomplete` — 확인했으면 `"accept_partial": true`.

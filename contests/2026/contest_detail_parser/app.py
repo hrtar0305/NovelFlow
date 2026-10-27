@@ -13,14 +13,15 @@ DISCOVERY_RECALL_MINUTES = int(os.environ.get('DISCOVERY_RECALL_MINUTES', '12'))
 
 KST = ZoneInfo("Asia/Seoul")
 # 하루의 값은 자정 값이다(사용자 결정 2026-10-04). 노벨피아에서 다시 받아 기록 날짜 D 로 쓰는 시도는 D+1 00:00 KST 뒤
-# 이 시간 안에 시작해야 한다 — 자동 재실행(상태 머신 `Run` 의 Retry)으로 생기는 지연까지만 허용한다. 그 뒤에 받은 값은 그 시각의
+# 이 시간 안에 시작해야 한다 — 자동 재실행(상태 머신 `Run` 의 Retry)으로 생기는 지연까지만 허용한다. 60분이었다가 30분으로 좁혔다
+# (사용자 2026-10-27 — 자정 실행은 약 10분이라 실패 뒤 한 번 다시 하는 데 30분이면 되고, 더 늦은 값은 일간 증가를 그만큼 부풀린다). 그 뒤에 받은 값은 그 시각의
 # 누적이라 일간 증가가 시각 차를 품는다. 받기는 끝났는데 적재가 실패했다면 원본 재계산(`reprocess`)으로 자정 값을 다시 계산한다.
-REFETCH_GRACE_MINUTES = int(os.environ.get('REFETCH_GRACE_MINUTES', '60'))
+REFETCH_GRACE_MINUTES = int(os.environ.get('REFETCH_GRACE_MINUTES', '30'))
 EARLY_GRACE_MINUTES = 5   # 자정 몇 분 전 시작(스케줄러·시계 오차)은 그 날짜의 자정 수집으로 본다
 
 
 class LateRefetchRefused(Exception):
-    """기록 날짜의 자정 + 1시간이 지나 노벨피아에서 다시 받으려 했다 — 받기 전에 거절한다(상태 머신이 재시도하지 않는다)."""
+    """기록 날짜의 자정 + 30분이 지나 노벨피아에서 다시 받으려 했다 — 받기 전에 거절한다(상태 머신이 재시도하지 않는다)."""
 
 
 class InjectedAttemptFailure(Exception):
@@ -44,7 +45,7 @@ EXECUTION_LIMIT_MINUTES = int(os.environ.get('EXECUTION_LIMIT_MINUTES', '105'))
 
 
 def raw_accept_until(date):
-    """기록 날짜 `date` 의 원본으로 인정하는 마지막 받은 시각 = 받기 마감 + 실행 제한(D+1 02:45 KST).
+    """기록 날짜 `date` 의 원본으로 인정하는 마지막 받은 시각 = 받기 마감 + 실행 제한(D+1 02:15 KST).
 
     원본 재계산(`parser.reprocess_index`·`reparse_raw_batch`)은 그 날짜 접두어 아래 묶음 중 이보다 늦게 받은 줄을 버린다.
     마감(`refetch_deadline`) 안에 시작한 시도(자동 재실행 포함)는 실행 제한 안에서 받기를 끝내므로 이 시각을 넘지 않는다.
@@ -206,8 +207,8 @@ def attempt_start(event):
            "dry_run", "reprocess", "fail_first_attempt"}  (`execution_start` 는 받지만 쓰지 않는다)
     - 시도 번호: `_record_attempt`. 못 세면(S3 오류) None — 알림 문구만 빠지고 수집은 막지 않는다.
     - 마감(`check_refetch_allowed`): 첫 시도든 재실행이든 **그 시도의 시작**(token) 시각으로 본다. 예전에는 첫 시도를 실행
-      시작으로 봤는데, 첫 시도의 표지 쓰기가 실패하면 01:00 뒤 재실행이 '첫 시도'로 세어져 실행 시작(00:00) 기준으로 통과했다
-      (리뷰 2026-10-04). 자정 실행에서 잠금·날짜 계산으로 생기는 몇 초는 1시간 마감에 영향이 없다.
+      시작으로 봤는데, 첫 시도의 표지 쓰기가 실패하면 마감 뒤 재실행이 '첫 시도'로 세어져 실행 시작(00:00) 기준으로 통과했다
+      (리뷰 2026-10-04). 자정 실행에서 잠금·날짜 계산으로 생기는 몇 초는 30분 마감에 영향이 없다.
     - 앞선 시도의 오류(`_previous_attempt_errors`)를 거절 문구와 결과(`previous_errors`)에 싣는다 — 재실행이 마감에 걸리면
       실패 알림이 재실행의 거절만 보여 주어, 첫 시도가 받기를 끝냈는지(원본 재계산을 해도 되는지) 알 수 없었다.
     - 수집기 재호출 마감도 시도 시작 + `DISCOVERY_RECALL_MINUTES` 로 다시 정한다(재실행이 첫 시도의 마감을 물려받지 않게).
