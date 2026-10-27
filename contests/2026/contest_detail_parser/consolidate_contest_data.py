@@ -85,6 +85,15 @@ def _calculate_and_store_tag_stats(dynamodb_table, execution_id, items):
     except Exception as e:
         _log(logging.ERROR, execution_id, f"Failed to store tag stats for {date}. Error: {e}")
 
+CONTEST_BADGE_CLASS = 'b_contest2'   # 2026 공모전 배지('우주최강') — 수집기의 판정 셀렉터 p.in-badge span.b_contest2 와 같다
+
+
+def _withdrawn(item):
+    """공모전에서 빠진 작품 — 배지 칸을 읽었는데(`Badges` 가 목록) 공모전 배지가 없다. 배지 칸을 모르면 빠졌다고 하지 않는다."""
+    badges = item.get('Badges')
+    return isinstance(badges, list) and not any(CONTEST_BADGE_CLASS in (b.get('class') or []) for b in badges)
+
+
 def _found_after_date(date, meta):
     """수집기가 이 번호를 기록 날짜 `date` 의 수집(다음 날 00:00 KST) **뒤**에 처음 봤나 — 그날엔 없던 작품.
 
@@ -771,10 +780,12 @@ def handler_dmap(event, context):
         notice = _notice(date, ledger, run=execution_id)
         return {'statusCode': 200, 'processed_count': len(unique), 'fetch_failed': len(still), 'kept_rows': len(kept),
                 'mode': 'reprocess', 'degraded': bool(notice), 'notice': notice}
-    # 지금 보이지 않는 참가작(경고창·파싱 실패 자리표시 — 받지 못한 FetchFailed 는 제외)을 수집기에 알린다. 수집기는 이 번호를 빼고
-    # '살아 있는 수'를 노벨피아 표시 수와 견준다(누적 목록이 삭제·비공개작까지 세서 놓친 신작을 가리지 않게). 매일 덮어쓴다.
+    # 노벨피아 표시 수에 들지 않는 참가작을 수집기에 알린다 — 지금 보이지 않는 것(경고창·파싱 실패 자리표시, 받지 못한 FetchFailed 는
+    # 제외)과 공모전에서 빠진 것(배지 칸은 읽혔는데 공모전 배지가 없다 — 457604, 2026-10-06~). 수집기는 이 번호를 빼고 '살아 있는 수'를
+    # 표시 수와 견준다(누적 목록이 이런 작품까지 세면 놓친 신작이 그만큼 가려진다 — 457604 하나가 한 달 가까이 +1 로 가렸다). 매일 덮어쓴다.
     try:
-        gone = sorted(str(i['ID']) for i in unique if str(i.get('Title', '')).startswith(('N/A (Inaccessible', 'N/A (ParsingFailed')))
+        gone = sorted(str(i['ID']) for i in unique
+                      if str(i.get('Title', '')).startswith(('N/A (Inaccessible', 'N/A (ParsingFailed')) or _withdrawn(i))
         _put_json('state/gone_ids.json', gone)
     except Exception as e:  # noqa: BLE001 — 부가 정보라 적재를 막지 않는다
         _log(logging.WARNING, execution_id, f"Could not write gone_ids: {e}")

@@ -11,7 +11,8 @@
 - `mode: "midnight"` (00:00, 상태 머신 첫 단계 — 기본값): 끝 번호부터 첫 '잘못된 소설 번호'까지 + 노벨피아 표시 수와
   견주기(모자라면 끝 번호만 다시, 최대 MATCH_ROUNDS_MIDNIGHT 번) + 새 작가의 다른 작품(최대 MIDNIGHT_AUTHOR_SECONDS 초,
   실패해도 목록은 이미 써 둔다). 재확인은 하지 않는다 — 끝 번호를 다시 훑어도
-  안 메워지는 차이(배지가 늦게 보인 작품 등)는 경고만 남기고 다음 준비 실행이 메운다.
+  안 메워지는 차이(배지가 늦게 보인 작품 등)는 경고만 남기고 다음 준비 실행이 메운다. 단 **장애 응답(빈 본문·제목 없음·요청 실패)으로
+  남은 번호는 수를 견주기 전에 바로 다시 본다**(최대 MIDNIGHT_UPSTREAM_SECONDS 초, 2026-10-27 — 10-25 장애 때 그날 2편을 놓쳤다).
 
 2025 와 다른 점
 - **상태를 S3 에 둔다.** 2025 는 SSM 이었는데 재확인 목록이 4KB 한도의 99.6%까지 찼다(백로그 #24).
@@ -63,6 +64,7 @@ BUDGET_MS = int(os.environ.get('STOP_WHEN_REMAINING_MS', '90000'))
 CHUNK = 40
 MATCH_ROUNDS_MIDNIGHT = int(os.environ.get('MATCH_ROUNDS_MIDNIGHT', '3'))   # 자정: 노벨피아 표시 수와 맞을 때까지 다시 훑는 최대 횟수
 MIDNIGHT_AUTHOR_SECONDS = int(os.environ.get('MIDNIGHT_AUTHOR_SECONDS', '20'))  # 자정: 작가 받기에 쓸 최대 시간(밀린 몫은 준비 실행)
+MIDNIGHT_UPSTREAM_SECONDS = int(os.environ.get('MIDNIGHT_UPSTREAM_SECONDS', '60'))  # 자정: 장애 응답으로 남은 번호 다시 보기 최대 시간
 UPSTREAM_FAIL_STREAK = int(os.environ.get('UPSTREAM_FAIL_STREAK', str(2 * WORKERS)))  # 훑기: 노벨피아 장애로 보고 멈추는 연속 실패 수
 
 ID_LIST_KEY = f"contest_novel_ids_{YEAR}.json"      # 팬아웃이 읽는 목록(2025 와 같은 모양: 번호 배열)
@@ -205,16 +207,21 @@ def _novel_nos(w):
     return out
 
 
-def listed_total(session):
+def listed_total(session, tries=3):
     """노벨피아가 표시하는 공모전 등록 작품 수('총 N개 작품'). 우리 수집 수와 같아야 한다(2026-10-01 같은 시각 실측
-    1,743 = 1,743). 목록 페이지 자체는 일부만 보여 주지만 이 숫자는 0회차 작품까지 센 전체 등록 수다. 못 읽으면 None."""
+    1,743 = 1,743). 목록 페이지 자체는 일부만 보여 주지만 이 숫자는 0회차 작품까지 센 전체 등록 수다.
+    장애 중엔 빈 페이지가 오므로 몇 번 다시 읽는다(2026-10-25 은 한 번 못 읽고 수 비교를 건너뛰어 2편을 놓쳤다). 끝내 못 읽으면 None."""
     import re
-    try:
-        h = session.get('https://novelpia.com/contest_list', timeout=15).text
-        m = re.search(r'총\s*([\d,]+)\s*개 작품', h)
-        return int(m.group(1).replace(',', '')) if m else None
-    except requests.RequestException:
-        return None
+    for attempt in range(tries):
+        try:
+            m = re.search(r'총\s*([\d,]+)\s*개 작품', session.get('https://novelpia.com/contest_list', timeout=15).text)
+            if m:
+                return int(m.group(1).replace(',', ''))
+        except requests.RequestException:
+            pass
+        if attempt + 1 < tries:
+            time.sleep(2 * (attempt + 1))
+    return None
 
 
 def summarize_author(pages):
@@ -268,6 +275,45 @@ def handler(event, context):
         else:  # 공개 일반작 — 개막일에 배지가 늦게 보인 사례가 있어 다시 본다(원인 미확인)
             recheck.setdefault(str(i), {'reason': 'normal', 'first_seen': _now(), 'status': 'normal', 'last_checked': _now(),
                                         'last_run': execution_id, 'seen_badges': (info or {}).get('badges')})
+
+    def apply_recheck(k, kind, info, via='recheck'):
+        """재확인 한 번의 결과를 목록에 반영한다(지우지 않는다 — 상태만 바꾼다)."""
+        v = recheck[k]
+        v['last_checked'] = _now()
+        v['last_run'] = execution_id
+        if kind == 'contest':
+            # 처음 본 시각·당시 분류와 함께 남겨, 배지가 언제 생겼는지 가릴 수 있게 한다.
+            contest[k] = {**info, 'found_at': _now(), 'via': via, 'first_seen': v.get('first_seen'),
+                          'was': v.get('status'), 'was_badges': v.get('seen_badges')}
+            new_contest.append(int(k))
+            v['status'] = 'contest'
+        elif kind == 'normal':
+            v['status'] = 'normal'
+        elif kind == 'retry':
+            v['status'], v['reason'] = 'retry', info
+
+    def recheck_upstream(seconds):
+        """장애 응답(빈 본문·제목 없는 페이지·요청 실패)으로 '다시 볼 번호'가 된 것만 자정에 바로 다시 본다(2026-10-27).
+
+        10-25 장애 때 23:30·자정 훑기에서 빈 페이지를 받은 참가작 2편이 다음 날 오전 재확인에야 잡혀 그날 기록에서 빠졌다.
+        경고창(비공개·삭제)은 제대로 된 응답이라 여기서 보지 않는다(준비 실행 몫). 하루 안에 처음 본 번호는 번호 훑기와 같은
+        시점의 발견이라 `via: midnight-recheck`(적재가 신작으로 친다), 더 묵은 번호는 등록이 그 전일 수 있어 `via: recheck`.
+        반환: (다시 본 수, 찾은 참가작 수, 시간 안에 못 본 수)."""
+        ids = [k for k, v in recheck.items()
+               if k not in contest and v.get('status') == 'retry' and _upstream_failure('retry', v.get('reason'))]
+        deadline, seen, found = time.monotonic() + seconds, 0, 0
+        day_ago = datetime.now(KST) - timedelta(hours=24)
+        while ids and time.monotonic() < deadline and remaining() > BUDGET_MS:
+            part, ids = ids[:2 * WORKERS], ids[2 * WORKERS:]
+            for k, (kind, info) in zip(part, run_ids([int(x) for x in part])):
+                fresh = datetime.fromisoformat(recheck[k]['first_seen']) >= day_ago
+                apply_recheck(k, kind, info, via='midnight-recheck' if fresh else 'recheck')
+                seen += 1
+                found += kind == 'contest'
+        if seen:
+            _put(RECHECK_KEY, recheck)
+            _put(CONTEST_META_KEY, contest)
+        return seen, found, len(ids)
 
     def scan_to_frontier():
         """다음 번호부터 '잘못된 소설 번호'가 **처음 나오는 순간** 멈춘다(사용자 결정 2026-10-01).
@@ -355,6 +401,12 @@ def handler(event, context):
     # ---- 1. 새 번호. 자정이면 노벨피아 표시 수와 견주고, 모자라면 끝 번호만 다시 훑는다 ----
     if not done_scan:
         done_scan = scan_to_frontier()
+    upstream = (0, 0, 0)
+    if not prep and done_scan and not aborted:
+        upstream = recheck_upstream(MIDNIGHT_UPSTREAM_SECONDS)
+        if upstream[0]:
+            _log(logging.INFO, execution_id, "Rechecked numbers left by upstream failures.",
+                 rechecked=upstream[0], found=upstream[1], left=upstream[2])
     listed, rounds = None, 0
     # 노벨피아 장애로 끊긴 훑기는 몇 초 뒤 다시 훑어도 같다 — 자정 수집만 늦추므로 다시 훑지 않는다(수 부족 경고는 남는다).
     while not prep and done_scan and rounds < MATCH_ROUNDS_MIDNIGHT and remaining() > BUDGET_MS:
@@ -380,7 +432,8 @@ def handler(event, context):
                  ours=alive(), listed=listed, short_by=listed - alive(), gone=len(contest) - alive(), rounds=rounds)
         _log(logging.INFO, execution_id, "Midnight ID pass finished.", done=done_scan, last_checked_id=st['last_checked_id'],
              total_contest=len(contest), alive_contest=alive(), new_contest=len(new_contest), listed=listed, match_rounds=rounds,
-             aborted=aborted, authors_fetched=got, authors_failed=failed, authors_left=authors_left)
+             aborted=aborted, authors_fetched=got, authors_failed=failed, authors_left=authors_left,
+             upstream_rechecked=upstream[0], upstream_found=upstream[1], upstream_left=upstream[2])
         # alive_contest = 노벨피아 표시 수(listed_total)와 견줄 수. total_contest 는 누적(목록 크기)이다.
         return {"done": done_scan, "total_contest": len(contest), "alive_contest": alive(), "listed_total": listed,
                 "new_contest": len(new_contest), "last_checked_id": st['last_checked_id'], "aborted": aborted}
@@ -413,19 +466,7 @@ def handler(event, context):
     while done_scan and not aborted and due and remaining() > BUDGET_MS:
         part, due = due[:CHUNK], due[CHUNK:]
         for k, (kind, info) in zip(part, run_ids([int(x) for x in part])):
-            v = recheck[k]
-            v['last_checked'] = _now()
-            v['last_run'] = execution_id
-            if kind == 'contest':
-                # 처음 본 시각·당시 분류와 함께 남겨, 배지가 언제 생겼는지 가릴 수 있게 한다.
-                contest[k] = {**info, 'found_at': _now(), 'via': 'recheck', 'first_seen': v.get('first_seen'),
-                              'was': v.get('status'), 'was_badges': v.get('seen_badges')}
-                new_contest.append(int(k))
-                v['status'] = 'contest'
-            elif kind == 'normal':
-                v['status'] = 'normal'
-            elif kind == 'retry':
-                v['status'], v['reason'] = 'retry', info
+            apply_recheck(k, kind, info)
             rechecked += 1
         _put(RECHECK_KEY, recheck)
         _put(CONTEST_META_KEY, contest)

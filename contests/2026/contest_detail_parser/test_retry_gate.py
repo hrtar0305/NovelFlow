@@ -150,6 +150,16 @@ class Gate(unittest.TestCase):
         out, _ = self.consolidate([real(k) for k in ids[:98]] + [holder(k, 'ParsingFailed: X') for k in ids[98:]], ids)
         self.assertTrue(out['degraded'])           # 2편 = 2% — 쓰되 알린다
 
+    def test_withdrawn_works_leave_the_count(self):
+        # 노벨피아 표시 수('총 N개 작품')는 공모전에서 빠진 작품(배지 없음 — 457604)을 세지 않는다. 우리 쪽도 빼야 수가 정확히
+        # 맞아, 한 편만 놓쳐도 자정 비교가 잡는다(전엔 그 1편이 늘 +1 로 가렸다).
+        badge = lambda *cls: [{'class': list(c), 'text': 'x'} for c in cls]
+        ids = [str(i) for i in range(100)]
+        items = [{**real(k), 'Badges': badge(('b_contest2',))} for k in ids[:98]] + \
+                [{**real('98'), 'Badges': badge(('b_free',))}, holder('99', 'Inaccessible')]
+        _, written = self.consolidate(items, ids)
+        self.assertEqual(written['state/gone_ids.json'], ['98', '99'])
+
     def test_old_inaccessible_is_not_new(self):
         ids = [str(i) for i in range(1000)]
         items = [real(k) for k in ids[:400]] + [holder(k, 'Inaccessible') for k in ids[400:]]
