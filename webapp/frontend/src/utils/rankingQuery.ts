@@ -94,7 +94,8 @@ export interface Sort<K> { key: K; direction: 'ascending' | 'descending'; }
 /** 변동의 정렬값: NEW는 가장 큰 상승, 비교 불가(기록 없음)는 null. */
 export const changeValue = (v: unknown): number | null => (v === 'New' ? Infinity : typeof v === 'number' ? v : null);
 
-/** 표 공통 정렬: 값 없는 행(null)은 방향과 무관하게 맨 아래, 같으면 순위순. */
+/** 표 공통 정렬: 값 없는 행(null)은 방향과 무관하게 맨 아래, 같으면 순위순 — 역순이면 순위도 거꾸로라 역순 = 정순을 그대로 뒤집은 것
+ *  (전엔 동점이 늘 1위부터라, 역순에서 같은 값끼리는 정순으로 남았다 — 2026-10-28 사용자 지적). */
 export function sortBy<T>(items: T[], valueOf: (x: T) => number | null, direction: Sort<unknown>['direction'], rankOf: (x: T) => number): T[] {
   const dir = direction === 'ascending' ? 1 : -1;
   return [...items].sort((a, b) => {
@@ -105,7 +106,8 @@ export function sortBy<T>(items: T[], valueOf: (x: T) => number | null, directio
       if (vb === null) return -1;
       return va < vb ? -dir : dir;
     }
-    return rankOf(a) - rankOf(b);
+    // 값 없는 행끼리는 방향과 무관하게 순위순(맨 아래 묶음), 같은 값끼리는 방향을 따른다.
+    return (rankOf(a) - rankOf(b)) * (va === null ? 1 : -dir);
   });
 }
 

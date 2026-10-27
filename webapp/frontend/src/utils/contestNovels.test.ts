@@ -26,6 +26,18 @@ describe('sortContestNovels', () => {
   });
 });
 
+describe('sortContestNovels — 2026(일간 순위가 대표)', () => {
+  const d = (ID: string, daily_rank: number | null, view_change: number, Rank: number) => c(ID, Rank, { daily_rank, view_change });
+  const t = [d('p', 5, 10, 1), d('q', 3, 10, 9), d('r', null, 0, 2), d('s', 1, 30, 3)];
+  it('일간 조회가 같으면 일간 순위순, 역순이면 그 반대 — 누적 순위(Rank)가 아니다', () => {
+    expect(sortContestNovels(t, { key: 'view_change', direction: 'descending' }, true).map(x => x.ID)).toEqual(['s', 'q', 'p', 'r']);
+    expect(sortContestNovels(t, { key: 'view_change', direction: 'ascending' }, true).map(x => x.ID)).toEqual(['p', 'q', 's', 'r']);
+  });
+  it('일간 순위가 없는 작품(화면 –)은 일간 조회를 0 이 아니라 값 없음으로 — 방향과 무관하게 맨 아래', () => {
+    expect(sortContestNovels(t, { key: 'view_change', direction: 'ascending' }, true).at(-1)!.ID).toBe('r');
+  });
+});
+
 describe('nextContestSort', () => {
   it('같은 열은 방향을 뒤집고 새 열은 내림차순부터', () => {
     expect(nextContestSort(CONTEST_DEFAULT_SORT, 'View')).toEqual({ key: 'View', direction: 'ascending' });

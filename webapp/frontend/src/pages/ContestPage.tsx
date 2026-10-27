@@ -157,7 +157,7 @@ export default function ContestPage() {
   const careerCount = useMemo(() => ({
     veteran: rows.filter(n => n.is_veteran === true).length, rookie: rows.filter(n => n.is_veteran === false).length,
   }), [rows]);
-  const sorted = useMemo(() => sortContestNovels(result.items, sort), [result.items, sort]);
+  const sorted = useMemo(() => sortContestNovels(result.items, sort, daily), [result.items, sort, daily]);
   const stats = useMemo(() => tagCounts(rows), [rows]);
   const hit = useMemo(() => new Set(filter.rule ? [] : filter.tags), [filter]);
   const onTag = useCallback((t: string) => setFilter(toggleTag(filter, t)), [filter]);

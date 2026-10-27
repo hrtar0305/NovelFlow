@@ -41,15 +41,18 @@ export const CONTEST_DAILY_SORT: ContestSort = { key: 'daily_rank', direction: '
 /** 삭제되거나 비공개가 된 작품은 View = -1 자리표시로 온다 — 모든 지표를 '값 없음'으로 본다. */
 export const isDeletedContestNovel = (x: ContestNovel) => x.View === -1;
 
-const valueOf = (x: ContestNovel, key: ContestSortKey): number | null => {
+const valueOf = (x: ContestNovel, key: ContestSortKey, daily: boolean): number | null => {
   if (isDeletedContestNovel(x)) return null;
+  // 2026~: 일간 순위가 없는 작품(직전 값을 몰라 화면이 '–')의 일간 조회는 0 이 아니라 모름이다.
+  if (daily && key === 'view_change' && x.daily_rank == null) return null;
   if (key === 'rank_change' || key === 'daily_rank_change') return changeValue(x[key]);
   return finiteOrNull(x[key]);
 };
 
-/** 일간과 같은 규칙: 값 없는 행은 방향과 무관하게 맨 아래, 같으면 순위순. */
-export const sortContestNovels = (items: ContestNovel[], s: ContestSort): ContestNovel[] =>
-  sortBy(items, x => valueOf(x, s.key), s.direction, x => x.Rank);
+/** 일간과 같은 규칙: 값 없는 행은 방향과 무관하게 맨 아래, 같으면 대표 순위순(2026~ 일간 순위 — 없는 작품은 뒤). */
+export const sortContestNovels = (items: ContestNovel[], s: ContestSort, daily = false): ContestNovel[] =>
+  sortBy(items, x => valueOf(x, s.key, daily), s.direction, x => (daily ? x.daily_rank ?? UNRANKED + (x.Rank ?? 0) : x.Rank));
+const UNRANKED = 1e9;   // 일간 순위 없는 작품은 일간 순위 뒤에, 그들끼리는 누적 순위순
 
 // 순위는 1위부터, 나머지는 큰 값부터.
 export const nextContestSort = (current: ContestSort, key: ContestSortKey): ContestSort => nextSortOf(current, key, 'daily_rank');

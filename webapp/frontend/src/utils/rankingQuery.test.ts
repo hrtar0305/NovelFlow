@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EMPTY_FILTER, DEFAULT_SORT, SERIAL_STATUSES, activeFilterCount, hasStatusData, resetFilter, statusCounts, applyRankingFilter, nextSort, normalizeNovels,
-  sortRankings, tagCounts, toggleTag, type RankingNovel,
+  sortBy, sortRankings, tagCounts, toggleTag, type RankingNovel,
 } from './rankingQuery';
 
 const n = (o: Partial<RankingNovel> & { ID: string; Ranking: number }): RankingNovel => ({
@@ -65,6 +65,16 @@ describe('sortRankings', () => {
   it('값이 없는 행은 방향과 무관하게 맨 아래', () => {
     const r = sortRankings(rows, { key: 'EarlyRetentionRate', direction: 'ascending' });
     expect(r.at(-1)?.ID).toBe('4');
+  });
+});
+
+describe('sortBy', () => {
+  it('역순은 정순을 그대로 뒤집는다 — 값이 같은 행도 순위가 거꾸로(2026-10-28 사용자 지적), 값 없는 행은 둘 다 맨 아래', () => {
+    const t = [{ r: 1, v: 5 }, { r: 2, v: 5 }, { r: 3, v: 7 }, { r: 4, v: 5 }, { r: 5, v: null }];
+    const desc = sortBy(t, x => x.v, 'descending', x => x.r).map(x => x.r);
+    const asc = sortBy(t, x => x.v, 'ascending', x => x.r).map(x => x.r);
+    expect(desc).toEqual([3, 1, 2, 4, 5]);
+    expect(asc).toEqual([4, 2, 1, 3, 5]);
   });
 });
 
