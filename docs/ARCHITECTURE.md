@@ -121,7 +121,7 @@ EventBridge Scheduler (매일 00:00 KST)             ← 11:30·23:30 에는 수
         ├ DiscoverIds   수집기 Lambda: 끝 번호부터 새 참가작을 찾고 노벨피아 표시 수와 견줌
         ├ ParseMap      Distributed Map(ItemBatcher, 자식 Express) → 파서 Lambda가 묶음을 받아
         │               상세·잔류율을 파싱하고 원본을 zstd 로 묶어 S3에 PUT. 실패는 묶음 안에 가둔다
-        ├ Reconcile     고정한 기대 목록과 대조 → 빠진 작품만 30초·2분·5분 뒤 다시 Map (최대 3라운드)
+        ├ Reconcile     고정한 기대 목록과 대조 → 빠진 작품만 30초·2분·5분·10분… 간격으로 다시 Map (자정 + 60분까지)
         ├ Consolidate   일간 순위(전날 대비 조회 증가)·태그 통계·작가 정보를 붙여 DynamoDB 적재,
         │               실패 장부 failures/<date>.json, 결손 2% 초과면 쓰지 않음(TooManyMissing)
         └ HistoryMap    작품별 회차 목록으로 연재 기록 갱신(아래 2-c)

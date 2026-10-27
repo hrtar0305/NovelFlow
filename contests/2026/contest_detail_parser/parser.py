@@ -415,7 +415,7 @@ def parse_dmap_batch(event, context):
     if retry and over_budget():
         cut += retry   # 라운드를 시작하지도 못했다
     if cut:
-        # 시간 예산 때문에 다시 받지 못한 것만 '받지 못함'으로 돌려 reconcile 라운드(30초·2분·5분 뒤)가 다시 받게 한다.
+        # 시간 예산 때문에 다시 받지 못한 것만 '받지 못함'으로 돌려 reconcile 라운드(30초·2분·5분·10분… 간격, 자정 + 60분까지)가 다시 받게 한다.
         # 끝까지 다시 받고도 같은 것은 그 결과(placeholder)로 확정한다.
         for novel_id in cut:
             failed.append({"id": novel_id, "error": f"TimeBudget (unusable: {fallback.pop(novel_id).get('Title')})"})

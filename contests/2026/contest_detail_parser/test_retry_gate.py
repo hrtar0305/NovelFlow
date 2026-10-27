@@ -62,7 +62,7 @@ class BatchRetry(unittest.TestCase):
 
     def test_unusable_to_the_end_goes_to_reconcile_not_placeholder(self):
         # 2026-10-25: 장애 중 묶음 안 재시도(약 1분)가 모두 빈 페이지 → 예전엔 ParsingFailed 로 굳었다. 이제 '받지 못함'으로 넘겨
-        # reconcile 라운드(30초·2분·5분 뒤)가 다시 받는다.
+        # reconcile 라운드(자정 + 60분까지)가 다시 받는다.
         bad = P.UnusableResponse('empty page')
         titles, out, _ = self.run_batch({'1': [bad] * P.Config.MAX_INTERNAL_RETRIES})
         self.assertEqual(titles, {})
@@ -100,22 +100,36 @@ class Unusable(unittest.TestCase):
         self.assertEqual(item['Title'], 'N/A (Inaccessible)')
 
 
+def kst(s):
+    from datetime import datetime
+    return datetime.fromisoformat(s + '+09:00')
+
+
 class Rounds(unittest.TestCase):
-    def reconcile(self, rnd):
+    """빠진 작품만 다시 받는 라운드는 횟수가 아니라 시각으로 끝난다 — 다음 라운드가 자정 + 60분 전에 시작할 수 있는 동안 계속(사용자 2026-10-27)."""
+    def reconcile(self, rnd, at, dry_run=False):
         store = {f'runs/{DATE}/e/expected.json': ['1', '2'],
                  f'runs/{DATE}/e/collected.json': {'items': [real('1')], 'errors': {}, 'raw_failed': 0, 'children_failed': 0}}
         with mock.patch.object(C, '_run_prefix', return_value=f'runs/{DATE}/e'), \
              mock.patch.object(C, '_get_json', side_effect=lambda k, d=None: store.get(k, d)), \
-             mock.patch.object(C, '_put_json'), \
+             mock.patch.object(C, '_put_json'), mock.patch.object(C, '_now', return_value=kst(at)), \
              mock.patch.object(C, '_dmap_rows', return_value=([], [{'id': '2', 'error': 'UnusableResponse: empty'}], 0, 0)):
-            return C.reconcile_dmap({'execution_id': 'e', 'date': DATE, 'round': rnd, 'manifest': {}})
+            return C.reconcile_dmap({'execution_id': 'e', 'date': DATE, 'round': rnd, 'manifest': {}, 'dry_run': dry_run})
 
-    def test_third_round_waits_five_minutes(self):
-        # 장애가 몇 분 이어져도 온전한 하루를 모으도록(사용자 결정 2026-10-26) 세 번째 라운드를 5분 뒤에 둔다.
-        out = self.reconcile(2)
-        self.assertTrue(out['retry'])
-        self.assertEqual(out['wait_seconds'], 300)
-        self.assertFalse(self.reconcile(3)['retry'])
+    def test_waits_grow_then_stay_at_ten_minutes(self):
+        # 0 라운드(첫 받기 뒤)는 기대 목록을 S3 에서 읽어 여기서 빼고, 대기는 RETRY_WAITS[0] = 30초다.
+        self.assertEqual(C.RETRY_WAITS[0], 30)
+        self.assertEqual([self.reconcile(r, '2026-10-09T00:05:00')['wait_seconds'] for r in range(1, 6)], [120, 300, 600, 600, 600])
+
+    def test_keeps_retrying_until_an_hour_after_midnight(self):
+        # 장애가 길면 노벨피아가 살아날 때까지 기다린다 — 늦게 받는 값은 빠졌던 작품에만 생긴다.
+        self.assertTrue(self.reconcile(4, '2026-10-09T00:40:00')['retry'])     # 10분 뒤 00:50 — 상한 안
+        self.assertFalse(self.reconcile(4, '2026-10-09T00:51:00')['retry'])    # 10분 뒤 01:01 — 상한 밖
+
+    def test_shadow_runs_keep_fixed_rounds(self):
+        # 그림자 실행은 마감과 무관한 시각에 돈다 — 대기 목록 길이만큼만.
+        self.assertTrue(self.reconcile(3, '2026-10-20T15:00:00', dry_run=True)['retry'])
+        self.assertFalse(self.reconcile(4, '2026-10-20T15:00:00', dry_run=True)['retry'])
 
 
 class Budget(unittest.TestCase):
@@ -159,6 +173,13 @@ class Gate(unittest.TestCase):
                 [{**real('98'), 'Badges': badge(('b_free',))}, holder('99', 'Inaccessible')]
         _, written = self.consolidate(items, ids)
         self.assertEqual(written['state/gone_ids.json'], ['98', '99'])
+
+    def test_ledger_counts_values_taken_after_half_past_midnight(self):
+        # 늦게 받은 값을 화면에 밝힐지는 운영하며 빈도를 보고 정한다(사용자 2026-10-27) — 장부에 남긴다.
+        ids = [str(i) for i in range(100)]
+        items = [{**real(k), 'CrawledAt': '2026-10-08T15:05:00+00:00'} for k in ids[:99]] + [{**real('99'), 'CrawledAt': '2026-10-08T15:41:00+00:00'}]
+        _, written = self.consolidate(items, ids)
+        self.assertEqual(written[f'failures/{DATE}.json']['late_items'], ['99'])
 
     def test_old_inaccessible_is_not_new(self):
         ids = [str(i) for i in range(1000)]

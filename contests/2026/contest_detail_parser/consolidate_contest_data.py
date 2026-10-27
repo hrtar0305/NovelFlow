@@ -339,12 +339,30 @@ def _process_and_upload_data(dynamodb_table, execution_id, items):
         raise
 
 # --- Distributed Map 경로 -----------------------------------------------------------
-# 흐름: ParseMap → reconcile(모으고 빠진 것 계산) ─┬→ 빠진 게 있으면 대기 → 빠진 것만 ParseMap → reconcile (최대 RETRY_ROUNDS)
+# 흐름: ParseMap → reconcile(모으고 빠진 것 계산) ─┬→ 빠진 게 있으면 대기 → 빠진 것만 ParseMap → reconcile (자정 + MISSING_RETRY_MINUTES 까지)
 #                                                └→ consolidate(남은 결손은 placeholder + 실패 장부, 너무 많으면 쓰지 않고 실패)
 # 작업 파일은 STATE_BUCKET 의 runs/{date}/{execution}/ 에 둔다 — 대조 결과를 상태 머신 페이로드(256KB)에 싣지 않는다.
 
-RETRY_ROUNDS = int(os.environ.get('DMAP_RETRY_ROUNDS', '3'))
-RETRY_WAITS = [30, 120, 300]                 # 라운드별 대기(초) — 노벨피아 장애를 넘길 시간. 셋째(5분)는 몇 분 이어지는 장애용(2026-10-26)
+# 빠진 작품만 다시 받는 라운드는 횟수가 아니라 **시각**으로 끝난다(사용자 결정 2026-10-27): 다음 라운드가 기록 날짜의 자정(D+1 00:00 KST) +
+# MISSING_RETRY_MINUTES 전에 시작할 수 있는 동안 대기를 늘려 가며 계속한다. 평소엔 빠진 게 없어 돌지 않고, 장애가 길면 노벨피아가 살아날 때까지
+# 기다리다 살아나는 순간 끝난다. 늦게 받는 값은 빠졌던 작품에만 생긴다 — 전체 다시 받기(시도 재실행)의 마감은 따로 자정 + 30분(app.py).
+# 그림자 실행(dry_run)은 마감과 무관한 시각에 돌아 대기 목록 길이만큼만 돈다. MAX_RETRY_ROUNDS 는 마지막 안전장치.
+RETRY_WAITS = [30, 120, 300, 600]            # 라운드별 대기(초). 마지막 값(10분)을 상한까지 되풀이한다
+MISSING_RETRY_MINUTES = int(os.environ.get('MISSING_RETRY_MINUTES', '60'))
+MAX_RETRY_ROUNDS = 12
+LATE_ITEM_MINUTES = 30                       # 장부의 '늦게 받은 값' 기준 = 전체 다시 받기 마감(app.REFETCH_GRACE_MINUTES)
+
+
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc)
+
+
+def _midnight_after(date):
+    """기록 날짜 `date` 의 수집 시각 = D+1 00:00 KST."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    return datetime.fromisoformat(date).replace(tzinfo=ZoneInfo('Asia/Seoul')) + timedelta(days=1)
 # 품질 기준(2026-10-08 전 기간 실측으로 다시 정함 — 예전 5% 는 실측 없이 둔 값). 파서가 쓸 수 없는 결과를 다시 받고 reconcile 이 빠진 것을
 # 다시 받은 뒤에도 남은 것: 받지 못함(FetchFailed) + 읽지 못함(ParsingFailed). 운영 7일 20,771쪽에서 0건, 데일리 651일 정상일 최대 0.8%,
 # 가장 작은 계통 장애 63%(데일리 04-29 DOM) → 2% 를 넘으면 쓰지 않는다(정상 최대의 2.5배, 장애의 1/30). 예전엔 FetchFailed 만 세서
@@ -483,9 +501,13 @@ def reconcile_dmap(event):
     _put_json(f'{pre}/missing-{rnd}.json', [int(k) for k in missing])
 
     # 원본 재계산은 다시 받을 것이 없다(같은 원본을 다시 읽어도 같은 결과) — 남은 결손은 바로 적재 단계의 placeholder 로.
-    retry = bool(missing) and rnd < RETRY_ROUNDS and not reprocess
+    from datetime import timedelta
+    wait = RETRY_WAITS[min(rnd, len(RETRY_WAITS) - 1)]
+    in_time = (rnd < len(RETRY_WAITS)) if event.get('dry_run') else \
+        _now() + timedelta(seconds=wait) < _midnight_after(date) + timedelta(minutes=MISSING_RETRY_MINUTES)
+    retry = bool(missing) and not reprocess and in_time and rnd < MAX_RETRY_ROUNDS
     out = {'round': rnd + 1, 'expected': len(expected), 'missing': len(missing), 'retry': retry,
-           'missing_key': f'{pre}/missing-{rnd}.json', 'wait_seconds': RETRY_WAITS[min(rnd, len(RETRY_WAITS) - 1)],
+           'missing_key': f'{pre}/missing-{rnd}.json', 'wait_seconds': wait,
            # 다시 받을 때는 작게 나눠 천천히 — 실패 원인이 과부하일 수 있다
            'batch': 10, 'concurrency': 3}
     _log(logging.INFO if not missing else logging.WARNING, execution_id, "DMap reconcile.", **out)
@@ -531,6 +553,23 @@ def _minutes_after_midnight(date, items):
     if not stamps:
         return None
     return round((min(stamps) - midnight).total_seconds() / 60, 1)
+
+
+def _late_ids(date, items, minutes=LATE_ITEM_MINUTES):
+    """자정 + `minutes` 뒤에 받은 실데이터 번호들 — 빠졌다가 늦게 받은 작품. 화면에 밝힐지는 운영하며 빈도를 보고 정한다(2026-10-27)."""
+    from datetime import datetime, timedelta, timezone
+    cut = _midnight_after(date) + timedelta(minutes=minutes)
+    out = []
+    for it in items:
+        if _is_placeholder(it) or not it.get('CrawledAt'):
+            continue
+        try:
+            dt = datetime.fromisoformat(str(it['CrawledAt']).replace('Z', '+00:00'))
+        except ValueError:
+            continue
+        if (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)) > cut:
+            out.append(str(it['ID']))
+    return sorted(out, key=int)
 
 
 def _ledger_key(date, reprocess):
@@ -720,6 +759,7 @@ def handler_dmap(event, context):
         'mode': 'reprocess' if reprocess else 'fetch', 'attempt': attempt,
         'previous_errors': attempt_info.get('previous_errors') or [],
         'late_minutes': _minutes_after_midnight(date, unique),
+        'late_items': _late_ids(date, unique),
     }
     prev_gone = _get_json('state/gone_ids.json')   # 없으면(첫날) 새 경고창을 셀 기준이 없다 — 세지 않는다
     unreadable = [str(i['ID']) for i in unique if str(i.get('Title', '')).startswith('N/A (ParsingFailed')]
