@@ -1042,7 +1042,7 @@ def get_novel_available_dates(novel_id: str, response: Response):
     except Exception:
         raise _server_error("Unhandled error while handling request")
 
-# 행 펼침의 '그날 값' 마감 = 그날 수집이 받을 수 있는 끝. 늦은 재실행 거절선(데일리 D 22:00, 공모전 D+1 01:00)은 **시도를 시작할 수
+# 행 펼침의 '그날 값' 마감 = 그날 수집이 받을 수 있는 끝. 늦은 재실행 거절선(데일리 D 21:15, 공모전 D+1 00:30 — 2026-10-27)은 **시도를 시작할 수
 # 있는** 끝이라, 그 뒤에도 받는 중일 수 있다(재실행이 30~45분 걸린다). 그 다음 확인(공모전 00:00 / 데일리 21:00) 전까지로 둔다.
 _UPLOAD_CUTOFF = {
     'daily': lambda d: f'{d}T23:59:59+09:00',

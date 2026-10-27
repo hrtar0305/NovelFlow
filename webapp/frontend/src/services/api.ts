@@ -60,7 +60,7 @@ export const getAnalysisReport = (days: number) => get(`/api/analysis/report/${d
 export const getTagSeries = (startDate: string, endDate: string) => get(`/api/trends/tags/series/${startDate}/${endDate}`);
 
 /**
- * 연재 기록 — 날짜별 올린 화 수. `asof` 를 주면 그날 수집 마감(데일리 D 22:00, 공모전 D+1 01:00 KST)까지 본 회차만
+ * 연재 기록 — 날짜별 올린 화 수. `asof` 를 주면 그날 수집의 다음 확인 전(데일리 D 23:59, 공모전 D+1 03:00 KST — 백엔드 `_UPLOAD_CUTOFF`)까지 본 회차만
  * 센다(행 펼침의 고정값). 응답 모양은 `utils/uploads` 의 UploadsResponse.
  */
 export const getUploads = (novelId: string, start: string, end: string, asof?: { date: string; source: 'daily' | 'contest' }) =>

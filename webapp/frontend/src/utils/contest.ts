@@ -18,3 +18,13 @@ const CONFIG: Record<string, ContestYearConfig> = {
 };
 
 export const contestConfig = (year: string): ContestYearConfig => CONFIG[year] ?? CONFIG[LATEST_CONTEST_YEAR];
+
+/**
+ * 그날 일간 값(조회 증가 · 일간 순위)이 며칠치인가. 공모전은 달력 −1 이 아니라 **실제 직전 수집일**과 견주므로(DECISIONS 2026-07-01),
+ * 수집이 빠진 날 다음 날은 여러 날치다 — 그때 화면이 '일간'이라고만 쓰면 하루치인 척하게 된다(2026-10-27). 직전 수집이 없으면 null.
+ */
+export function deltaSpan(date: string, dates: Iterable<string>): { prev: string; days: number } | null {
+  let prev: string | null = null;
+  for (const d of dates) if (d < date && (prev == null || d > prev)) prev = d;
+  return prev == null ? null : { prev, days: Math.round((Date.parse(date) - Date.parse(prev)) / 86_400_000) };
+}

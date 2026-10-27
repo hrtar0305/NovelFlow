@@ -24,7 +24,7 @@ import {
   type ContestNovel, type ContestSort, type ContestSortKey,
 } from '../utils/contestNovels';
 import { formatInt, formatRatio } from '../utils/format';
-import { LATEST_CONTEST_YEAR, contestConfig } from '../utils/contest';
+import { LATEST_CONTEST_YEAR, contestConfig, deltaSpan } from '../utils/contest';
 
 /**
  * 공모전 작품 랭킹(2026-09-30 개편) — 일간 랭킹과 같은 문법(필터 서랍, 10열 표, 제목 칸 안 표지,
@@ -73,6 +73,12 @@ export default function ContestPage() {
   // 날짜 목록은 받은 연도와 함께 둔다 — 연도를 바꾼 첫 렌더에 이전 연도 날짜로 리다이렉트하지 않게(같은 라우트라 다시 마운트되지 않는다).
   const [datesOf, setDatesOf] = useState<{ year: string; set: Set<string> }>({ year: '', set: new Set() });
   const dates = useMemo(() => (datesOf.year === year ? datesOf.set : new Set<string>()), [datesOf, year]);
+  // 직전 수집일이 전날이 아니면(수집이 빠진 날 다음 날) 그날 일간 값은 여러 날치다 — '일간'이라고만 쓰지 않는다(2026-10-27).
+  const multi = useMemo(() => {
+    const s = daily && dateParam ? deltaSpan(dateParam, dates) : null;
+    return s && s.days > 1 ? s : null;
+  }, [daily, dateParam, dates]);
+  const deltaLabel = multi ? `${multi.days}일치 조회` : '일간 조회';
   const [rows, setRows] = useState<ContestNovel[]>([]);
   const [showcase, setShowcase] = useState<ContestNovel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,10 +176,10 @@ export default function ContestPage() {
     const movers = ranked.filter(n => typeof n.daily_rank_change === 'number' && n.daily_rank_change > 0)
       .sort((a, b) => (b.daily_rank_change as number) - (a.daily_rank_change as number) || a.daily_rank! - b.daily_rank!);
     return {
-      top: ranked.slice(0, 5).map(n => toShowcase(year, n, <>+{formatInt(n.view_change)}</>)),
+      top: ranked.slice(0, 5).map(n => toShowcase(year, n, <>+{formatInt(n.view_change)}{multi ? ` · ${multi.days}일치` : ''}</>)),
       movers: movers.slice(0, 5).map(n => toShowcase(year, n, null, n.daily_rank_change as number)),
     };
-  }, [rows, awardShowcase, year]);
+  }, [rows, awardShowcase, year, multi]);
 
   const count = activeFilterCount(filter) + (winnersOnly ? 1 : 0) + (career !== 'all' ? 1 : 0) + conds.filter(c => c.value != null).length;
 
@@ -210,7 +216,7 @@ export default function ContestPage() {
           ? <Link to={`/authors/${n.AuthorID}`} className="rank-author" title={n.AuthorName ?? undefined} onClick={e => e.stopPropagation()}>{n.AuthorName || '(작자 미상)'}</Link>
           : <span className="rank-author" title={n.AuthorName ?? undefined}>{n.AuthorName || '(작자 미상)'}</span>) },
     ...(daily ? [{ key: 'career', header: '구분', width: '32px', render: (n: ContestNovel) => <CareerText v={n.is_veteran} /> }] : []),
-    { key: 'vchg', header: '일간 조회', aside: <FootnoteRef id="cview" n={2} />, width: '70px', sortKey: 'view_change',
+    { key: 'vchg', header: deltaLabel, aside: <FootnoteRef id="cview" n={2} />, width: '70px', sortKey: 'view_change',
       // 2026: 비교할 직전 기록이 없으면(일간 순위 없음) 0 이 아니라 '알 수 없음'이다.
       render: n => (isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : strongIf(['view_change'], formatInt(n.view_change))) },
     // 2025 는 누적이 천만 단위(16,731,510)라 80px 에서 줄바꿈됐다(1920 폭 실측).
@@ -239,7 +245,7 @@ export default function ContestPage() {
           ? <span className="rank-title rank-title--wrap rank-title--muted">삭제된 작품 ({n.ID})</span>
           : <Link to={`/contests/${year}/novels/${n.ID}`} className="rank-title rank-title--wrap">{n.Title || '(제목 없음)'}</Link>}
         <p>{n.award ? <><AwardText award={n.award} /> · </> : null}{n.AuthorName || '(작자 미상)'}{daily && n.is_veteran != null ? (n.is_veteran ? ' · 기성' : ' · 신인') : ''} · {formatInt(n.Eps)}화</p>
-        <p>일간 조회 <b>{isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : formatInt(n.view_change)}</b> · 누적 <b>{isDeletedContestNovel(n) ? dash : formatInt(n.View)}</b> · 추천비 <b>{formatRatio(n.like_to_view_ratio, 2)}</b>{daily ? <> · 초반 <b>{formatRatio(n.EarlyRetentionRate ?? null, 0)}</b> · 최신 <b>{formatRatio(n.RecentRetentionRate ?? null, 0)}</b></> : null}</p>
+        <p>{deltaLabel} <b>{isDeletedContestNovel(n) || (daily && n.daily_rank == null) ? dash : formatInt(n.view_change)}</b> · 누적 <b>{isDeletedContestNovel(n) ? dash : formatInt(n.View)}</b> · 추천비 <b>{formatRatio(n.like_to_view_ratio, 2)}</b>{daily ? <> · 초반 <b>{formatRatio(n.EarlyRetentionRate ?? null, 0)}</b> · 최신 <b>{formatRatio(n.RecentRetentionRate ?? null, 0)}</b></> : null}</p>
         <TagLinks tags={n.Tags} highlighted={hit} onSelect={onTag} />
       </div>
     </div>
@@ -249,7 +255,9 @@ export default function ContestPage() {
     <div className="page-shell contest-page novel-rankings-page">
       <ContestHeader year={year} date={dateParam ?? null} availableDates={dates} view="novels"
         onDateChange={d => navigate(`/contests/${year}/${d}`)} onYearChange={y => navigate(`/contests/${y}`)}
-        meta={rows.length ? `${cfg.schedule} · 참여 작품 ${formatInt(rows.length)}편` : cfg.schedule} />
+        meta={[cfg.schedule, rows.length ? `참여 작품 ${formatInt(rows.length)}편` : null,
+          multi ? `일간 값은 ${Number(multi.prev.slice(5, 7))}월 ${Number(multi.prev.slice(8))}일 수집부터 ${multi.days}일치(그 사이 수집 없음)` : null]
+          .filter(Boolean).join(' · ')} />
 
       {awardShowcase || error || mobile ? null : rows.length > 0 ? <Stale loading={loading}><Showcase top={dailyShowcase.top} movers={dailyShowcase.movers} /></Stale>
         : loading && daily ? <ShowcaseSkeleton /> : null}
