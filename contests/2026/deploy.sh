@@ -197,18 +197,20 @@ schedule() {
 
   # 시작 요청이 실패해도 30분 안에서만 다시 보낸다(받기 마감과 같다) — 그보다 늦은 시작은 자정 값이 아니다(실행도 거절하지만 애초에 보내지 않는다).
   # 종료일은 걸지 않는다 — 공모전 일정이 정해지면 사람이 끈다(OPERATIONS 「공모전 수집 종료」, 결정 2026-10-12).
-  echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → $SM_NAME)"
+  # 예선 마감(10/29 23:59) 뒤로는 새 참가작이 없어 번호 훑기를 건너뛴다(skip_discovery, 결정 2026-10-30) — 목록은 10/30 00:00 실행이 쓴 그대로다.
+  echo "== 스케줄 $SCHED_NAME (매일 00:00 KST → $SM_NAME, 번호 훑기 없음)"
   ARGS=(--region $R --name $SCHED_NAME --schedule-expression "cron(0 0 * * ? *)" --schedule-expression-timezone Asia/Seoul
         --flexible-time-window Mode=OFF
-        --target "Arn=$SM_ARN,RoleArn=arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME,RetryPolicy={MaximumEventAgeInSeconds=1800,MaximumRetryAttempts=185}")
+        --target "{\"Arn\":\"$SM_ARN\",\"RoleArn\":\"arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME\",\"Input\":\"{\\\"skip_discovery\\\":true}\",\"RetryPolicy\":{\"MaximumEventAgeInSeconds\":1800,\"MaximumRetryAttempts\":185}}")
   if exists aws scheduler get-schedule --region $R --name $SCHED_NAME; then aws scheduler update-schedule "${ARGS[@]}" >/dev/null
   else aws scheduler create-schedule "${ARGS[@]}" >/dev/null; fi
 
   # 준비 실행(11:30·23:30): 오래 걸리는 훑기·재확인·작가 받기를 자정 전에 나눠 해 두고, 자정 경로는 짧게 둔다(DECISIONS 2026-10-02·10-03).
   # 실행 ID 는 날마다 달라야 한다(재확인의 '이번 실행에서 본 번호' 판정) — 스케줄러가 예약 시각을 넣어 준다.
-  echo "== 스케줄 ${SCHED_NAME%Daily}Prep (매일 11:30·23:30 KST, 수집기 직접 호출)"
+  # 예선 마감 뒤로는 할 일이 없어 꺼 둔다(결정 2026-10-30). 정의는 남겨 다시 켤 수 있게 한다(--state ENABLED).
+  echo "== 스케줄 ${SCHED_NAME%Daily}Prep (매일 11:30·23:30 KST, 수집기 직접 호출 — 꺼짐)"
   PARGS=(--region $R --name ${SCHED_NAME%Daily}Prep --schedule-expression "cron(30 11,23 * * ? *)" --schedule-expression-timezone Asia/Seoul
-         --flexible-time-window Mode=OFF
+         --flexible-time-window Mode=OFF --state DISABLED
          --target "{\"Arn\":\"arn:aws:lambda:$R:$ACC:function:$F_COLLECTOR\",\"RoleArn\":\"arn:aws:iam::$ACC:role/service-role/$SCHED_ROLE_NAME\",\"Input\":\"{\\\"mode\\\":\\\"prep\\\",\\\"execution_id\\\":\\\"prep-<aws.scheduler.scheduled-time>\\\"}\",\"RetryPolicy\":{\"MaximumRetryAttempts\":0}}")
   if exists aws scheduler get-schedule --region $R --name ${SCHED_NAME%Daily}Prep; then aws scheduler update-schedule "${PARGS[@]}" >/dev/null
   else aws scheduler create-schedule "${PARGS[@]}" >/dev/null; fi

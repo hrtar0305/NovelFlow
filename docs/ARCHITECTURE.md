@@ -115,10 +115,10 @@ Lambda: parser (SQS Task 큐 트리거, batch 80, Reserved Concurrency 40)
 00:00에 시작해 마감(D+1 00:30) 안에서만 받고 실패하면 한 번 자동 재실행합니다. 배포는 `bash contests/2026/deploy.sh`.
 
 ```
-EventBridge Scheduler (매일 00:00 KST)             ← 11:30·23:30 에는 수집기만 '준비 실행'
+EventBridge Scheduler (매일 00:00 KST)             ← 11:30·23:30 수집기 '준비 실행'은 예선 마감(10/29) 뒤 꺼짐
   └─▶ Step Functions (Standard)
         ├ ResolveDate → 날짜 잠금(RUN_LOCK#<date>, 중복 전달 방지)
-        ├ DiscoverIds   수집기 Lambda: 끝 번호부터 새 참가작을 찾고 노벨피아 표시 수와 견줌
+        ├ DiscoverIds   수집기 Lambda: 끝 번호부터 새 참가작을 찾고 노벨피아 표시 수와 견줌(10/31~ skip_discovery 로 건너뜀)
         ├ ParseMap      Distributed Map(ItemBatcher, 자식 Express) → 파서 Lambda가 묶음을 받아
         │               상세·잔류율을 파싱하고 원본을 zstd 로 묶어 S3에 PUT. 실패는 묶음 안에 가둔다
         ├ Reconcile     고정한 기대 목록과 대조 → 빠진 작품만 30초·2분·5분·10분… 간격으로 다시 Map (자정 + 60분까지)
