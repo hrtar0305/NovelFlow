@@ -60,6 +60,9 @@ export const nextContestSort = (current: ContestSort, key: ContestSortKey): Cont
 /** 수상 표시 순서(쇼케이스 배치). 순서에 없는 작품(본선·수상 없음)은 그 뒤에 조회수 순으로 선다. */
 export const AWARD_ORDER: Record<string, number> = { 대상: 0, 최우수상: 1, 탑툰상: 2, 우수상: 3, 특별상: 4 };
 
+/** 본선이 아닌 상이 하나라도 있나 — 2026 쇼케이스는 실제 수상 발표 뒤에만 시상대로 바꾼다(본선 기간엔 일간 그대로, 사용자 2026-11-12). */
+export const hasPrize = (rows: { award?: string | null }[]) => rows.some(n => !!n.award && n.award !== '본선');
+
 /** 수상 단계(금·은·동·흐림 — AwardText). 모르는 상 이름은 동(가운데 단계). */
 export type AwardTier = 'grand' | 'top' | 'mid' | 'minor';
 export const awardTier = (award: string): AwardTier =>

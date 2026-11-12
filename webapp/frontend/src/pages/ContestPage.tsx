@@ -20,7 +20,7 @@ import ColumnConditionEditor from '../components/ranking/ColumnConditionEditor';
 import { applyColumnConditions, contestColumns, describeCondition, type ColumnCondition } from '../utils/columnConditions';
 import { EMPTY_FILTER, activeFilterCount, applyRankingFilter, tagCounts, toggleTag, type RankingFilter } from '../utils/rankingQuery';
 import {
-  AWARD_ORDER, awardTier, CONTEST_DAILY_SORT, CONTEST_DEFAULT_SORT, isDeletedContestNovel, nextContestSort, sortContestNovels,
+  AWARD_ORDER, awardTier, hasPrize, CONTEST_DAILY_SORT, CONTEST_DEFAULT_SORT, isDeletedContestNovel, nextContestSort, sortContestNovels,
   type ContestNovel, type ContestSort, type ContestSortKey,
 } from '../utils/contestNovels';
 import { formatInt, formatRatio } from '../utils/format';
@@ -31,7 +31,7 @@ import { LATEST_CONTEST_YEAR, contestConfig, deltaSpan } from '../utils/contest'
  * 왼쪽 정렬, 정렬 기준 볼드, 검색은 엔터로 적용). 탭은 두지 않는다 — 급상승은 변동 정렬, 수상작은
  * 필터 서랍의 '수상작만'으로 본다. 수상은 여러 색 칩 대신 강조색 글자 하나.
  *
- * 2026 부터는 대표 순위가 일간 순위다(적재 때 확정한 DailyRank, `utils/contest.ts`). 수상작 발표 전에는
+ * 2026 부터는 대표 순위가 일간 순위다(적재 때 확정한 DailyRank, `utils/contest.ts`). 본선 발표(수상 값이 생기기) 전에는
  * 수상 열·'수상작만'을 숨기고, 기성/신인 열·필터와 잔류율 두 열을 둔다. 쇼케이스는 일간 랭킹과 같은 배치(상위 5 +
  * 급상승 5)·같은 규칙(고른 날짜의 표에서) — 2025 의 시상대 배치는 수상작을 놓기 위한 것이라 일간 순위에는 맞지 않는다(사용자 검토 2026-10-03).
  */
@@ -165,8 +165,10 @@ export default function ContestPage() {
 
   // 쇼케이스 — 날짜 선택 바로 아래라 고른 날짜를 따른다(사용자 검토 2026-10-03, 일간 랭킹과 같은 규칙).
   // · 수상작이 있으면 시상대 배치: 2025 는 API(운영자 지정 순서), 2026 수상 발표 뒤에는 그날 표의 수상작.
-  // · 2026 수상 발표 전: 일간 랭킹과 같은 상위 5 + 급상승 5 를 그날 표에서 고른다(목록 응답에 일간 순위·변동이 다 있다).
-  const awardShowcase = !daily || hasAwards;
+  // · 2026 수상 발표 전(본선만 있는 기간 포함 — 사용자 2026-11-12): 일간 랭킹과 같은 상위 5 + 급상승 5 를 그날 표에서 고른다
+  //   (목록 응답에 일간 순위·변동이 다 있다). 본선은 수상 열·'수상작만'에만 나온다.
+  const prized = useMemo(() => hasPrize(rows), [rows]);
+  const awardShowcase = !daily || prized;
   const showcaseItems = useMemo(() => (awardShowcase ? [...(daily ? rows.filter(n => !!n.award) : showcase)]
     .sort((a, b) => ((AWARD_ORDER[a.award ?? ''] ?? 99) - (AWARD_ORDER[b.award ?? ''] ?? 99)) || ((b.View ?? -1) - (a.View ?? -1)))
     .slice(0, 11) : []), [showcase, rows, daily, awardShowcase]);

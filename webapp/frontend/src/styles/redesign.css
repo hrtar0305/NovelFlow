@@ -231,6 +231,8 @@
 /* 밑줄 입력칸의 초점: 사각 윤곽 대신 밑줄 색으로(키보드 초점이 보이게, 모든 밑줄 입력칸 공통). */
 .toolbar-search:focus { outline: none; box-shadow: none; border-bottom-color: var(--np-accent); }
 .filter-drawer__statuses { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }
+/* 한 묶음 안에 선택지 줄이 이어질 때(2026 공모전 본선 뒤 '수상' 다음 '작가') — 수치 조건 아래와 같은 간격. */
+.filter-drawer__statuses + .filter-drawer__h { margin-top: 1.1rem; }
 .col-conds { display: grid; gap: 0.5rem; margin-bottom: 1.1rem; }
 .col-conds__row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9375rem; }
 .col-conds__row select { padding: 0.3rem 0.6rem; border: 1px solid var(--np-border-strong); border-radius: var(--np-radius-sm); background: var(--np-canvas); color: var(--np-text-primary); font: inherit; }

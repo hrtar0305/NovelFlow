@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sortContestNovels, nextContestSort, contestTrendRow, withDebutBaseline, CONTEST_DEFAULT_SORT, type ContestNovel, CONTEST_DAILY_SORT } from './contestNovels';
+import { sortContestNovels, nextContestSort, contestTrendRow, withDebutBaseline, hasPrize, CONTEST_DEFAULT_SORT, type ContestNovel, CONTEST_DAILY_SORT } from './contestNovels';
 import { buildMetricPoints, summarizeMetrics } from './metricSeries';
 
 const c = (ID: string, Rank: number, o: Partial<ContestNovel> = {}): ContestNovel =>
@@ -35,6 +35,13 @@ describe('sortContestNovels — 2026(일간 순위가 대표)', () => {
   });
   it('일간 순위가 없는 작품(화면 –)은 일간 조회를 0 이 아니라 값 없음으로 — 방향과 무관하게 맨 아래', () => {
     expect(sortContestNovels(t, { key: 'view_change', direction: 'ascending' }, true).at(-1)!.ID).toBe('r');
+  });
+});
+
+describe('hasPrize', () => {
+  it('본선만 있으면 아직 수상 전 — 2026 쇼케이스는 일간 그대로', () => {
+    expect(hasPrize([c('a', 1, { award: '본선' }), c('b', 2)])).toBe(false);
+    expect(hasPrize([c('a', 1, { award: '본선' }), c('b', 2, { award: '우수상' })])).toBe(true);
   });
 });
 
