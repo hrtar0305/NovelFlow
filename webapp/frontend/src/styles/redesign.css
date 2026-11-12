@@ -216,6 +216,8 @@
 .rank-titlecell { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .rank-titlecell .rank-cover { flex: 0 0 48px; }
 .rank-titlecell .rank-title { min-width: 0; }
+/* 제목 + 그 아래 수상(2026 공모전) — 수상이 없으면 제목 하나라 예전과 같다. */
+.rank-titlecell__text { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
 .rank-toolbar { display: flex; align-items: center; gap: 1rem; margin-top: 1.25rem; padding-bottom: 0.7rem; border-bottom: 1px solid var(--np-border); }
 .rank-toolbar__title { margin: 0 auto 0 0; font-size: 1.0625rem; font-weight: 800; color: var(--np-text-heading); }
 .rank-toolbar__count { margin-left: 0.6rem; font-size: 0.875rem; font-weight: 500; color: var(--np-text-secondary); }

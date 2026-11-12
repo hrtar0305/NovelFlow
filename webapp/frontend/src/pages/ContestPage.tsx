@@ -202,14 +202,19 @@ export default function ContestPage() {
     { key: 'rank', header: '순위', aside: <FootnoteRef id="crank" n={1} />, width: '56px',
       sortKey: daily ? 'daily_rank' : undefined, render: n => <RankNum n={n} /> },
     { key: 'chg', header: '변동', width: '48px', sortKey: daily ? 'daily_rank_change' : 'rank_change', render: n => <ChangeMark value={headChange(n)} /> },
-    ...(hasAwards || !daily ? [{ key: 'award', header: '수상', width: '64px', render: (n: ContestNovel) => <AwardText award={n.award} /> }] : []),
+    // 2026 은 수상을 열이 아니라 제목 아래에 둔다 — 고정 열이 많아 수상 열(64px)만큼 제목·태그가 약 20% 줄었고, 값은 5천여 편 중
+    // 본선 50편에만 있다(사용자 2026-11-12). 2025 는 열이 적어 수상 열 그대로.
+    ...(!daily ? [{ key: 'award', header: '수상', width: '64px', render: (n: ContestNovel) => <AwardText award={n.award} /> }] : []),
     { key: 'title', header: '제목', width: 'minmax(0,1fr)',
       render: n => (
         <span className="rank-titlecell">
           <span className="rank-cover"><NovelCover url={n.ThumbnailURL} title={n.Title} imageClassName="rank-cover__img" placeholder /></span>
-          {isDeletedContestNovel(n)
-            ? <span className="rank-title rank-title--muted">삭제된 작품 ({n.ID})</span>
-            : <Link to={`/contests/${year}/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link>}
+          <span className="rank-titlecell__text">
+            {isDeletedContestNovel(n)
+              ? <span className="rank-title rank-title--muted">삭제된 작품 ({n.ID})</span>
+              : <Link to={`/contests/${year}/novels/${n.ID}`} className="rank-title" onClick={e => e.stopPropagation()}>{n.Title || '(제목 없음)'}</Link>}
+            {daily ? <AwardText award={n.award} /> : null}
+          </span>
         </span>
       ) },
     { key: 'author', header: '작가', width: '104px',
