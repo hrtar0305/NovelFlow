@@ -164,15 +164,15 @@ class Gate(unittest.TestCase):
         out, _ = self.consolidate([real(k) for k in ids[:98]] + [holder(k, 'ParsingFailed: X') for k in ids[98:]], ids)
         self.assertTrue(out['degraded'])           # 2편 = 2% — 쓰되 알린다
 
-    def test_withdrawn_works_leave_the_count(self):
-        # 노벨피아 표시 수('총 N개 작품')는 공모전에서 빠진 작품(배지 없음 — 457604)을 세지 않는다. 우리 쪽도 빼야 수가 정확히
-        # 맞아, 한 편만 놓쳐도 자정 비교가 잡는다(전엔 그 1편이 늘 +1 로 가렸다).
+    def test_works_without_contest_badge_stay_out_of_gone(self):
+        # 본선 발표(2026-11-12) 뒤 공모전 배지는 본선 50편에만 남는다. 배지 없는 작품을 gone_ids 에 넣으면 '새 경고창' 기준선이
+        # 5천여 편이 되어, 모든 쪽에 경고창이 뜨는 장애에도 500편 상한이 걸리지 않는다.
         badge = lambda *cls: [{'class': list(c), 'text': 'x'} for c in cls]
         ids = [str(i) for i in range(100)]
         items = [{**real(k), 'Badges': badge(('b_contest2',))} for k in ids[:98]] + \
                 [{**real('98'), 'Badges': badge(('b_free',))}, holder('99', 'Inaccessible')]
         _, written = self.consolidate(items, ids)
-        self.assertEqual(written['state/gone_ids.json'], ['98', '99'])
+        self.assertEqual(written['state/gone_ids.json'], ['99'])
 
     def test_ledger_counts_values_taken_after_half_past_midnight(self):
         # 늦게 받은 값을 화면에 밝힐지는 운영하며 빈도를 보고 정한다(사용자 2026-10-27) — 장부에 남긴다.
