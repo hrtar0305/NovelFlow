@@ -166,7 +166,7 @@ class Gate(unittest.TestCase):
 
     def test_works_without_contest_badge_stay_out_of_gone(self):
         # 본선 발표(2026-11-12) 뒤 공모전 배지는 본선 50편에만 남는다. 배지 없는 작품을 gone_ids 에 넣으면 '새 경고창' 기준선이
-        # 5천여 편이 되어, 모든 쪽에 경고창이 뜨는 장애에도 500편 상한이 걸리지 않는다.
+        # 5천여 편이 되어, 모든 쪽에 경고창이 뜨는 장애에도 새 경고창 상한이 걸리지 않는다.
         badge = lambda *cls: [{'class': list(c), 'text': 'x'} for c in cls]
         ids = [str(i) for i in range(100)]
         items = [{**real(k), 'Badges': badge(('b_contest2',))} for k in ids[:98]] + \
@@ -182,12 +182,22 @@ class Gate(unittest.TestCase):
         self.assertEqual(written[f'failures/{DATE}.json']['late_items'], ['99'])
 
     def test_old_inaccessible_is_not_new(self):
-        ids = [str(i) for i in range(1000)]
+        ids = [str(i) for i in range(2000)]
         items = [real(k) for k in ids[:400]] + [holder(k, 'Inaccessible') for k in ids[400:]]
         out, written = self.consolidate(items, ids, gone=ids[400:])
         self.assertEqual(written[f'failures/{DATE}.json']['new_inaccessible'], [])
         with self.assertRaises(C.TooManyMissing):
-            self.consolidate(items, ids)            # 600편이 하루 사이 경고창 — 장애
+            self.consolidate(items, ids)            # 1,600편이 하루 사이 경고창 — 장애
+
+    def test_finalist_announcement_deletions_are_written(self):
+        # 본선 발표(2026-11-12) 뒤 탈락작이 하루 292편까지 내려갔다(2025 최대 237). 500편 상한이면 실제 삭제 몰림에도
+        # 그날을 쓰지 못하고, reprocess 도 어제 gone_ids 와 견줘 같이 실패한다 — 1,000편까지는 쓰고 알린다.
+        ids = [str(i) for i in range(5000)]
+        items = [real(k) for k in ids[:4400]] + [holder(k, 'Inaccessible') for k in ids[4400:]]
+        out, written = self.consolidate(items, ids)
+        self.assertTrue(written[f'failures/{DATE}.json']['written'])
+        self.assertEqual(len(written[f'failures/{DATE}.json']['new_inaccessible']), 600)
+        self.assertTrue(out['degraded'])           # 50편 초과 — 쓰되 알린다
 
 
 if __name__ == '__main__':

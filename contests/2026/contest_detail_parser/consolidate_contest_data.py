@@ -360,10 +360,11 @@ def _midnight_after(date):
 # 가장 작은 계통 장애 63%(데일리 04-29 DOM) → 2% 를 넘으면 쓰지 않는다(정상 최대의 2.5배, 장애의 1/30). 예전엔 FetchFailed 만 세서
 # 셀렉터가 깨져 전부 ParsingFailed 인 날이 그대로 적재됐다.
 # 새로 경고창(Inaccessible)이 된 작품 — 어제 gone_ids 에 없던 것 — 은 따로 본다: 2025 공모전 371일 중앙값 3, 최대 237(실제 삭제 몰림) →
-# 50 초과 경고, 500 초과 실패(노벨피아가 모든 쪽에 경고창을 띄우는 장애).
+# 50 초과 경고, 1,000 초과 실패(노벨피아가 모든 쪽에 경고창을 띄우는 장애). 처음엔 500 이었는데 2026 본선 발표 뒤 탈락작 삭제가
+# 하루 292편까지 몰려(2025 보다 빠르다) 1,000 으로 올렸다(2026-11-17) — 장애면 아직 보이는 4천여 편이 한꺼번에 걸려 여전히 잡힌다.
 MAX_MISSING_FRACTION = float(os.environ.get('DMAP_MAX_MISSING_FRACTION', '0.02'))
 WARN_NEW_INACCESSIBLE = 50
-MAX_NEW_INACCESSIBLE = 500
+MAX_NEW_INACCESSIBLE = 1000
 ID_LIST_KEY = 'contest_novel_ids_2026.json'
 
 
@@ -814,7 +815,7 @@ def handler_dmap(event, context):
                 'mode': 'reprocess', 'degraded': bool(notice), 'notice': notice}
     # 지금 보이지 않는 참가작(경고창·파싱 실패 자리표시, 받지 못한 FetchFailed 는 제외) — 다음 날 '새 경고창'의 기준선이다. 매일 덮어쓴다.
     # 공모전 배지가 없는 작품은 넣지 않는다: 본선 발표(2026-11-12) 뒤 배지는 본선 50편에만 남아, 넣으면 기준선이 5천여 편이 되고
-    # 모든 쪽에 경고창이 뜨는 장애에도 500편 상한이 걸리지 않는다(DECISIONS 2026-11-12). 수집기의 표시 수 비교는 10-30 에 꺼졌다.
+    # 모든 쪽에 경고창이 뜨는 장애에도 새 경고창 상한이 걸리지 않는다(DECISIONS 2026-11-12). 수집기의 표시 수 비교는 10-30 에 꺼졌다.
     try:
         gone = sorted(str(i['ID']) for i in unique
                       if str(i.get('Title', '')).startswith(('N/A (Inaccessible', 'N/A (ParsingFailed')))
